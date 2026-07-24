@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../api';
+import { relativeDate } from '../formatDate';
 
 function waLink(phone, title) {
   const digits = phone.replace(/[^\d]/g, '');
-  const text = encodeURIComponent(`Здравствуйте! Пишу по заказу «${title}» на Шабашка КГ.`);
+  const text = encodeURIComponent(`Здравствуйте! Пишу по заказу «${title}» на Шабашка.kg.`);
   return `https://wa.me/${digits}?text=${text}`;
 }
 
@@ -12,6 +13,8 @@ export default function OrderDetail() {
   const { id } = useParams();
   const [order, setOrder] = useState(null);
   const [error, setError] = useState('');
+  const [shareMsg, setShareMsg] = useState('');
+  const [reportMsg, setReportMsg] = useState('');
 
   useEffect(() => {
     api
@@ -20,39 +23,85 @@ export default function OrderDetail() {
       .catch((e) => setError(e.message));
   }, [id]);
 
+  async function handleShare() {
+    const url = window.location.href;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: order.title, url });
+      } catch {
+        // пользователь отменил — ничего не делаем
+      }
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    setShareMsg('Ссылка скопирована');
+    setTimeout(() => setShareMsg(''), 2500);
+  }
+
+  async function handleReport() {
+    const reason = window.prompt('Опишите, что не так с этим заказом:');
+    if (!reason || !reason.trim()) return;
+    await api.reportOrder(order.id, reason);
+    setReportMsg('Спасибо, жалоба отправлена на проверку');
+    setTimeout(() => setReportMsg(''), 3000);
+  }
+
   if (error) return <p className="status-msg error">{error}</p>;
   if (!order) return <p className="status-msg">Загрузка…</p>;
 
   return (
-    <div className="order-detail">
+    <div className="order-detail-wrap">
       <Link to="/" className="back-link">
         ← Ко всем заказам
       </Link>
-      <span className="badge">{order.category}</span>
-      <h1>{order.title}</h1>
-      <p className="meta">
-        {order.city} · {new Date(order.created_at).toLocaleDateString('ru-RU')} · Заказчик: {order.owner_name}
-      </p>
-      <p className="description">{order.description}</p>
-      <p className="budget-line">
-        {order.budget ? `Бюджет: ${order.budget} сом` : 'Бюджет по договорённости'}
-      </p>
+      <div className="order-detail">
+        <div className="badges-row">
+          <span className="badge">{order.category}</span>
+          <span className={`badge status-${order.status}`}>
+            {order.status === 'open' ? 'Открыт' : 'Закрыт'}
+          </span>
+        </div>
+        <h1>{order.title}</h1>
+        <p className="meta">
+          <span>📍 {order.city}</span>
+          <span>🗓 Опубликован {relativeDate(order.created_at)}</span>
+          <span>👤 Заказчик: {order.owner_name}</span>
+        </p>
 
-      {order.status === 'closed' ? (
-        <p className="status-msg">Этот заказ уже закрыт заказчиком.</p>
-      ) : (
-        <a
-          className="whatsapp-btn"
-          href={waLink(order.whatsapp_phone, order.title)}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Написать в WhatsApp
-        </a>
-      )}
-      <p className="hint">
-        Отклик не требует регистрации — просто напишите заказчику напрямую в WhatsApp.
-      </p>
+        <div className="budget-box">
+          <span className="label">Бюджет</span>
+          <span className="value">
+            {order.budget ? `${order.budget.toLocaleString('ru-RU')} сом` : 'По договорённости'}
+          </span>
+        </div>
+
+        <h3 className="desc-heading">Описание задачи</h3>
+        <p className="description">{order.description}</p>
+
+        {order.status === 'closed' ? (
+          <p className="status-msg">Этот заказ уже закрыт заказчиком.</p>
+        ) : (
+          <a
+            className="whatsapp-btn"
+            href={waLink(order.whatsapp_phone, order.title)}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            💬 Написать в WhatsApp
+          </a>
+        )}
+
+        <div className="secondary-actions">
+          <button type="button" onClick={handleShare}>
+            🔗 {shareMsg || 'Поделиться'}
+          </button>
+          <button type="button" className="muted" onClick={handleReport}>
+            ⚑ {reportMsg || 'Пожаловаться'}
+          </button>
+        </div>
+
+        <p className="hint">Отклик не требует регистрации — просто напишите заказчику напрямую.</p>
+      </div>
     </div>
   );
 }

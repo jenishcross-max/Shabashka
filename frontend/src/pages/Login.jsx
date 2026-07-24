@@ -27,39 +27,47 @@ export default function Login() {
   }
 
   return (
-    <div className="auth-form">
-      <h1>Вход для заказчиков</h1>
-      <p className="hint">
-        Регистрация нужна только тем, кто размещает заказы. Чтобы откликнуться на заказ, вход не требуется.
-      </p>
-      <form onSubmit={handleSubmit}>
-        <label>
-          Телефон
-          <input
-            type="tel"
-            required
-            placeholder="+996 700 000 000"
-            value={form.phone}
-            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-          />
-        </label>
-        <label>
-          Пароль
-          <input
-            type="password"
-            required
-            value={form.password}
-            onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-          />
-        </label>
-        {error && <p className="status-msg error">{error}</p>}
-        <button type="submit" disabled={submitting}>
-          {submitting ? 'Входим…' : 'Войти'}
-        </button>
-      </form>
-      <p>
-        Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
-      </p>
+    <div className="auth-card">
+      <div className="card-header">
+        <span className="brand">
+          <span className="brand-mark">Ш</span>
+          Шабашка<span>.kg</span>
+        </span>
+      </div>
+      <div className="card-body">
+        <h1>Вход для заказчиков</h1>
+        <p className="subtitle">
+          Регистрация нужна только тем, кто размещает заказы. Чтобы откликнуться на заказ, вход не требуется.
+        </p>
+        <form onSubmit={handleSubmit}>
+          <label className="field">
+            <span className="label">Телефон</span>
+            <input
+              type="tel"
+              required
+              placeholder="+996 700 000 000"
+              value={form.phone}
+              onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            />
+          </label>
+          <label className="field">
+            <span className="label">Пароль</span>
+            <input
+              type="password"
+              required
+              value={form.password}
+              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+            />
+          </label>
+          {error && <p className="status-msg error">{error}</p>}
+          <button className="submit-btn" type="submit" disabled={submitting}>
+            {submitting ? 'Входим…' : 'Войти'}
+          </button>
+        </form>
+        <p className="switch-line">
+          Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
+        </p>
+      </div>
     </div>
   );
 }

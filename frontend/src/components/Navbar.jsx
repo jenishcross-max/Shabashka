@@ -13,24 +13,34 @@ export default function Navbar() {
   return (
     <header className="navbar">
       <Link to="/" className="brand">
-        Шабашка <span>КГ</span>
+        <span className="brand-mark">Ш</span>
+        Шабашка<span>.kg</span>
       </Link>
       <nav className="nav-links">
         <Link to="/">Все заказы</Link>
+        <Link to="/#how" className="muted">
+          Как это работает
+        </Link>
         {user ? (
           <>
-            <Link to="/orders/new">+ Разместить заказ</Link>
-            <Link to="/my-orders">Мои заказы</Link>
+            <Link to="/my-orders" className="muted">
+              Мои заказы
+            </Link>
             <span className="nav-user">{user.name}</span>
             <button className="link-btn" onClick={handleLogout}>
               Выйти
             </button>
+            <Link to="/orders/new" className="cta">
+              + Разместить заказ
+            </Link>
           </>
         ) : (
           <>
-            <Link to="/login">Войти</Link>
+            <Link to="/login" className="muted">
+              Войти
+            </Link>
             <Link to="/register" className="cta">
-              Разместить заказ
+              + Разместить заказ
             </Link>
           </>
         )}

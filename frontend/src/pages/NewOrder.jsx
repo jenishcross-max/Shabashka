@@ -43,72 +43,87 @@ export default function NewOrder() {
   }
 
   return (
-    <div className="auth-form">
-      <h1>Разместить заказ</h1>
-      <form onSubmit={handleSubmit}>
-        <label>
-          Заголовок
-          <input
-            required
-            placeholder="Например: почистить дымоход"
-            value={form.title}
-            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-          />
-        </label>
-        <label>
-          Описание
-          <textarea
-            required
-            rows={5}
-            placeholder="Опишите, что нужно сделать"
-            value={form.description}
-            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-          />
-        </label>
-        <label>
-          Категория
-          <select
-            value={form.category}
-            onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-          >
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Город
-          <input
-            required
-            value={form.city}
-            onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
-          />
-        </label>
-        <label>
-          Бюджет, сом (необязательно)
-          <input
-            type="number"
-            min="0"
-            value={form.budget}
-            onChange={(e) => setForm((f) => ({ ...f, budget: e.target.value }))}
-          />
-        </label>
-        <label>
-          Номер WhatsApp для связи
-          <input
-            type="tel"
-            required
-            value={form.whatsapp_phone}
-            onChange={(e) => setForm((f) => ({ ...f, whatsapp_phone: e.target.value }))}
-          />
-        </label>
-        {error && <p className="status-msg error">{error}</p>}
-        <button type="submit" disabled={submitting}>
-          {submitting ? 'Публикуем…' : 'Опубликовать заказ'}
-        </button>
-      </form>
+    <div className="form-card wide">
+      <div className="card-header">
+        <span className="brand">
+          <span className="brand-mark">Ш</span>
+          Шабашка<span>.kg</span>
+        </span>
+        <span className="who">{user?.name} · Мои заказы</span>
+      </div>
+      <div className="card-body">
+        <h1>Разместить заказ</h1>
+        <p className="subtitle">Опишите задачу — исполнители напишут вам в WhatsApp.</p>
+        <form onSubmit={handleSubmit}>
+          <label className="field">
+            <span className="label">Заголовок</span>
+            <input
+              required
+              placeholder="Например: почистить дымоход"
+              value={form.title}
+              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+            />
+          </label>
+          <label className="field">
+            <span className="label">Описание</span>
+            <textarea
+              required
+              rows={4}
+              placeholder="Опишите, что нужно сделать"
+              value={form.description}
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+            />
+          </label>
+          <div className="field-row">
+            <label className="field">
+              <span className="label">Категория</span>
+              <select
+                value={form.category}
+                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+              >
+                {categories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span className="label">Город</span>
+              <input
+                required
+                value={form.city}
+                onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+              />
+            </label>
+          </div>
+          <div className="field-row">
+            <label className="field">
+              <span className="label">Бюджет, сом (необязательно)</span>
+              <input
+                type="number"
+                min="0"
+                placeholder="2000"
+                value={form.budget}
+                onChange={(e) => setForm((f) => ({ ...f, budget: e.target.value }))}
+              />
+            </label>
+            <label className="field">
+              <span className="label">WhatsApp для связи</span>
+              <input
+                type="tel"
+                required
+                value={form.whatsapp_phone}
+                onChange={(e) => setForm((f) => ({ ...f, whatsapp_phone: e.target.value }))}
+              />
+            </label>
+          </div>
+          {error && <p className="status-msg error">{error}</p>}
+          <button className="submit-btn" type="submit" disabled={submitting}>
+            {submitting ? 'Публикуем…' : 'Опубликовать заказ'}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

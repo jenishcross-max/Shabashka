@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { relativeDate } from '../formatDate';
 
 export default function MyOrders() {
   const { token } = useAuth();
@@ -37,7 +38,12 @@ export default function MyOrders() {
 
   return (
     <div>
-      <h1>Мои заказы</h1>
+      <div className="my-orders-head">
+        <h1>Мои заказы</h1>
+        <Link to="/orders/new" className="cta">
+          + Новый заказ
+        </Link>
+      </div>
       {orders.length === 0 && (
         <p className="status-msg">
           У вас пока нет заказов. <Link to="/orders/new">Разместить первый заказ</Link>
@@ -45,16 +51,23 @@ export default function MyOrders() {
       )}
       <div className="my-orders-list">
         {orders.map((order) => (
-          <div key={order.id} className="my-order-row">
+          <div key={order.id} className={`my-order-row${order.status === 'closed' ? ' closed' : ''}`}>
             <div>
-              <Link to={`/orders/${order.id}`}>{order.title}</Link>
-              <span className={`status-tag ${order.status}`}>
-                {order.status === 'open' ? 'Открыт' : 'Закрыт'}
-              </span>
+              <div className="my-order-title-row">
+                <Link to={`/orders/${order.id}`}>{order.title}</Link>
+                <span className={`badge status-${order.status}`}>
+                  {order.status === 'open' ? 'Открыт' : 'Закрыт'}
+                </span>
+              </div>
+              <div className="my-order-meta">
+                {order.category} · {order.city} ·{' '}
+                {order.budget ? `${order.budget.toLocaleString('ru-RU')} сом` : 'по договорённости'} ·{' '}
+                {relativeDate(order.created_at)}
+              </div>
             </div>
             <div className="my-order-actions">
               <button onClick={() => toggleStatus(order)}>
-                {order.status === 'open' ? 'Закрыть заказ' : 'Открыть снова'}
+                {order.status === 'open' ? 'Закрыть' : 'Открыть снова'}
               </button>
               <button className="danger" onClick={() => remove(order)}>
                 Удалить

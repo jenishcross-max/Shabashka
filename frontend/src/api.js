@@ -25,6 +25,7 @@ export const api = {
   me: (token) => request('/auth/me', { token }),
 
   categories: () => request('/orders/categories'),
+  categoryCounts: () => request('/orders/category-counts'),
   orders: (params = {}) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString();
     return request(`/orders${qs ? `?${qs}` : ''}`);
@@ -35,4 +36,5 @@ export const api = {
   setOrderStatus: (id, status, token) =>
     request(`/orders/${id}`, { method: 'PATCH', body: { status }, token }),
   deleteOrder: (id, token) => request(`/orders/${id}`, { method: 'DELETE', token }),
+  reportOrder: (id, reason) => request(`/orders/${id}/report`, { method: 'POST', body: { reason } }),
 };

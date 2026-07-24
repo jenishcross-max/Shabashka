@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { relativeDate } from '../formatDate';
 
 export default function OrderCard({ order }) {
   return (
@@ -10,8 +11,12 @@ export default function OrderCard({ order }) {
       <h3>{order.title}</h3>
       <p>{order.description}</p>
       <div className="order-card-bottom">
-        <span className="budget">{order.budget ? `${order.budget} сом` : 'Бюджет по договорённости'}</span>
-        <span className="date">{new Date(order.created_at).toLocaleDateString('ru-RU')}</span>
+        {order.budget ? (
+          <span className="budget">{order.budget.toLocaleString('ru-RU')} сом</span>
+        ) : (
+          <span className="budget muted-budget">По договорённости</span>
+        )}
+        <span className="date">{relativeDate(order.created_at)}</span>
       </div>
     </Link>
   );

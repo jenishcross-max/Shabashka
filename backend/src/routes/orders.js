@@ -15,6 +15,15 @@ router.get('/categories', (_req, res) => {
   res.json({ categories: CATEGORIES });
 });
 
+// Количество открытых заказов по категориям — для плиток на главной
+router.get('/category-counts', (_req, res) => {
+  const rows = db
+    .prepare("SELECT category, COUNT(*) AS count FROM orders WHERE status = 'open' GROUP BY category")
+    .all();
+  const counts = Object.fromEntries(rows.map((r) => [r.category, r.count]));
+  res.json({ counts });
+});
+
 // Публичный список заказов — доступен всем без авторизации
 router.get('/', (req, res) => {
   const { category, city, q } = req.query;
@@ -129,6 +138,18 @@ router.delete('/:id', requireAuth, (req, res) => {
 
   db.prepare('DELETE FROM orders WHERE id = ?').run(order.id);
   res.status(204).end();
+});
+
+// Пожаловаться на заказ — доступно всем, без авторизации
+router.post('/:id/report', (req, res) => {
+  const order = db.prepare('SELECT id FROM orders WHERE id = ?').get(req.params.id);
+  if (!order) return res.status(404).json({ error: 'Заказ не найден' });
+
+  const { reason } = req.body || {};
+  if (!reason || !reason.trim()) return res.status(400).json({ error: 'Укажите причину жалобы' });
+
+  db.prepare('INSERT INTO reports (order_id, reason) VALUES (?, ?)').run(order.id, reason.trim());
+  res.status(201).json({ ok: true });
 });
 
 module.exports = router;

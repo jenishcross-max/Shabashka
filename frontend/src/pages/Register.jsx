@@ -26,56 +26,68 @@ export default function Register() {
   }
 
   return (
-    <div className="auth-form">
-      <h1>Регистрация заказчика</h1>
-      <p className="hint">
-        Аккаунт нужен, только чтобы размещать заказы. Исполнителям регистрация не нужна — они отвечают
-        через WhatsApp напрямую.
-      </p>
-      <form onSubmit={handleSubmit}>
-        <label>
-          Имя
-          <input
-            required
-            value={form.name}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-          />
-        </label>
-        <label>
-          Телефон (он же WhatsApp по умолчанию)
-          <input
-            type="tel"
-            required
-            placeholder="+996 700 000 000"
-            value={form.phone}
-            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-          />
-        </label>
-        <label>
-          Город
-          <input
-            value={form.city}
-            onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
-          />
-        </label>
-        <label>
-          Пароль
-          <input
-            type="password"
-            required
-            minLength={6}
-            value={form.password}
-            onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-          />
-        </label>
-        {error && <p className="status-msg error">{error}</p>}
-        <button type="submit" disabled={submitting}>
-          {submitting ? 'Создаём аккаунт…' : 'Зарегистрироваться'}
-        </button>
-      </form>
-      <p>
-        Уже есть аккаунт? <Link to="/login">Войти</Link>
-      </p>
+    <div className="auth-card">
+      <div className="card-header">
+        <span className="brand">
+          <span className="brand-mark">Ш</span>
+          Шабашка<span>.kg</span>
+        </span>
+      </div>
+      <div className="card-body">
+        <h1>Регистрация заказчика</h1>
+        <p className="subtitle">
+          Аккаунт нужен, только чтобы размещать заказы. Исполнителям регистрация не нужна — они
+          отвечают через WhatsApp напрямую.
+        </p>
+        <form onSubmit={handleSubmit}>
+          <label className="field">
+            <span className="label">Имя</span>
+            <input
+              required
+              placeholder="Как к вам обращаться"
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            />
+          </label>
+          <label className="field">
+            <span className="label">Телефон для WhatsApp</span>
+            <input
+              type="tel"
+              required
+              placeholder="+996 700 000 000"
+              value={form.phone}
+              onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            />
+          </label>
+          <div className="field-row">
+            <label className="field">
+              <span className="label">Город</span>
+              <input
+                placeholder="Бишкек"
+                value={form.city}
+                onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+              />
+            </label>
+            <label className="field">
+              <span className="label">Пароль</span>
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={form.password}
+                onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+              />
+            </label>
+          </div>
+          {error && <p className="status-msg error">{error}</p>}
+          <button className="submit-btn" type="submit" disabled={submitting}>
+            {submitting ? 'Создаём аккаунт…' : 'Зарегистрироваться'}
+          </button>
+        </form>
+        <p className="switch-line">
+          Уже есть аккаунт? <Link to="/login">Войти</Link>
+        </p>
+      </div>
     </div>
   );
 }
