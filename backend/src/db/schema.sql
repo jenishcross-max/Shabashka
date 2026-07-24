@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS users (
   phone         TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   city          TEXT,
+  role          TEXT NOT NULL DEFAULT 'customer', -- customer | admin
+  is_blocked    INTEGER NOT NULL DEFAULT 0,
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -31,6 +33,7 @@ CREATE TABLE IF NOT EXISTS reports (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   order_id   INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
   reason     TEXT NOT NULL,
+  resolved   INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

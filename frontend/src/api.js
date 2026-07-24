@@ -37,4 +37,15 @@ export const api = {
     request(`/orders/${id}`, { method: 'PATCH', body: { status }, token }),
   deleteOrder: (id, token) => request(`/orders/${id}`, { method: 'DELETE', token }),
   reportOrder: (id, reason) => request(`/orders/${id}/report`, { method: 'POST', body: { reason } }),
+
+  adminStats: (token) => request('/admin/stats', { token }),
+  adminUsers: (token) => request('/admin/users', { token }),
+  adminSetUserBlocked: (id, blocked, token) =>
+    request(`/admin/users/${id}`, { method: 'PATCH', body: { blocked }, token }),
+  adminOrders: (token) => request('/admin/orders', { token }),
+  adminSetOrderStatus: (id, status, token) =>
+    request(`/admin/orders/${id}`, { method: 'PATCH', body: { status }, token }),
+  adminReports: (token, status = 'open') => request(`/admin/reports?status=${status}`, { token }),
+  adminResolveReport: (id, action, token) =>
+    request(`/admin/reports/${id}`, { method: 'PATCH', body: { action }, token }),
 };

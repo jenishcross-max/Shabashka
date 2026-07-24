@@ -16,7 +16,14 @@ function normalizeEmail(email) {
 }
 
 function toPublicUser(user) {
-  return { id: user.id, name: user.name, email: user.email, phone: user.phone, city: user.city };
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    city: user.city,
+    role: user.role,
+  };
 }
 
 // Регистрация — только для заказчиков, которые будут размещать заказы
@@ -56,15 +63,14 @@ router.post('/login', (req, res) => {
   if (!user || !bcrypt.compareSync(password || '', user.password_hash)) {
     return res.status(401).json({ error: 'Неверный email или пароль' });
   }
+  if (user.is_blocked) return res.status(403).json({ error: 'Ваш аккаунт заблокирован' });
 
   const token = signToken(user);
   res.json({ token, user: toPublicUser(user) });
 });
 
 router.get('/me', requireAuth, (req, res) => {
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
-  if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
-  res.json({ user: toPublicUser(user) });
+  res.json({ user: toPublicUser(req.user) });
 });
 
 module.exports = router;

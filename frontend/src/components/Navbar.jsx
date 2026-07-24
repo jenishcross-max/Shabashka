@@ -26,6 +26,11 @@ export default function Navbar() {
             <Link to="/my-orders" className="muted">
               Мои заказы
             </Link>
+            {user.role === 'admin' && (
+              <Link to="/admin" className="muted">
+                Админ-панель
+              </Link>
+            )}
             <span className="nav-user">{user.name}</span>
             <button className="link-btn" onClick={handleLogout}>
               Выйти
