@@ -14,4 +14,12 @@ db.pragma('foreign_keys = ON');
 const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
 db.exec(schema);
 
+// Дев-миграция: старые базы без email — пересоздаём таблицы под новую схему
+const usersColumns = db.prepare("PRAGMA table_info(users)").all();
+const hasEmail = usersColumns.some((c) => c.name === 'email');
+if (!hasEmail) {
+  db.exec('DROP TABLE IF EXISTS reports; DROP TABLE IF EXISTS orders; DROP TABLE IF EXISTS users;');
+  db.exec(schema);
+}
+
 module.exports = db;

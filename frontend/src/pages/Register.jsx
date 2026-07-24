@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 export default function Register() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ name: '', phone: '', password: '', city: '' });
+  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', city: '' });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -47,6 +47,16 @@ export default function Register() {
               placeholder="Как к вам обращаться"
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            />
+          </label>
+          <label className="field">
+            <span className="label">Email</span>
+            <input
+              type="email"
+              required
+              placeholder="you@example.com"
+              value={form.email}
+              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
             />
           </label>
           <label className="field">

@@ -7,7 +7,7 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [form, setForm] = useState({ phone: '', password: '' });
+  const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -41,13 +41,13 @@ export default function Login() {
         </p>
         <form onSubmit={handleSubmit}>
           <label className="field">
-            <span className="label">Телефон</span>
+            <span className="label">Email</span>
             <input
-              type="tel"
+              type="email"
               required
-              placeholder="+996 700 000 000"
-              value={form.phone}
-              onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+              placeholder="you@example.com"
+              value={form.email}
+              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
             />
           </label>
           <label className="field">

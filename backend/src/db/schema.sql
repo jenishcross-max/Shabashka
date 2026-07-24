@@ -3,7 +3,8 @@
 CREATE TABLE IF NOT EXISTS users (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   name          TEXT NOT NULL,
-  phone         TEXT NOT NULL UNIQUE,
+  email         TEXT NOT NULL UNIQUE,
+  phone         TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   city          TEXT,
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
