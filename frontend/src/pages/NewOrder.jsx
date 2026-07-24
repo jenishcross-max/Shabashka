@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { useCities } from '../useCities';
 
 export default function NewOrder() {
   const { token, user } = useAuth();
+  const cities = useCities();
   const navigate = useNavigate();
   const [categories, setCategories] = useState([]);
   const [form, setForm] = useState({
@@ -96,6 +98,7 @@ export default function NewOrder() {
               <span className="label">Город</span>
               <input
                 required
+                list="cities-list"
                 value={form.city}
                 onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
               />
@@ -136,6 +139,11 @@ export default function NewOrder() {
           </button>
         </form>
       </div>
+      <datalist id="cities-list">
+        {cities.map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
     </div>
   );
 }

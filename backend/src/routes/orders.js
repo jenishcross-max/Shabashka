@@ -4,7 +4,9 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const CATEGORIES = require('../categories');
-const { upload, uploadsDir } = require('../upload');
+const KNOWN_CITIES = require('../cities');
+const { upload, uploadsDir, processImage } = require('../upload');
+const { reportLimiter } = require('../rateLimit');
 
 const router = express.Router();
 
@@ -23,6 +25,16 @@ const SORTS = {
 
 router.get('/categories', (_req, res) => {
   res.json({ categories: CATEGORIES });
+});
+
+// Список городов для автодополнения — известные + реально встречающиеся в заказах
+router.get('/cities', (_req, res) => {
+  const used = db
+    .prepare("SELECT DISTINCT city FROM orders WHERE status = 'open'")
+    .all()
+    .map((r) => r.city);
+  const cities = [...new Set([...KNOWN_CITIES, ...used])].sort((a, b) => a.localeCompare(b, 'ru'));
+  res.json({ cities });
 });
 
 // Количество открытых заказов по категориям — для плиток на главной
@@ -106,6 +118,22 @@ router.get('/:id', (req, res) => {
     .get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Заказ не найден' });
   res.json({ order: row });
+});
+
+// Похожие заказы — та же категория, желательно тот же город, без текущего
+router.get('/:id/similar', (req, res) => {
+  const current = db.prepare('SELECT category, city FROM orders WHERE id = ?').get(req.params.id);
+  if (!current) return res.json({ orders: [] });
+
+  const rows = db
+    .prepare(
+      `SELECT ${ORDER_FIELDS} FROM orders JOIN users ON users.id = orders.user_id
+       WHERE orders.status = 'open' AND orders.category = ? AND orders.id != ?
+       ORDER BY (orders.city = ?) DESC, orders.created_at DESC
+       LIMIT 4`
+    )
+    .all(current.category, req.params.id, current.city);
+  res.json({ orders: rows });
 });
 
 function validateOrderFields(body, { partial }) {
@@ -223,7 +251,7 @@ function uploadPhoto(req, res, next) {
 }
 
 // Загрузить/заменить фото заказа — только владелец
-router.post('/:id/photo', requireAuth, uploadPhoto, (req, res) => {
+router.post('/:id/photo', requireAuth, uploadPhoto, processImage, (req, res) => {
   const order = loadOwnedOrder(req, res);
   if (!order) {
     if (req.file) fs.unlink(req.file.path, () => {});
@@ -253,7 +281,7 @@ router.delete('/:id', requireAuth, (req, res) => {
 });
 
 // Пожаловаться на заказ — доступно всем, без авторизации
-router.post('/:id/report', (req, res) => {
+router.post('/:id/report', reportLimiter, (req, res) => {
   const order = db.prepare('SELECT id FROM orders WHERE id = ?').get(req.params.id);
   if (!order) return res.status(404).json({ error: 'Заказ не найден' });
 

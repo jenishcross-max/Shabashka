@@ -3,11 +3,13 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { imageUrl } from '../imageUrl';
+import { useCities } from '../useCities';
 
 export default function EditOrder() {
   const { id } = useParams();
   const { token, user } = useAuth();
   const navigate = useNavigate();
+  const cities = useCities();
   const [categories, setCategories] = useState([]);
   const [form, setForm] = useState(null);
   const [photo, setPhoto] = useState(null);
@@ -109,6 +111,7 @@ export default function EditOrder() {
               <span className="label">Город</span>
               <input
                 required
+                list="cities-list"
                 value={form.city}
                 onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
               />
@@ -151,6 +154,11 @@ export default function EditOrder() {
           </button>
         </form>
       </div>
+      <datalist id="cities-list">
+        {cities.map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
     </div>
   );
 }

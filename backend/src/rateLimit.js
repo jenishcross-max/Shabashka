@@ -1,0 +1,30 @@
+const rateLimit = require('express-rate-limit');
+
+// Вход/регистрация — защита от подбора пароля и спам-регистраций
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Слишком много попыток. Попробуйте через 15 минут.' },
+});
+
+// Жалобы — защита от спама жалобами
+const reportLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Слишком много жалоб с этого адреса. Попробуйте позже.' },
+});
+
+// Публичное API в целом — базовая защита от злоупотреблений
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 240,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Слишком много запросов, немного помедленнее.' },
+});
+
+module.exports = { authLimiter, reportLimiter, apiLimiter };

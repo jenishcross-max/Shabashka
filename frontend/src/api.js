@@ -27,11 +27,13 @@ export const api = {
 
   categories: () => request('/orders/categories'),
   categoryCounts: () => request('/orders/category-counts'),
+  cities: () => request('/orders/cities'),
   orders: (params = {}) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString();
     return request(`/orders${qs ? `?${qs}` : ''}`);
   },
   order: (id) => request(`/orders/${id}`),
+  similarOrders: (id) => request(`/orders/${id}/similar`),
   ordersBatch: (ids) => request(`/orders/batch?ids=${ids.join(',')}`),
   myOrders: (token) => request('/orders/mine', { token }),
   createOrder: (payload, token) => request('/orders', { method: 'POST', body: payload, token }),

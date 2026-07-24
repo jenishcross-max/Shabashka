@@ -5,6 +5,7 @@ import { relativeDate } from '../formatDate';
 import { imageUrl } from '../imageUrl';
 import { useAuth } from '../context/AuthContext';
 import FavoriteButton from '../components/FavoriteButton';
+import OrderCard from '../components/OrderCard';
 
 function waLink(phone, title) {
   const digits = phone.replace(/[^\d]/g, '');
@@ -16,6 +17,7 @@ export default function OrderDetail() {
   const { id } = useParams();
   const { user } = useAuth();
   const [order, setOrder] = useState(null);
+  const [similar, setSimilar] = useState([]);
   const [error, setError] = useState('');
   const [shareMsg, setShareMsg] = useState('');
   const [reportMsg, setReportMsg] = useState('');
@@ -25,6 +27,10 @@ export default function OrderDetail() {
       .order(id)
       .then(({ order }) => setOrder(order))
       .catch((e) => setError(e.message));
+    api
+      .similarOrders(id)
+      .then(({ orders }) => setSimilar(orders))
+      .catch(() => {});
   }, [id]);
 
   async function handleShare() {
@@ -119,6 +125,17 @@ export default function OrderDetail() {
 
         <p className="hint">Отклик не требует регистрации — просто напишите заказчику напрямую.</p>
       </div>
+
+      {similar.length > 0 && (
+        <div className="similar-orders">
+          <h2>Похожие заказы</h2>
+          <div className="order-grid">
+            {similar.map((o) => (
+              <OrderCard key={o.id} order={o} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

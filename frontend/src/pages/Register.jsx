@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { useCities } from '../useCities';
 
 export default function Register() {
   const { login } = useAuth();
+  const cities = useCities();
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', city: '' });
   const [error, setError] = useState('');
@@ -74,6 +76,7 @@ export default function Register() {
               <span className="label">Город</span>
               <input
                 placeholder="Бишкек"
+                list="cities-list"
                 value={form.city}
                 onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
               />
@@ -98,6 +101,11 @@ export default function Register() {
           Уже есть аккаунт? <Link to="/login">Войти</Link>
         </p>
       </div>
+      <datalist id="cities-list">
+        {cities.map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
     </div>
   );
 }

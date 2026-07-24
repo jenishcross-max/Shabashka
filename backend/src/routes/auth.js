@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { signToken, requireAuth } = require('../middleware/auth');
+const { authLimiter } = require('../rateLimit');
 
 const router = express.Router();
 
@@ -27,7 +28,7 @@ function toPublicUser(user) {
 }
 
 // Регистрация — только для заказчиков, которые будут размещать заказы
-router.post('/register', (req, res) => {
+router.post('/register', authLimiter, (req, res) => {
   const { name, email, phone, password, city } = req.body || {};
 
   if (!name || !name.trim()) return res.status(400).json({ error: 'Укажите имя' });
@@ -55,7 +56,7 @@ router.post('/register', (req, res) => {
   res.status(201).json({ token, user: toPublicUser(user) });
 });
 
-router.post('/login', (req, res) => {
+router.post('/login', authLimiter, (req, res) => {
   const { email, password } = req.body || {};
   const normalizedEmail = normalizeEmail(email);
 

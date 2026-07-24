@@ -4,6 +4,7 @@ import { api } from '../api';
 import OrderCard from '../components/OrderCard';
 import { categoryIcon } from '../categoryIcons';
 import { useFavorites } from '../context/FavoritesContext';
+import { useCities } from '../useCities';
 
 const SORTS = [
   { value: 'new', label: 'Сначала новые' },
@@ -14,6 +15,7 @@ const SORTS = [
 export default function Home() {
   const location = useLocation();
   const { ids: favoriteIds } = useFavorites();
+  const cities = useCities();
   const [orders, setOrders] = useState([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, pages: 1 });
   const [categories, setCategories] = useState([]);
@@ -95,11 +97,17 @@ export default function Home() {
           <input
             className="search-city"
             placeholder="Город"
+            list="cities-list"
             value={cityInput}
             onChange={(e) => setCityInput(e.target.value)}
           />
           <button type="submit">Найти</button>
         </form>
+        <datalist id="cities-list">
+          {cities.map((c) => (
+            <option key={c} value={c} />
+          ))}
+        </datalist>
         {favoriteIds.length > 0 && (
           <Link to="/favorites" className="hero-fav-link">
             ★ Избранное ({favoriteIds.length})
