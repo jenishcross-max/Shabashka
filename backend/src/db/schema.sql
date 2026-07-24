@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS orders (
   budget         INTEGER,
   whatsapp_phone TEXT NOT NULL,
   status         TEXT NOT NULL DEFAULT 'open', -- open | closed
+  views          INTEGER NOT NULL DEFAULT 0,
+  pinned         INTEGER NOT NULL DEFAULT 0,
+  image_path     TEXT,
   created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

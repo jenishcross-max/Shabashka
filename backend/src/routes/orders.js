@@ -1,15 +1,25 @@
+const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const CATEGORIES = require('../categories');
+const { upload, uploadsDir } = require('../upload');
 
 const router = express.Router();
 
 const ORDER_FIELDS = `
   orders.id, orders.title, orders.description, orders.category, orders.city,
-  orders.budget, orders.whatsapp_phone, orders.status, orders.created_at,
+  orders.budget, orders.whatsapp_phone, orders.status, orders.views, orders.pinned,
+  orders.image_path, orders.created_at,
   orders.user_id, users.name AS owner_name
 `;
+
+const SORTS = {
+  new: 'orders.pinned DESC, orders.created_at DESC',
+  budget: 'orders.pinned DESC, orders.budget IS NULL, orders.budget DESC',
+  popular: 'orders.pinned DESC, orders.views DESC',
+};
 
 router.get('/categories', (_req, res) => {
   res.json({ categories: CATEGORIES });
@@ -26,7 +36,11 @@ router.get('/category-counts', (_req, res) => {
 
 // Публичный список заказов — доступен всем без авторизации
 router.get('/', (req, res) => {
-  const { category, city, q } = req.query;
+  const { category, city, q, sort } = req.query;
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(48, Math.max(1, parseInt(req.query.limit, 10) || 12));
+  const offset = (page - 1) * limit;
+
   const clauses = ["orders.status = 'open'"];
   const params = {};
 
@@ -43,14 +57,18 @@ router.get('/', (req, res) => {
     params.q = `%${q}%`;
   }
 
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const where = `WHERE ${clauses.join(' AND ')}`;
+  const orderBy = SORTS[sort] || SORTS.new;
+
+  const total = db.prepare(`SELECT COUNT(*) AS n FROM orders ${where}`).get(params).n;
   const rows = db
     .prepare(
-      `SELECT ${ORDER_FIELDS} FROM orders JOIN users ON users.id = orders.user_id ${where} ORDER BY orders.created_at DESC`
+      `SELECT ${ORDER_FIELDS} FROM orders JOIN users ON users.id = orders.user_id
+       ${where} ORDER BY ${orderBy} LIMIT @limit OFFSET @offset`
     )
-    .all(params);
+    .all({ ...params, limit, offset });
 
-  res.json({ orders: rows });
+  res.json({ orders: rows, total, page, pages: Math.max(1, Math.ceil(total / limit)) });
 });
 
 // Заказы текущего пользователя (заказчика)
@@ -63,7 +81,26 @@ router.get('/mine', requireAuth, (req, res) => {
   res.json({ orders: rows });
 });
 
+// Пакетная выборка по id (для избранного) — не увеличивает счётчик просмотров
+router.get('/batch', (req, res) => {
+  const ids = String(req.query.ids || '')
+    .split(',')
+    .map((s) => parseInt(s, 10))
+    .filter(Number.isInteger)
+    .slice(0, 100);
+  if (ids.length === 0) return res.json({ orders: [] });
+
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = db
+    .prepare(
+      `SELECT ${ORDER_FIELDS} FROM orders JOIN users ON users.id = orders.user_id WHERE orders.id IN (${placeholders})`
+    )
+    .all(...ids);
+  res.json({ orders: rows });
+});
+
 router.get('/:id', (req, res) => {
+  db.prepare('UPDATE orders SET views = views + 1 WHERE id = ?').run(req.params.id);
   const row = db
     .prepare(`SELECT ${ORDER_FIELDS} FROM orders JOIN users ON users.id = orders.user_id WHERE orders.id = ?`)
     .get(req.params.id);
@@ -71,29 +108,52 @@ router.get('/:id', (req, res) => {
   res.json({ order: row });
 });
 
+function validateOrderFields(body, { partial }) {
+  const { title, description, category, city, budget, whatsapp_phone } = body;
+  const errors = [];
+  const result = {};
+
+  if (!partial || title !== undefined) {
+    if (!title || !title.trim()) errors.push('Укажите заголовок заказа');
+    else result.title = title.trim();
+  }
+  if (!partial || description !== undefined) {
+    if (!description || !description.trim()) errors.push('Опишите заказ');
+    else result.description = description.trim();
+  }
+  if (!partial || category !== undefined) {
+    if (!CATEGORIES.includes(category)) errors.push('Некорректная категория');
+    else result.category = category;
+  }
+  if (!partial || city !== undefined) {
+    if (!city || !city.trim()) errors.push('Укажите город');
+    else result.city = city.trim();
+  }
+  if (!partial || whatsapp_phone !== undefined) {
+    const phone = String(whatsapp_phone || '').replace(/[^\d+]/g, '');
+    if (phone.length < 9) errors.push('Укажите корректный номер WhatsApp');
+    else result.whatsapp_phone = phone;
+  }
+  if (!partial || budget !== undefined) {
+    const budgetValue = budget ? Number(budget) : null;
+    if (budget && (!Number.isFinite(budgetValue) || budgetValue < 0)) errors.push('Некорректный бюджет');
+    else result.budget = budgetValue;
+  }
+
+  return { errors, result };
+}
+
 // Создать заказ — только авторизованные заказчики
 router.post('/', requireAuth, (req, res) => {
-  const { title, description, category, city, budget, whatsapp_phone } = req.body || {};
-
-  if (!title || !title.trim()) return res.status(400).json({ error: 'Укажите заголовок заказа' });
-  if (!description || !description.trim()) return res.status(400).json({ error: 'Опишите заказ' });
-  if (!CATEGORIES.includes(category)) return res.status(400).json({ error: 'Некорректная категория' });
-  if (!city || !city.trim()) return res.status(400).json({ error: 'Укажите город' });
-
-  const phone = String(whatsapp_phone || '').replace(/[^\d+]/g, '');
-  if (phone.length < 9) return res.status(400).json({ error: 'Укажите корректный номер WhatsApp' });
-
-  const budgetValue = budget ? Number(budget) : null;
-  if (budget && (!Number.isFinite(budgetValue) || budgetValue < 0)) {
-    return res.status(400).json({ error: 'Некорректный бюджет' });
-  }
+  const { errors, result } = validateOrderFields(req.body || {}, { partial: false });
+  if (errors.length) return res.status(400).json({ error: errors[0] });
 
   const info = db
     .prepare(
       `INSERT INTO orders (user_id, title, description, category, city, budget, whatsapp_phone)
        VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(req.user.id, title.trim(), description.trim(), category, city.trim(), budgetValue, phone);
+    .run(req.user.id, result.title, result.description, result.category, result.city, result.budget, result.whatsapp_phone);
 
   const order = db
     .prepare(`SELECT ${ORDER_FIELDS} FROM orders JOIN users ON users.id = orders.user_id WHERE orders.id = ?`)
@@ -115,27 +175,79 @@ function loadOwnedOrder(req, res) {
   return order;
 }
 
-// Закрыть/открыть заказ — только владелец
+// Обновить заказ (статус и/или поля) — только владелец
 router.patch('/:id', requireAuth, (req, res) => {
   const order = loadOwnedOrder(req, res);
   if (!order) return;
 
-  const { status } = req.body || {};
-  if (!['open', 'closed'].includes(status)) {
-    return res.status(400).json({ error: 'Статус может быть только open или closed' });
+  const updates = [];
+  const values = [];
+
+  if (req.body?.status !== undefined) {
+    if (!['open', 'closed'].includes(req.body.status)) {
+      return res.status(400).json({ error: 'Статус может быть только open или closed' });
+    }
+    updates.push('status = ?');
+    values.push(req.body.status);
   }
 
-  db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, order.id);
+  const editableKeys = ['title', 'description', 'category', 'city', 'budget', 'whatsapp_phone'];
+  const hasEditableField = editableKeys.some((k) => req.body?.[k] !== undefined);
+  if (hasEditableField) {
+    const { errors, result } = validateOrderFields(req.body, { partial: true });
+    if (errors.length) return res.status(400).json({ error: errors[0] });
+    for (const key of editableKeys) {
+      if (result[key] !== undefined) {
+        updates.push(`${key} = ?`);
+        values.push(result[key]);
+      }
+    }
+  }
+
+  if (updates.length === 0) return res.status(400).json({ error: 'Нечего обновлять' });
+
+  values.push(order.id);
+  db.prepare(`UPDATE orders SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+
   const updated = db
     .prepare(`SELECT ${ORDER_FIELDS} FROM orders JOIN users ON users.id = orders.user_id WHERE orders.id = ?`)
     .get(order.id);
   res.json({ order: updated });
 });
 
+function uploadPhoto(req, res, next) {
+  upload.single('photo')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message || 'Ошибка загрузки файла' });
+    next();
+  });
+}
+
+// Загрузить/заменить фото заказа — только владелец
+router.post('/:id/photo', requireAuth, uploadPhoto, (req, res) => {
+  const order = loadOwnedOrder(req, res);
+  if (!order) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    return;
+  }
+  if (!req.file) return res.status(400).json({ error: 'Файл не получен' });
+
+  if (order.image_path) {
+    const oldPath = path.join(uploadsDir, path.basename(order.image_path));
+    fs.unlink(oldPath, () => {});
+  }
+
+  const imagePath = `/uploads/orders/${req.file.filename}`;
+  db.prepare('UPDATE orders SET image_path = ? WHERE id = ?').run(imagePath, order.id);
+  res.json({ image_path: imagePath });
+});
+
 router.delete('/:id', requireAuth, (req, res) => {
   const order = loadOwnedOrder(req, res);
   if (!order) return;
 
+  if (order.image_path) {
+    fs.unlink(path.join(uploadsDir, path.basename(order.image_path)), () => {});
+  }
   db.prepare('DELETE FROM orders WHERE id = ?').run(order.id);
   res.status(204).end();
 });

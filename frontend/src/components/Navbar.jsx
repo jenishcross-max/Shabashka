@@ -18,6 +18,9 @@ export default function Navbar() {
       </Link>
       <nav className="nav-links">
         <Link to="/">Все заказы</Link>
+        <Link to="/favorites" className="muted">
+          ★ Избранное
+        </Link>
         <Link to="/#how" className="muted">
           Как это работает
         </Link>

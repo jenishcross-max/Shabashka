@@ -1,50 +1,63 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { imageUrl } from '../imageUrl';
 
-export default function NewOrder() {
+export default function EditOrder() {
+  const { id } = useParams();
   const { token, user } = useAuth();
   const navigate = useNavigate();
   const [categories, setCategories] = useState([]);
-  const [form, setForm] = useState({
-    title: '',
-    description: '',
-    category: '',
-    city: user?.city || '',
-    budget: '',
-    whatsapp_phone: user?.phone || '',
-  });
+  const [form, setForm] = useState(null);
   const [photo, setPhoto] = useState(null);
+  const [currentImage, setCurrentImage] = useState(null);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
-    api.categories().then(({ categories }) => {
-      setCategories(categories);
-      setForm((f) => ({ ...f, category: f.category || categories[0] }));
-    });
-  }, []);
+    api.categories().then(({ categories }) => setCategories(categories));
+    api
+      .order(id)
+      .then(({ order }) => {
+        if (order.user_id !== user?.id) {
+          setNotFound(true);
+          return;
+        }
+        setForm({
+          title: order.title,
+          description: order.description,
+          category: order.category,
+          city: order.city,
+          budget: order.budget ?? '',
+          whatsapp_phone: order.whatsapp_phone,
+        });
+        setCurrentImage(order.image_path);
+      })
+      .catch(() => setNotFound(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     setSubmitting(true);
     try {
-      const { order } = await api.createOrder(
-        { ...form, budget: form.budget ? Number(form.budget) : null },
-        token
-      );
+      await api.updateOrder(id, { ...form, budget: form.budget ? Number(form.budget) : null }, token);
       if (photo) {
-        await api.uploadOrderPhoto(order.id, photo, token);
+        await api.uploadOrderPhoto(id, photo, token);
       }
-      navigate(`/orders/${order.id}`);
+      navigate(`/orders/${id}`);
     } catch (err) {
       setError(err.message);
     } finally {
       setSubmitting(false);
     }
   }
+
+  if (notFound) return <p className="status-msg error">Заказ не найден или это не ваш заказ.</p>;
+  if (!form) return <p className="status-msg">Загрузка…</p>;
 
   return (
     <div className="form-card wide">
@@ -56,14 +69,15 @@ export default function NewOrder() {
         <span className="who">{user?.name} · Мои заказы</span>
       </div>
       <div className="card-body">
-        <h1>Разместить заказ</h1>
-        <p className="subtitle">Опишите задачу — исполнители напишут вам в WhatsApp.</p>
+        <h1>Редактировать заказ</h1>
+        <p className="subtitle">
+          <Link to={`/orders/${id}`}>← Вернуться к заказу</Link>
+        </p>
         <form onSubmit={handleSubmit}>
           <label className="field">
             <span className="label">Заголовок</span>
             <input
               required
-              placeholder="Например: почистить дымоход"
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
             />
@@ -73,7 +87,6 @@ export default function NewOrder() {
             <textarea
               required
               rows={4}
-              placeholder="Опишите, что нужно сделать"
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
             />
@@ -107,7 +120,6 @@ export default function NewOrder() {
               <input
                 type="number"
                 min="0"
-                placeholder="2000"
                 value={form.budget}
                 onChange={(e) => setForm((f) => ({ ...f, budget: e.target.value }))}
               />
@@ -123,7 +135,10 @@ export default function NewOrder() {
             </label>
           </div>
           <label className="field">
-            <span className="label">Фото (необязательно)</span>
+            <span className="label">Фото {currentImage ? '(заменить)' : '(добавить)'}</span>
+            {currentImage && !photo && (
+              <img src={imageUrl(currentImage)} alt="" className="edit-photo-preview" />
+            )}
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
@@ -132,7 +147,7 @@ export default function NewOrder() {
           </label>
           {error && <p className="status-msg error">{error}</p>}
           <button className="submit-btn" type="submit" disabled={submitting}>
-            {submitting ? 'Публикуем…' : 'Опубликовать заказ'}
+            {submitting ? 'Сохраняем…' : 'Сохранить изменения'}
           </button>
         </form>
       </div>

@@ -7,7 +7,9 @@ import OrderDetail from './pages/OrderDetail';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import NewOrder from './pages/NewOrder';
+import EditOrder from './pages/EditOrder';
 import MyOrders from './pages/MyOrders';
+import Favorites from './pages/Favorites';
 import AdminLayout from './admin/AdminLayout';
 import AdminOverview from './admin/AdminOverview';
 import AdminUsers from './admin/AdminUsers';
@@ -25,11 +27,20 @@ function PublicSite() {
           <Route path="/orders/:id" element={<OrderDetail />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/favorites" element={<Favorites />} />
           <Route
             path="/orders/new"
             element={
               <ProtectedRoute>
                 <NewOrder />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/orders/:id/edit"
+            element={
+              <ProtectedRoute>
+                <EditOrder />
               </ProtectedRoute>
             }
           />

@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../api';
 import { relativeDate } from '../formatDate';
+import { imageUrl } from '../imageUrl';
+import { useAuth } from '../context/AuthContext';
+import FavoriteButton from '../components/FavoriteButton';
 
 function waLink(phone, title) {
   const digits = phone.replace(/[^\d]/g, '');
@@ -11,6 +14,7 @@ function waLink(phone, title) {
 
 export default function OrderDetail() {
   const { id } = useParams();
+  const { user } = useAuth();
   const [order, setOrder] = useState(null);
   const [error, setError] = useState('');
   const [shareMsg, setShareMsg] = useState('');
@@ -49,23 +53,30 @@ export default function OrderDetail() {
   if (error) return <p className="status-msg error">{error}</p>;
   if (!order) return <p className="status-msg">Загрузка…</p>;
 
+  const photo = imageUrl(order.image_path);
+  const isOwner = user?.id === order.user_id;
+
   return (
     <div className="order-detail-wrap">
       <Link to="/" className="back-link">
         ← Ко всем заказам
       </Link>
       <div className="order-detail">
+        {photo && <img src={photo} alt={order.title} className="order-detail-photo" />}
         <div className="badges-row">
           <span className="badge">{order.category}</span>
           <span className={`badge status-${order.status}`}>
             {order.status === 'open' ? 'Открыт' : 'Закрыт'}
           </span>
+          {!!order.pinned && <span className="badge pinned">🔥 Топ</span>}
+          <FavoriteButton orderId={order.id} className="order-detail-fav" />
         </div>
         <h1>{order.title}</h1>
         <p className="meta">
           <span>📍 {order.city}</span>
           <span>🗓 Опубликован {relativeDate(order.created_at)}</span>
           <span>👤 Заказчик: {order.owner_name}</span>
+          <span>👁 {order.views} просмотров</span>
         </p>
 
         <div className="budget-box">
@@ -95,9 +106,15 @@ export default function OrderDetail() {
           <button type="button" onClick={handleShare}>
             🔗 {shareMsg || 'Поделиться'}
           </button>
-          <button type="button" className="muted" onClick={handleReport}>
-            ⚑ {reportMsg || 'Пожаловаться'}
-          </button>
+          {isOwner ? (
+            <Link to={`/orders/${order.id}/edit`} className="admin-btn-ghost secondary-link">
+              ✏️ Изменить заказ
+            </Link>
+          ) : (
+            <button type="button" className="muted" onClick={handleReport}>
+              ⚑ {reportMsg || 'Пожаловаться'}
+            </button>
+          )}
         </div>
 
         <p className="hint">Отклик не требует регистрации — просто напишите заказчику напрямую.</p>

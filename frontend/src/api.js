@@ -1,13 +1,14 @@
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
-async function request(path, { method = 'GET', body, token } = {}) {
-  const headers = { 'Content-Type': 'application/json' };
+async function request(path, { method = 'GET', body, token, formData } = {}) {
+  const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (body) headers['Content-Type'] = 'application/json';
 
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
-    body: body ? JSON.stringify(body) : undefined,
+    body: formData || (body ? JSON.stringify(body) : undefined),
   });
 
   const isJson = res.headers.get('content-type')?.includes('application/json');
@@ -31,10 +32,17 @@ export const api = {
     return request(`/orders${qs ? `?${qs}` : ''}`);
   },
   order: (id) => request(`/orders/${id}`),
+  ordersBatch: (ids) => request(`/orders/batch?ids=${ids.join(',')}`),
   myOrders: (token) => request('/orders/mine', { token }),
   createOrder: (payload, token) => request('/orders', { method: 'POST', body: payload, token }),
+  updateOrder: (id, payload, token) => request(`/orders/${id}`, { method: 'PATCH', body: payload, token }),
   setOrderStatus: (id, status, token) =>
     request(`/orders/${id}`, { method: 'PATCH', body: { status }, token }),
+  uploadOrderPhoto: (id, file, token) => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    return request(`/orders/${id}/photo`, { method: 'POST', formData, token });
+  },
   deleteOrder: (id, token) => request(`/orders/${id}`, { method: 'DELETE', token }),
   reportOrder: (id, reason) => request(`/orders/${id}/report`, { method: 'POST', body: { reason } }),
 
@@ -45,6 +53,8 @@ export const api = {
   adminOrders: (token) => request('/admin/orders', { token }),
   adminSetOrderStatus: (id, status, token) =>
     request(`/admin/orders/${id}`, { method: 'PATCH', body: { status }, token }),
+  adminSetOrderPinned: (id, pinned, token) =>
+    request(`/admin/orders/${id}`, { method: 'PATCH', body: { pinned }, token }),
   adminReports: (token, status = 'open') => request(`/admin/reports?status=${status}`, { token }),
   adminResolveReport: (id, action, token) =>
     request(`/admin/reports/${id}`, { method: 'PATCH', body: { action }, token }),

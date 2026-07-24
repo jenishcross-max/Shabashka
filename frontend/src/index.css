@@ -262,6 +262,38 @@ a:hover {
   font-weight: 600;
   font-size: 15px;
 }
+.section-count {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 18px;
+}
+.feed-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.sort-select {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--text);
+}
+.load-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+}
+.hero-fav-link {
+  display: inline-block;
+  margin-top: 18px;
+  color: var(--red-dark);
+  font-weight: 600;
+  font-size: 14.5px;
+}
 
 /* ---------- categories ---------- */
 .category-grid {
@@ -338,6 +370,7 @@ a:hover {
 
 .order-card {
   display: block;
+  position: relative;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -349,11 +382,55 @@ a:hover {
   border-color: var(--red);
   text-decoration: none;
 }
+.order-card-photo {
+  height: 140px;
+  border-radius: 10px;
+  background-size: cover;
+  background-position: center;
+  margin: -20px -20px 14px;
+  border-radius: 14px 14px 0 0;
+}
 .order-card-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+  gap: 8px;
+}
+.order-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.badge.pinned {
+  background: #fff1e0;
+  color: #b5650a;
+}
+.favorite-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--muted-light);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.favorite-btn.active {
+  color: var(--red);
+  border-color: var(--red-border);
+  background: #fff;
+}
+.favorite-btn:hover {
+  color: var(--red);
 }
 .order-card h3 {
   font-weight: 600;
@@ -495,11 +572,23 @@ a:hover {
   border-radius: 16px;
   padding: 32px;
 }
+.order-detail-photo {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: cover;
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
 .order-detail .badges-row {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-bottom: 14px;
+}
+.order-detail-fav {
+  position: static !important;
+  margin-left: auto;
 }
 .order-detail h1 {
   font-weight: 800;
@@ -571,20 +660,22 @@ a:hover {
   gap: 12px;
   margin-top: 12px;
 }
-.secondary-actions button {
+.secondary-actions button,
+.secondary-actions .secondary-link {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   background: #fff;
   border: 1px solid #e3d6d4;
-  color: var(--text);
+  color: var(--text) !important;
   font-family: inherit;
   font-weight: 600;
   font-size: 15px;
   padding: 13px;
   border-radius: 11px;
   cursor: pointer;
+  text-decoration: none !important;
 }
 .secondary-actions button.muted {
   color: var(--muted);
@@ -672,6 +763,13 @@ a:hover {
 }
 .field textarea {
   resize: vertical;
+}
+.edit-photo-preview {
+  display: block;
+  max-width: 220px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
 }
 .field-row {
   display: grid;
@@ -770,7 +868,8 @@ a:hover {
   gap: 8px;
   flex: none;
 }
-.my-order-actions button {
+.my-order-actions button,
+.my-order-actions a {
   border: 1px solid #e3d6d4;
   background: #fff;
   color: var(--text);
@@ -779,6 +878,7 @@ a:hover {
   cursor: pointer;
   font-size: 14px;
   font-family: inherit;
+  text-decoration: none !important;
 }
 .my-order-actions button.danger {
   border-color: #f3c9c9;
@@ -1017,7 +1117,7 @@ a:hover {
   overflow-x: auto;
 }
 .admin-table {
-  min-width: 600px;
+  min-width: 760px;
 }
 .admin-table-row {
   display: grid;
@@ -1041,7 +1141,22 @@ a:hover {
   grid-template-columns: 2fr 1.6fr 1fr 0.8fr 1fr 1.2fr;
 }
 .admin-table-orders {
-  grid-template-columns: 2fr 1.2fr 1fr 1fr 0.9fr 1fr;
+  grid-template-columns: 2fr 1.2fr 1fr 1fr 0.8fr 0.9fr 1.6fr;
+}
+.admin-row-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.admin-search {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--text);
+  min-width: 260px;
 }
 
 .strong {

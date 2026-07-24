@@ -16,11 +16,15 @@ db.exec(schema);
 
 // Дев-миграция: старые базы без нужных колонок — пересоздаём таблицы под новую схему
 const usersColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+const ordersColumns = db.prepare("PRAGMA table_info(orders)").all().map((c) => c.name);
 const reportsColumns = db.prepare("PRAGMA table_info(reports)").all().map((c) => c.name);
 const needsMigration =
   !usersColumns.includes('email') ||
   !usersColumns.includes('role') ||
   !usersColumns.includes('is_blocked') ||
+  !ordersColumns.includes('views') ||
+  !ordersColumns.includes('pinned') ||
+  !ordersColumns.includes('image_path') ||
   !reportsColumns.includes('resolved');
 
 if (needsMigration) {

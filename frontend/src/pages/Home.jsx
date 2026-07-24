@@ -1,18 +1,28 @@
 import { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom';
 import { api } from '../api';
 import OrderCard from '../components/OrderCard';
 import { categoryIcon } from '../categoryIcons';
+import { useFavorites } from '../context/FavoritesContext';
+
+const SORTS = [
+  { value: 'new', label: 'Сначала новые' },
+  { value: 'budget', label: 'По бюджету' },
+  { value: 'popular', label: 'Популярные' },
+];
 
 export default function Home() {
   const location = useLocation();
+  const { ids: favoriteIds } = useFavorites();
   const [orders, setOrders] = useState([]);
+  const [meta, setMeta] = useState({ total: 0, page: 1, pages: 1 });
   const [categories, setCategories] = useState([]);
   const [counts, setCounts] = useState({});
-  const [filters, setFilters] = useState({ category: '', city: '', q: '' });
+  const [filters, setFilters] = useState({ category: '', city: '', q: '', sort: 'new' });
   const [qInput, setQInput] = useState('');
   const [cityInput, setCityInput] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -31,8 +41,11 @@ export default function Home() {
     setError('');
     const handle = setTimeout(() => {
       api
-        .orders(filters)
-        .then(({ orders }) => setOrders(orders))
+        .orders({ ...filters, page: 1 })
+        .then(({ orders, ...m }) => {
+          setOrders(orders);
+          setMeta(m);
+        })
         .catch((e) => setError(e.message))
         .finally(() => setLoading(false));
     }, 250);
@@ -47,6 +60,20 @@ export default function Home() {
   function toggleCategory(category) {
     setFilters((f) => ({ ...f, category: f.category === category ? '' : category }));
   }
+
+  function loadMore() {
+    setLoadingMore(true);
+    api
+      .orders({ ...filters, page: meta.page + 1 })
+      .then(({ orders: more, ...m }) => {
+        setOrders((prev) => [...prev, ...more]);
+        setMeta(m);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoadingMore(false));
+  }
+
+  const hasFilters = filters.category || filters.city || filters.q;
 
   return (
     <div>
@@ -73,6 +100,11 @@ export default function Home() {
           />
           <button type="submit">Найти</button>
         </form>
+        {favoriteIds.length > 0 && (
+          <Link to="/favorites" className="hero-fav-link">
+            ★ Избранное ({favoriteIds.length})
+          </Link>
+        )}
       </section>
 
       <section className="section">
@@ -99,20 +131,35 @@ export default function Home() {
 
       <section className="section">
         <div className="section-head">
-          <h2>Свежие заказы</h2>
-          {(filters.category || filters.city || filters.q) && (
-            <a
-              href="#"
-              onClick={(e) => {
-                e.preventDefault();
-                setFilters({ category: '', city: '', q: '' });
-                setQInput('');
-                setCityInput('');
-              }}
+          <h2>
+            Свежие заказы{meta.total > 0 && <span className="section-count"> · {meta.total}</span>}
+          </h2>
+          <div className="feed-controls">
+            {hasFilters && (
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setFilters({ category: '', city: '', q: '', sort: filters.sort });
+                  setQInput('');
+                  setCityInput('');
+                }}
+              >
+                Сбросить фильтры →
+              </a>
+            )}
+            <select
+              value={filters.sort}
+              onChange={(e) => setFilters((f) => ({ ...f, sort: e.target.value }))}
+              className="sort-select"
             >
-              Сбросить фильтры →
-            </a>
-          )}
+              {SORTS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {loading && <p className="status-msg">Загрузка заказов…</p>}
@@ -126,6 +173,14 @@ export default function Home() {
             <OrderCard key={order.id} order={order} />
           ))}
         </div>
+
+        {!loading && meta.page < meta.pages && (
+          <div className="load-more">
+            <button className="admin-btn-ghost" onClick={loadMore} disabled={loadingMore}>
+              {loadingMore ? 'Загружаем…' : 'Показать ещё'}
+            </button>
+          </div>
+        )}
       </section>
 
       <section className="how-it-works" id="how">

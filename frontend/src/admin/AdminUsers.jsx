@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 
 export default function AdminUsers() {
   const { token } = useAuth();
   const [users, setUsers] = useState([]);
+  const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -24,6 +25,17 @@ export default function AdminUsers() {
     load();
   }
 
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter(
+      (u) =>
+        u.name.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q) ||
+        (u.city || '').toLowerCase().includes(q)
+    );
+  }, [users, search]);
+
   if (loading) return <p className="status-msg">Загрузка…</p>;
   if (error) return <p className="status-msg error">{error}</p>;
 
@@ -31,6 +43,12 @@ export default function AdminUsers() {
     <div>
       <div className="admin-page-head">
         <h1>Пользователи</h1>
+        <input
+          className="admin-search"
+          placeholder="Поиск по имени, email, городу…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
       <div className="admin-card admin-table-card">
         <div className="admin-table">
@@ -42,7 +60,7 @@ export default function AdminUsers() {
             <span>Статус</span>
             <span></span>
           </div>
-          {users.map((u) => (
+          {filtered.map((u) => (
             <div className="admin-table-row admin-table-row-actions" key={u.id}>
               <span className="strong">
                 {u.name}
@@ -70,6 +88,7 @@ export default function AdminUsers() {
               </span>
             </div>
           ))}
+          {filtered.length === 0 && <p className="status-msg">Ничего не найдено.</p>}
         </div>
       </div>
     </div>

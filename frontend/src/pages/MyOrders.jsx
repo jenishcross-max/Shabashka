@@ -62,10 +62,11 @@ export default function MyOrders() {
               <div className="my-order-meta">
                 {order.category} · {order.city} ·{' '}
                 {order.budget ? `${order.budget.toLocaleString('ru-RU')} сом` : 'по договорённости'} ·{' '}
-                {relativeDate(order.created_at)}
+                {relativeDate(order.created_at)} · 👁 {order.views}
               </div>
             </div>
             <div className="my-order-actions">
+              <Link to={`/orders/${order.id}/edit`}>Изменить</Link>
               <button onClick={() => toggleStatus(order)}>
                 {order.status === 'open' ? 'Закрыть' : 'Открыть снова'}
               </button>

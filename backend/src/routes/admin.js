@@ -70,10 +70,11 @@ router.get('/orders', (_req, res) => {
   const rows = db
     .prepare(
       `SELECT orders.id, orders.title, orders.category, orders.city, orders.budget, orders.status,
-              orders.created_at, users.name AS owner_name, users.email AS owner_email
+              orders.views, orders.pinned, orders.created_at,
+              users.name AS owner_name, users.email AS owner_email
        FROM orders
        JOIN users ON users.id = orders.user_id
-       ORDER BY orders.created_at DESC`
+       ORDER BY orders.pinned DESC, orders.created_at DESC`
     )
     .all();
   res.json({ orders: rows });
@@ -83,12 +84,26 @@ router.patch('/orders/:id', (req, res) => {
   const order = db.prepare('SELECT id FROM orders WHERE id = ?').get(req.params.id);
   if (!order) return res.status(404).json({ error: 'Заказ не найден' });
 
-  const { status } = req.body || {};
-  if (!['open', 'closed'].includes(status)) {
-    return res.status(400).json({ error: 'Статус может быть только open или closed' });
-  }
+  const { status, pinned } = req.body || {};
+  const updates = [];
+  const values = [];
 
-  db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, order.id);
+  if (status !== undefined) {
+    if (!['open', 'closed'].includes(status)) {
+      return res.status(400).json({ error: 'Статус может быть только open или closed' });
+    }
+    updates.push('status = ?');
+    values.push(status);
+  }
+  if (pinned !== undefined) {
+    if (typeof pinned !== 'boolean') return res.status(400).json({ error: 'Некорректное значение pinned' });
+    updates.push('pinned = ?');
+    values.push(pinned ? 1 : 0);
+  }
+  if (updates.length === 0) return res.status(400).json({ error: 'Нечего обновлять' });
+
+  values.push(order.id);
+  db.prepare(`UPDATE orders SET ${updates.join(', ')} WHERE id = ?`).run(...values);
   res.json({ ok: true });
 });
 
