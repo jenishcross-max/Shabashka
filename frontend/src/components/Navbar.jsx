@@ -24,16 +24,10 @@ export default function Navbar() {
         <Link to="/favorites" className="muted">
           ★ Избранное
         </Link>
-        <Link to="/#how" className="muted">
-          Как это работает
-        </Link>
         {user ? (
           <>
             <Link to="/my-orders" className="muted">
-              Мои заказы
-            </Link>
-            <Link to="/my-vacancies" className="muted">
-              Мои вакансии
+              Мои объявления
             </Link>
             {user.role === 'admin' && (
               <Link to="/admin" className="muted">

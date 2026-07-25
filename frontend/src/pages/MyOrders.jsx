@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { relativeDate } from '../formatDate';
+import MyListingsTabs from '../components/MyListingsTabs';
 
 export default function MyOrders() {
   const { token } = useAuth();
@@ -38,6 +39,7 @@ export default function MyOrders() {
 
   return (
     <div>
+      <MyListingsTabs active="orders" />
       <div className="my-orders-head">
         <h1>Мои заказы</h1>
         <Link to="/orders/new" className="cta">

@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { relativeDate } from '../formatDate';
 import { formatSalary } from '../components/VacancyCard';
+import MyListingsTabs from '../components/MyListingsTabs';
 
 export default function MyVacancies() {
   const { token } = useAuth();
@@ -39,6 +40,7 @@ export default function MyVacancies() {
 
   return (
     <div>
+      <MyListingsTabs active="vacancies" />
       <div className="my-orders-head">
         <h1>Мои вакансии</h1>
         <Link to="/vacancies/new" className="cta">
