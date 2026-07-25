@@ -87,7 +87,43 @@ const TEMPLATES = {
     { title: 'Помочь с переездом коробок', description: 'Нужна пара рук перенести коробки с 3 этажа без лифта.', budget: [500, 900] },
     { title: 'Расклеить объявления по району', description: 'Нужно расклеить 100 листовок в Джале и Асанбае.', budget: [500, 800] },
   ],
+  // Онлайн-категории — показывают формат работы "🌐 Онлайн" на карточках
+  'Дизайн': [
+    { title: 'Нарисовать логотип для кофейни', description: 'Нужен минималистичный логотип, 2–3 варианта на выбор, в векторе.', budget: [3000, 6000] },
+  ],
+  'Программирование и IT': [
+    { title: 'Сделать лендинг на WordPress', description: 'Одностраничный сайт для услуг, есть готовый макет в Figma.', budget: [8000, 15000] },
+  ],
+  'Переводы': [
+    { title: 'Перевести документы на английский', description: 'Пакет документов для визы, 10 страниц, нужен точный перевод.', budget: [2000, 4000] },
+  ],
+  'Копирайтинг и тексты': [
+    { title: 'Написать тексты для сайта', description: '5 страниц: главная, о нас, услуги, контакты, блог.', budget: [3000, 5000] },
+  ],
+  'Онлайн-консультации': [
+    { title: 'Юридическая консультация по трудовому спору', description: 'Нужна консультация по видеосвязи, вопрос по увольнению.', budget: [1000, 2000] },
+  ],
+  'Маркетинг и SMM': [
+    { title: 'Вести Instagram магазина одежды', description: '2–3 поста в неделю, сторис, нужен опыт в нише одежды.', budget: [5000, 10000] },
+  ],
+  'Бухгалтерия онлайн': [
+    { title: 'Вести бухгалтерию ИП удалённо', description: 'Упрощёнка, немного операций в месяц, сдача отчётности.', budget: [4000, 8000] },
+  ],
+  'Психология и коучинг': [
+    { title: 'Консультация психолога онлайн', description: 'Разовая консультация по видеосвязи, вечернее время.', budget: [1000, 2000] },
+  ],
 };
+
+// Категории, которые физически привязаны к месту — заказы/вакансии по ним всегда офлайн.
+// Должно соответствовать offlineOnlyCategories в db/index.js.
+const OFFLINE_ONLY_CATEGORIES = ['Ремонт', 'Уборка', 'Грузоперевозки', 'Красота', 'Электрика', 'Сантехника', 'Сад и огород'];
+const ONLINE_CATEGORIES = require('./onlineCategories');
+
+function pickWorkFormat(category) {
+  if (OFFLINE_ONLY_CATEGORIES.includes(category)) return 'offline';
+  if (ONLINE_CATEGORIES.includes(category)) return 'online';
+  return Math.random() < 0.5 ? 'online' : 'offline'; // 'Репетиторы' и 'Другое' — оба формата
+}
 
 const EMPLOYMENT_VALUES = ['full_time', 'part_time', 'shift', 'gig', 'internship'];
 const SCHEDULES = ['Пн–Пт, 9:00–18:00', 'Пн–Сб, 10:00–19:00', 'Сменный график 2/2', 'По договорённости'];
@@ -126,7 +162,45 @@ const VACANCY_TEMPLATES = {
     { title: 'Курьер на авто/скутере', description: 'Доставка заказов по городу, свободный график, оплата за смену.', salary: [20000, 35000] },
     { title: 'Няня на неполный день', description: 'Присмотр за ребёнком 5 лет, 3 раза в неделю после обеда.', salary: [12000, 18000] },
   ],
+  'Дизайн': [
+    { title: 'Графический дизайнер (удалённо)', description: 'Разработка баннеров и креативов для соцсетей, частичная занятость.', salary: [15000, 30000] },
+  ],
+  'Программирование и IT': [
+    { title: 'Frontend-разработчик (удалённо)', description: 'Проекты на React/JS, гибкий график, работа из дома.', salary: [40000, 80000] },
+  ],
+  'Переводы': [
+    { title: 'Переводчик английского языка', description: 'Перевод текстов и документов, оплата за объём выполненной работы.', salary: [15000, 35000] },
+  ],
+  'Копирайтинг и тексты': [
+    { title: 'Копирайтер для интернет-магазина', description: 'Описания товаров и посты для соцсетей, полностью удалённо.', salary: [12000, 25000] },
+  ],
+  'Онлайн-консультации': [
+    { title: 'Юрист-консультант (удалённо)', description: 'Онлайн-консультации клиентов по трудовому и семейному праву.', salary: [20000, 40000] },
+  ],
+  'Маркетинг и SMM': [
+    { title: 'SMM-специалист', description: 'Ведение соцсетей нескольких клиентов, разработка контент-плана.', salary: [18000, 35000] },
+  ],
+  'Бухгалтерия онлайн': [
+    { title: 'Бухгалтер на аутсорс', description: 'Ведение нескольких ИП удалённо, сдача отчётности в налоговую.', salary: [20000, 40000] },
+  ],
+  'Психология и коучинг': [
+    { title: 'Психолог-консультант онлайн', description: 'Приём клиентов по видеосвязи, гибкий график.', salary: [15000, 35000] },
+  ],
 };
+
+const EXPERIENCE_VALUES = ['no_experience', '1-3', '3-6', '6+'];
+const REQUIREMENTS_POOL = [
+  'Ответственность и пунктуальность, готовность обучаться.',
+  'Опыт работы в аналогичной должности приветствуется.',
+  'Умение работать в команде и соблюдать сроки.',
+  'Наличие своего инструмента или оборудования, если требуется для работы.',
+];
+const CONDITIONS_POOL = [
+  'Официальное оформление, стабильная оплата 2 раза в месяц.',
+  'Гибкий график, возможен частично удалённый формат.',
+  'Испытательный срок 1 месяц, дружный коллектив.',
+  'Обучение на месте, помощь наставника первое время.',
+];
 
 function randInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -144,7 +218,10 @@ async function main() {
   const CATEGORIES = await categoriesRepo.listNames();
 
   console.log('Очищаю старые данные…');
-  await db.query('TRUNCATE TABLE reports, orders, vacancies, users RESTART IDENTITY CASCADE');
+  await db.query('TRUNCATE TABLE reports RESTART IDENTITY CASCADE');
+  await db.query('TRUNCATE TABLE orders RESTART IDENTITY CASCADE');
+  await db.query('TRUNCATE TABLE vacancies RESTART IDENTITY CASCADE');
+  await db.query('TRUNCATE TABLE users RESTART IDENTITY CASCADE');
 
   const passwordHash = bcrypt.hashSync('password123', 10);
   const adminHash = bcrypt.hashSync('admin12345', 10);
@@ -183,14 +260,15 @@ async function main() {
       const budget = t.budget ? randInt(t.budget[0], t.budget[1]) : null;
 
       const inserted = await db.query(
-        `INSERT INTO orders (user_id, title, description, category, city, budget, whatsapp_phone, status, views, pinned, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+        `INSERT INTO orders (user_id, title, description, category, city, work_format, budget, whatsapp_phone, status, views, pinned, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
         [
           owner.id,
           t.title,
           t.description,
           category,
           city,
+          pickWorkFormat(category),
           budget,
           owner.phone,
           status,
@@ -218,8 +296,9 @@ async function main() {
 
       const inserted = await db.query(
         `INSERT INTO vacancies
-          (user_id, title, description, category, employment_type, city, salary_min, salary_max, schedule, whatsapp_phone, status, views, pinned, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+          (user_id, title, description, category, employment_type, city, work_format, experience,
+           requirements, conditions, salary_min, salary_max, schedule, whatsapp_phone, status, views, pinned, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
         [
           owner.id,
           t.title,
@@ -227,6 +306,10 @@ async function main() {
           category,
           pick(EMPLOYMENT_VALUES),
           city,
+          pickWorkFormat(category),
+          pick(EXPERIENCE_VALUES),
+          pick(REQUIREMENTS_POOL),
+          pick(CONDITIONS_POOL),
           t.salary ? t.salary[0] : null,
           t.salary ? t.salary[1] : null,
           pick(SCHEDULES),
