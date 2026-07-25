@@ -32,4 +32,12 @@ if (needsMigration) {
   db.exec(schema);
 }
 
+// Первичное заполнение категорий — дальше список живёт в БД и правится через админку
+const categoriesCount = db.prepare('SELECT COUNT(*) AS n FROM categories').get().n;
+if (categoriesCount === 0) {
+  const defaultCategories = require('../defaultCategories');
+  const insertCategory = db.prepare('INSERT OR IGNORE INTO categories (name) VALUES (?)');
+  for (const name of defaultCategories) insertCategory.run(name);
+}
+
 module.exports = db;

@@ -3,7 +3,7 @@ const fs = require('fs');
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
-const CATEGORIES = require('../categories');
+const categoriesRepo = require('../categoriesRepo');
 const KNOWN_CITIES = require('../cities');
 const { upload, uploadsDir, processImage } = require('../upload');
 const { reportLimiter } = require('../rateLimit');
@@ -26,7 +26,7 @@ const SORTS = {
 };
 
 router.get('/categories', (_req, res) => {
-  res.json({ categories: CATEGORIES });
+  res.json({ categories: categoriesRepo.listNames() });
 });
 
 // Список городов для автодополнения — известные + реально встречающиеся в заказах
@@ -77,10 +77,11 @@ router.get('/', (req, res) => {
   const offset = (page - 1) * limit;
 
   // category принимает как одно значение, так и список через запятую (мультивыбор)
+  const knownCategories = categoriesRepo.listNames();
   const categories = String(req.query.category || '')
     .split(',')
     .map((c) => c.trim())
-    .filter((c) => CATEGORIES.includes(c));
+    .filter((c) => knownCategories.includes(c));
 
   const clauses = ["orders.status = 'open'"];
   const params = {};
@@ -195,7 +196,7 @@ function validateOrderFields(body, { partial }) {
     else result.description = description.trim();
   }
   if (!partial || category !== undefined) {
-    if (!CATEGORIES.includes(category)) errors.push('Некорректная категория');
+    if (!categoriesRepo.listNames().includes(category)) errors.push('Некорректная категория');
     else result.category = category;
   }
   if (!partial || city !== undefined) {

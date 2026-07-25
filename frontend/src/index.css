@@ -330,6 +330,49 @@ a:hover {
   border-color: var(--red);
   background: var(--red-tint);
 }
+.admin-category-tile {
+  position: relative;
+  cursor: default;
+}
+.category-remove-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.category-remove-btn:hover:not(:disabled) {
+  border-color: var(--red-status-text);
+  color: var(--red-status-text);
+}
+.category-remove-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.add-category-form {
+  display: flex;
+  gap: 10px;
+  max-width: 480px;
+}
+.add-category-form input {
+  flex: 1;
+  border: 1px solid #e3d6d4;
+  border-radius: 11px;
+  padding: 12px 14px;
+  font-size: 15px;
+  font-family: inherit;
+  background: #fff;
+}
+.add-category-form button {
+  white-space: nowrap;
+}
 .category-icon {
   width: 44px;
   height: 44px;

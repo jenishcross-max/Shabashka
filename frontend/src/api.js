@@ -65,4 +65,8 @@ export const api = {
   adminReports: (token, status = 'open') => request(`/admin/reports?status=${status}`, { token }),
   adminResolveReport: (id, action, token) =>
     request(`/admin/reports/${id}`, { method: 'PATCH', body: { action }, token }),
+  adminCategories: (token) => request('/admin/categories', { token }),
+  adminAddCategory: (name, token) =>
+    request('/admin/categories', { method: 'POST', body: { name }, token }),
+  adminRemoveCategory: (id, token) => request(`/admin/categories/${id}`, { method: 'DELETE', token }),
 };

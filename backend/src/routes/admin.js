@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const categoriesRepo = require('../categoriesRepo');
 
 const router = express.Router();
 router.use(requireAuth, requireAdmin);
@@ -137,6 +138,28 @@ router.patch('/reports/:id', (req, res) => {
   db.prepare('UPDATE reports SET resolved = 1 WHERE id = ?').run(report.id);
 
   res.json({ ok: true });
+});
+
+router.get('/categories', (_req, res) => {
+  res.json({ categories: categoriesRepo.listAll() });
+});
+
+router.post('/categories', (req, res) => {
+  try {
+    const category = categoriesRepo.add(req.body?.name);
+    res.status(201).json({ category });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/categories/:id', (req, res) => {
+  try {
+    categoriesRepo.remove(req.params.id);
+    res.status(204).end();
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 module.exports = router;

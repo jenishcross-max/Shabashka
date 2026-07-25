@@ -3,7 +3,8 @@
 // ВНИМАНИЕ: полностью очищает users/orders/reports перед заполнением.
 const bcrypt = require('bcryptjs');
 const db = require('./db');
-const CATEGORIES = require('./categories');
+const categoriesRepo = require('./categoriesRepo');
+const CATEGORIES = categoriesRepo.listNames();
 
 const CITIES = ['Бишкек', 'Ош', 'Кант', 'Токмок', 'Каракол', 'Джалал-Абад', 'Нарын', 'Талас', 'Баткен', 'Чолпон-Ата'];
 
