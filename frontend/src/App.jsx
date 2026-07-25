@@ -18,6 +18,8 @@ import NewOrder from './pages/NewOrder';
 import EditOrder from './pages/EditOrder';
 import MyOrders from './pages/MyOrders';
 import Favorites from './pages/Favorites';
+import Messages from './pages/Messages';
+import Conversation from './pages/Conversation';
 
 // Код админки грузится отдельным чанком только тем, кто реально заходит в /admin —
 // обычные посетители и исполнители его не скачивают.
@@ -88,6 +90,22 @@ function PublicSite() {
             element={
               <ProtectedRoute>
                 <MyVacancies />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/messages"
+            element={
+              <ProtectedRoute>
+                <Messages />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/messages/:id"
+            element={
+              <ProtectedRoute>
+                <Conversation />
               </ProtectedRoute>
             }
           />

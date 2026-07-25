@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { relativeDate } from '../formatDate';
 import { useAuth } from '../context/AuthContext';
@@ -16,10 +16,14 @@ function waLink(phone, title) {
 
 export default function VacancyDetail() {
   const { id } = useParams();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
+  const navigate = useNavigate();
   const [vacancy, setVacancy] = useState(null);
   const [error, setError] = useState('');
   const [shareMsg, setShareMsg] = useState('');
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
 
   useEffect(() => {
     api
@@ -41,6 +45,21 @@ export default function VacancyDetail() {
     await navigator.clipboard.writeText(url);
     setShareMsg('Ссылка скопирована');
     setTimeout(() => setShareMsg(''), 2500);
+  }
+
+  async function handleSendMessage(e) {
+    e.preventDefault();
+    if (!draft.trim() || sending) return;
+    setSendError('');
+    setSending(true);
+    try {
+      const { conversation } = await api.startConversation(vacancy.id, draft, token);
+      navigate(`/messages/${conversation.id}`);
+    } catch (err) {
+      setSendError(err.message);
+    } finally {
+      setSending(false);
+    }
   }
 
   if (error) return <p className="status-msg error">{error}</p>;
@@ -101,14 +120,45 @@ export default function VacancyDetail() {
         {vacancy.status === 'closed' ? (
           <p className="status-msg">Эта вакансия уже закрыта.</p>
         ) : (
-          <a
-            className="whatsapp-btn"
-            href={waLink(vacancy.whatsapp_phone, vacancy.title)}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            💬 Написать в WhatsApp
-          </a>
+          <>
+            <a
+              className="whatsapp-btn"
+              href={waLink(vacancy.whatsapp_phone, vacancy.title)}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              💬 Написать в WhatsApp
+            </a>
+
+            {!isOwner && (
+              <div className="apply-box">
+                <h3>Или напишите прямо здесь</h3>
+                {user ? (
+                  <form onSubmit={handleSendMessage}>
+                    <textarea
+                      rows={3}
+                      maxLength={2000}
+                      placeholder="Расскажите коротко о себе и опыте — работодатель ответит в этой переписке."
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                    />
+                    {sendError && <p className="status-msg error">{sendError}</p>}
+                    <button className="submit-btn" type="submit" disabled={sending || !draft.trim()}>
+                      {sending ? 'Отправляем…' : 'Отправить отклик'}
+                    </button>
+                  </form>
+                ) : (
+                  <p className="apply-login-hint">
+                    <Link to="/login" state={{ from: { pathname: `/vacancies/${vacancy.id}` } }}>
+                      Войдите
+                    </Link>{' '}
+                    или <Link to="/register">зарегистрируйтесь</Link>, чтобы переписываться с
+                    работодателем на сайте. Написать в WhatsApp можно и без аккаунта.
+                  </p>
+                )}
+              </div>
+            )}
+          </>
         )}
 
         <div className={`secondary-actions${isOwner ? '' : ' single'}`}>
@@ -122,7 +172,10 @@ export default function VacancyDetail() {
           )}
         </div>
 
-        <p className="hint">Отклик не требует регистрации — просто напишите работодателю напрямую.</p>
+        <p className="hint">
+          В WhatsApp можно написать без регистрации. Переписка на сайте — для тех, кто вошёл в
+          аккаунт.
+        </p>
       </div>
     </div>
   );

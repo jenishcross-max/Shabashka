@@ -119,6 +119,19 @@ a:hover {
   color: var(--red);
   font-weight: 600;
 }
+.nav-unread-badge {
+  display: inline-block;
+  min-width: 18px;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 100px;
+  background: var(--red);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-align: center;
+  vertical-align: 1px;
+}
 .nav-dropdown {
   position: relative;
 }
@@ -1733,4 +1746,192 @@ a:hover {
   text-align: center;
   font-size: 13.5px;
   color: #8f7f7c;
+}
+
+/* ---------- сообщения (переписка по вакансии) ---------- */
+.messages-page h1,
+.conversation-page h1 {
+  font-family: 'Rubik', sans-serif;
+  font-weight: 700;
+  font-size: 28px;
+  margin: 0 0 20px;
+}
+.conversation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.conversation-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  text-decoration: none;
+  color: var(--text);
+}
+.conversation-row:hover {
+  border-color: var(--red-border);
+}
+.conversation-main {
+  flex: 1;
+  min-width: 0;
+}
+.conversation-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 3px;
+}
+.conversation-name {
+  font-family: 'Rubik', sans-serif;
+  font-weight: 600;
+  font-size: 16px;
+}
+.conversation-date {
+  font-size: 13px;
+  color: var(--muted-light);
+  flex: none;
+}
+.conversation-vacancy {
+  font-size: 13.5px;
+  color: var(--red-dark);
+  margin-bottom: 5px;
+}
+.conversation-preview {
+  font-size: 14.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conversation-unread {
+  flex: none;
+  min-width: 22px;
+  padding: 2px 7px;
+  border-radius: 100px;
+  background: var(--red);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.conversation-page {
+  max-width: 720px;
+  margin: 0 auto;
+}
+.conversation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 14px 0 18px;
+}
+.conversation-header h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+}
+.conversation-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+.message-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.message-bubble {
+  align-self: flex-start;
+  max-width: 78%;
+  background: var(--bg);
+  border-radius: 14px;
+  padding: 10px 14px;
+}
+.message-bubble.mine {
+  align-self: flex-end;
+  background: var(--red-tint);
+}
+.message-body {
+  font-size: 15px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.message-time {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted-light);
+  text-align: right;
+}
+.message-form {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  margin-top: 14px;
+}
+.message-form textarea {
+  flex: 1;
+  box-sizing: border-box;
+  border: 1px solid #e3d6d4;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 15px;
+  resize: vertical;
+}
+.message-form button {
+  flex: none;
+  background: var(--red);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 13px 22px;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+}
+.message-form button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.apply-box {
+  margin-top: 18px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+.apply-box h3 {
+  font-family: 'Rubik', sans-serif;
+  font-weight: 600;
+  font-size: 16px;
+  margin: 0 0 12px;
+}
+.apply-box textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #e3d6d4;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 15px;
+  resize: vertical;
+  margin-bottom: 12px;
+}
+.apply-login-hint {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--muted);
 }

@@ -9,6 +9,7 @@ const db = require('./db');
 const authRoutes = require('./routes/auth');
 const orderRoutes = require('./routes/orders');
 const vacancyRoutes = require('./routes/vacancies');
+const conversationRoutes = require('./routes/conversations');
 const adminRoutes = require('./routes/admin');
 const metaRoutes = require('./meta');
 const { apiLimiter } = require('./rateLimit');
@@ -28,6 +29,7 @@ app.use('/api', apiLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/vacancies', vacancyRoutes);
+app.use('/api/conversations', conversationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use(metaRoutes);
 

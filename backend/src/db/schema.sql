@@ -73,6 +73,32 @@ CREATE TABLE IF NOT EXISTS vacancies (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Переписка соискателя с работодателем по конкретной вакансии.
+-- Одна ветка на пару (вакансия, соискатель) — повторное «Написать» открывает её же.
+CREATE TABLE IF NOT EXISTS conversations (
+  id              SERIAL PRIMARY KEY,
+  vacancy_id      INTEGER NOT NULL REFERENCES vacancies(id) ON DELETE CASCADE,
+  seeker_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  employer_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  last_message_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (vacancy_id, seeker_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_seeker ON conversations(seeker_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_employer ON conversations(employer_id);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id              SERIAL PRIMARY KEY,
+  conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  sender_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body            TEXT NOT NULL,
+  read_at         TIMESTAMPTZ, -- NULL = получатель ещё не открывал ветку
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
+
 CREATE INDEX IF NOT EXISTS idx_vacancies_category ON vacancies(category);
 CREATE INDEX IF NOT EXISTS idx_vacancies_city ON vacancies(city);
 CREATE INDEX IF NOT EXISTS idx_vacancies_user ON vacancies(user_id);

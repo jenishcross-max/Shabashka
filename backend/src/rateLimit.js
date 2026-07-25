@@ -27,4 +27,13 @@ const apiLimiter = rateLimit({
   message: { error: 'Слишком много запросов, немного помедленнее.' },
 });
 
-module.exports = { authLimiter, reportLimiter, apiLimiter };
+// Сообщения — защита от спам-рассылки по вакансиям
+const messageLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Слишком много сообщений. Попробуйте через несколько минут.' },
+});
+
+module.exports = { authLimiter, reportLimiter, apiLimiter, messageLimiter };

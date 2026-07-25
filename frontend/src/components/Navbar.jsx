@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useUnread } from '../context/UnreadContext';
 import Logo from './Logo';
 
 function navClass({ isActive }) {
@@ -68,6 +69,7 @@ function OrdersMenu() {
 export default function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { unread } = useUnread();
 
   function handleLogout() {
     logout();
@@ -89,6 +91,10 @@ export default function Navbar() {
         </NavLink>
         {user ? (
           <>
+            <NavLink to="/messages" className={navClass}>
+              Сообщения
+              {unread > 0 && <span className="nav-unread-badge">{unread}</span>}
+            </NavLink>
             <NavLink to="/my-orders" className={navClass}>
               Мои объявления
             </NavLink>

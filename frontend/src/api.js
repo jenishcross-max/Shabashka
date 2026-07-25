@@ -64,6 +64,14 @@ export const api = {
     request(`/vacancies/${id}`, { method: 'PATCH', body: { status }, token }),
   deleteVacancy: (id, token) => request(`/vacancies/${id}`, { method: 'DELETE', token }),
 
+  conversations: (token) => request('/conversations', { token }),
+  conversation: (id, token) => request(`/conversations/${id}`, { token }),
+  unreadCount: (token) => request('/conversations/unread-count', { token }),
+  startConversation: (vacancyId, message, token) =>
+    request('/conversations', { method: 'POST', body: { vacancyId, message }, token }),
+  sendMessage: (id, body, token) =>
+    request(`/conversations/${id}/messages`, { method: 'POST', body: { body }, token }),
+
   adminStats: (token) => request('/admin/stats', { token }),
   adminUsers: (token) => request('/admin/users', { token }),
   adminSetUserBlocked: (id, blocked, token) =>
