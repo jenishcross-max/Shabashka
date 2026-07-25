@@ -33,6 +33,7 @@ export const api = {
   login: (payload) => request('/auth/login', { method: 'POST', body: payload }),
   me: (token) => request('/auth/me', { token }),
 
+  home: () => request('/home'),
   categories: (format) => request(`/orders/categories${format ? `?format=${format}` : ''}`),
   categoryCounts: () => request('/orders/category-counts'),
   cityCounts: () => request('/orders/city-counts'),

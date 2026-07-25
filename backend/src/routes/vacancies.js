@@ -6,20 +6,12 @@ const KNOWN_CITIES = require('../cities');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
 const EXPERIENCE_LEVELS = require('../experienceLevels');
 const asyncHandler = require('../asyncHandler');
+const { VACANCY_FIELDS } = require('../sqlFields');
+const { invalidate } = require('../cache');
 
 const router = express.Router();
 const EMPLOYMENT_VALUES = EMPLOYMENT_TYPES.map((t) => t.value);
 const EXPERIENCE_VALUES = EXPERIENCE_LEVELS.map((t) => t.value);
-
-const VACANCY_FIELDS = `
-  vacancies.id, vacancies.title, vacancies.description, vacancies.category,
-  vacancies.employment_type, vacancies.city, vacancies.address, vacancies.work_format,
-  vacancies.experience, vacancies.requirements, vacancies.conditions,
-  vacancies.salary_min, vacancies.salary_max, vacancies.schedule,
-  vacancies.whatsapp_phone, vacancies.status, vacancies.views, vacancies.pinned,
-  vacancies.created_at,
-  vacancies.user_id, users.name AS owner_name
-`;
 
 const WORK_FORMATS = ['online', 'offline'];
 
@@ -277,6 +269,8 @@ router.post(
         result.whatsapp_phone,
       ]
     );
+
+    invalidate('home:'); // чтобы свежая вакансия сразу попала в ленту на главной
 
     const { rows } = await db.query(
       `SELECT ${VACANCY_FIELDS} FROM vacancies JOIN users ON users.id = vacancies.user_id WHERE vacancies.id = $1`,

@@ -5,13 +5,12 @@ import OrderCard from '../components/OrderCard';
 import VacancyCard from '../components/VacancyCard';
 import { categoryIcon } from '../categoryIcons';
 import { useFavorites } from '../context/FavoritesContext';
-import { useCities } from '../useCities';
 
 export default function Home() {
   const navigate = useNavigate();
   const location = useLocation();
   const { keys: favoriteKeys } = useFavorites();
-  const cities = useCities();
+  const [cities, setCities] = useState([]);
   const [orders, setOrders] = useState([]);
   const [vacancies, setVacancies] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -23,11 +22,22 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Всё содержимое главной приходит одним запросом: база далеко, и семь
+  // параллельных запросов заметно задерживали первую отрисовку.
   useEffect(() => {
-    api.categories().then(({ categories }) => setCategories(categories));
-    api.categoryCounts().then(({ counts }) => setCounts(counts));
-    api.cityCounts().then(({ cities }) => setCityCounts(cities));
-    api.publicStats().then(setStats);
+    api
+      .home()
+      .then((data) => {
+        setCategories(data.categories);
+        setCounts(data.counts);
+        setCityCounts(data.cityCounts);
+        setStats(data.stats);
+        setOrders(data.orders);
+        setVacancies(data.vacancies);
+        setCities(data.cities);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -35,19 +45,6 @@ export default function Home() {
       document.getElementById('how')?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [location.hash]);
-
-  useEffect(() => {
-    setLoading(true);
-    api
-      .orders({ sort: 'new', page: 1, limit: 6 })
-      .then(({ orders }) => setOrders(orders))
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-    api
-      .vacancies({ sort: 'new', page: 1, limit: 3 })
-      .then(({ vacancies }) => setVacancies(vacancies))
-      .catch(() => {});
-  }, []);
 
   function submitSearch(e) {
     e.preventDefault();

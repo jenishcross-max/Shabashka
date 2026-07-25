@@ -5,15 +5,10 @@ const categoriesRepo = require('../categoriesRepo');
 const KNOWN_CITIES = require('../cities');
 const { reportLimiter } = require('../rateLimit');
 const asyncHandler = require('../asyncHandler');
+const { ORDER_FIELDS } = require('../sqlFields');
+const { invalidate } = require('../cache');
 
 const router = express.Router();
-
-const ORDER_FIELDS = `
-  orders.id, orders.title, orders.description, orders.category, orders.city, orders.address,
-  orders.work_format, orders.budget, orders.whatsapp_phone, orders.status, orders.views, orders.pinned,
-  orders.created_at,
-  orders.user_id, users.name AS owner_name
-`;
 
 const WORK_FORMATS = ['online', 'offline'];
 
@@ -291,6 +286,8 @@ router.post(
         result.whatsapp_phone,
       ]
     );
+
+    invalidate('home:'); // чтобы свежий заказ сразу попал в ленту на главной
 
     const { rows } = await db.query(
       `SELECT ${ORDER_FIELDS} FROM orders JOIN users ON users.id = orders.user_id WHERE orders.id = $1`,

@@ -1,15 +1,24 @@
 const db = require('./db');
+const { cached, invalidate } = require('./cache');
 
+const LIST_TTL = 5 * 60 * 1000;
+
+// Список категорий читается почти на каждой странице и при проверке каждого
+// объявления, а меняется только руками администратора — держим его в памяти
+// и сбрасываем при добавлении/удалении.
 async function listNames({ format } = {}) {
-  if (format === 'online' || format === 'offline') {
-    const { rows } = await db.query(
-      'SELECT name FROM categories WHERE work_formats = $1 OR work_formats = $2 ORDER BY id ASC',
-      [format, 'both']
-    );
+  const scope = format === 'online' || format === 'offline' ? format : 'all';
+  return cached(`categories:names:${scope}`, LIST_TTL, async () => {
+    if (scope !== 'all') {
+      const { rows } = await db.query(
+        'SELECT name FROM categories WHERE work_formats = $1 OR work_formats = $2 ORDER BY id ASC',
+        [scope, 'both']
+      );
+      return rows.map((r) => r.name);
+    }
+    const { rows } = await db.query('SELECT name FROM categories ORDER BY id ASC');
     return rows.map((r) => r.name);
-  }
-  const { rows } = await db.query('SELECT name FROM categories ORDER BY id ASC');
-  return rows.map((r) => r.name);
+  });
 }
 
 async function listAll() {
@@ -31,6 +40,8 @@ async function add(name) {
   if (existing.rows[0]) throw new Error('Такая категория уже есть');
 
   const inserted = await db.query('INSERT INTO categories (name) VALUES ($1) RETURNING id', [trimmed]);
+  invalidate('categories:');
+  invalidate('home:');
   return { id: inserted.rows[0].id, name: trimmed };
 }
 
@@ -46,6 +57,8 @@ async function remove(id) {
   }
 
   await db.query('DELETE FROM categories WHERE id = $1', [id]);
+  invalidate('categories:');
+  invalidate('home:');
 }
 
 module.exports = { listNames, listAll, add, remove };

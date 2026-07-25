@@ -9,6 +9,7 @@ const db = require('./db');
 const authRoutes = require('./routes/auth');
 const orderRoutes = require('./routes/orders');
 const vacancyRoutes = require('./routes/vacancies');
+const homeRoutes = require('./routes/home');
 const conversationRoutes = require('./routes/conversations');
 const adminRoutes = require('./routes/admin');
 const metaRoutes = require('./meta');
@@ -26,6 +27,7 @@ app.use(express.json());
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.use('/api', apiLimiter);
+app.use('/api/home', homeRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/vacancies', vacancyRoutes);

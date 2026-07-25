@@ -14,6 +14,12 @@ const isLocal = /localhost|127\.0\.0\.1/.test(connectionString || '');
 const pool = new Pool({
   connectionString,
   ssl: isLocal ? false : { rejectUnauthorized: false },
+  // База может быть в другом регионе: установка соединения (TCP + TLS + auth)
+  // стоит дороже самого запроса, поэтому держим соединения открытыми подольше
+  // и обходимся небольшим пулом, чтобы они успевали переиспользоваться.
+  max: 6,
+  idleTimeoutMillis: 5 * 60 * 1000,
+  connectionTimeoutMillis: 15 * 1000,
 });
 
 let readyPromise = null;

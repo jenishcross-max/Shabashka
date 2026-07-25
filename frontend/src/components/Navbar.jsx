@@ -69,7 +69,15 @@ function OrdersMenu() {
 export default function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { unread } = useUnread();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // На узких экранах пунктов слишком много, чтобы держать их развёрнутыми:
+  // прячем за кнопкой и закрываем после каждого перехода.
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname, location.search]);
 
   function handleLogout() {
     logout();
@@ -81,7 +89,17 @@ export default function Navbar() {
       <Link to="/" className="brand">
         <Logo />
       </Link>
-      <nav className="nav-links">
+      <button
+        type="button"
+        className="nav-burger"
+        aria-label={menuOpen ? 'Закрыть меню' : 'Открыть меню'}
+        aria-expanded={menuOpen}
+        onClick={() => setMenuOpen((v) => !v)}
+      >
+        {menuOpen ? '✕' : '☰'}
+        {!menuOpen && unread > 0 && <span className="nav-burger-dot" />}
+      </button>
+      <nav className={`nav-links${menuOpen ? ' open' : ''}`}>
         <OrdersMenu />
         <NavLink to="/vacancies" className={navClass}>
           Вакансии

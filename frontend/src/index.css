@@ -182,6 +182,70 @@ a:hover {
   color: var(--muted);
 }
 
+.nav-burger {
+  display: none;
+  position: relative;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  width: 42px;
+  height: 42px;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text);
+  cursor: pointer;
+}
+.nav-burger-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+}
+@media (max-width: 860px) {
+  .navbar {
+    padding: 14px 18px;
+    flex-wrap: nowrap;
+  }
+  .nav-burger {
+    display: block;
+  }
+  .nav-links {
+    display: none;
+  }
+  .nav-links.open {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    width: 100%;
+    order: 3;
+    padding-top: 12px;
+    margin-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .nav-links.open > a,
+  .nav-links.open .nav-dropdown-trigger,
+  .nav-links.open .link-btn {
+    padding: 11px 4px;
+    text-align: left;
+  }
+  .nav-links.open .cta {
+    margin-top: 8px;
+    text-align: center;
+  }
+  /* в раскрытом меню выпадающий список показываем сразу списком, а не поверх */
+  .nav-links.open .nav-dropdown-menu {
+    position: static;
+    box-shadow: none;
+    border: none;
+    padding: 0 0 0 12px;
+    min-width: 0;
+  }
+}
+
 .cta {
   background: var(--red);
   color: #fff !important;
@@ -215,13 +279,6 @@ a:hover {
   background: linear-gradient(180deg, #fff1f0 0%, var(--bg) 100%);
   margin: 0 -40px 36px;
 }
-@media (max-width: 720px) {
-  .hero {
-    margin: 0 -18px 28px;
-    padding-left: 18px;
-    padding-right: 18px;
-  }
-}
 .hero-pill {
   display: inline-block;
   background: #fff;
@@ -247,6 +304,20 @@ a:hover {
   color: var(--muted);
   max-width: 600px;
   margin: 0 auto 34px;
+}
+/* Правила ниже базовых: при равной специфичности побеждает последнее объявление */
+@media (max-width: 720px) {
+  .hero {
+    margin: 0 -18px 28px;
+    padding: 36px 18px 34px;
+  }
+  .hero h1 {
+    font-size: 30px;
+  }
+  .hero p {
+    font-size: 16px;
+    margin-bottom: 24px;
+  }
 }
 
 .search-bar {
@@ -401,11 +472,19 @@ a:hover {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+@media (max-width: 560px) {
+  .category-grid {
+    grid-template-columns: 1fr;
+  }
+}
 .category-tile {
   display: flex;
   align-items: center;
   gap: 14px;
   padding: 18px;
+  /* без min-width:0 длинные названия («Программирование и IT») распирают
+     колонку грида и уводят всю страницу в горизонтальный скролл */
+  min-width: 0;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -483,6 +562,7 @@ a:hover {
   display: block;
   font-weight: 600;
   font-size: 16px;
+  overflow-wrap: anywhere;
 }
 .category-count {
   font-size: 13.5px;
