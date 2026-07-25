@@ -11,7 +11,7 @@ const { reportLimiter } = require('../rateLimit');
 const router = express.Router();
 
 const ORDER_FIELDS = `
-  orders.id, orders.title, orders.description, orders.category, orders.city,
+  orders.id, orders.title, orders.description, orders.category, orders.city, orders.address,
   orders.budget, orders.whatsapp_phone, orders.status, orders.views, orders.pinned,
   orders.image_path, orders.created_at,
   orders.user_id, users.name AS owner_name
@@ -183,7 +183,7 @@ router.get('/:id/similar', (req, res) => {
 });
 
 function validateOrderFields(body, { partial }) {
-  const { title, description, category, city, budget, whatsapp_phone } = body;
+  const { title, description, category, city, address, budget, whatsapp_phone } = body;
   const errors = [];
   const result = {};
 
@@ -202,6 +202,11 @@ function validateOrderFields(body, { partial }) {
   if (!partial || city !== undefined) {
     if (!city || !city.trim()) errors.push('Укажите город');
     else result.city = city.trim();
+  }
+  if (!partial || address !== undefined) {
+    const trimmed = String(address || '').trim();
+    if (trimmed.length > 200) errors.push('Адрес слишком длинный (макс. 200 символов)');
+    else result.address = trimmed || null;
   }
   if (!partial || whatsapp_phone !== undefined) {
     const phone = String(whatsapp_phone || '').replace(/[^\d+]/g, '');
@@ -224,10 +229,19 @@ router.post('/', requireAuth, (req, res) => {
 
   const info = db
     .prepare(
-      `INSERT INTO orders (user_id, title, description, category, city, budget, whatsapp_phone)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO orders (user_id, title, description, category, city, address, budget, whatsapp_phone)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(req.user.id, result.title, result.description, result.category, result.city, result.budget, result.whatsapp_phone);
+    .run(
+      req.user.id,
+      result.title,
+      result.description,
+      result.category,
+      result.city,
+      result.address,
+      result.budget,
+      result.whatsapp_phone
+    );
 
   const order = db
     .prepare(`SELECT ${ORDER_FIELDS} FROM orders JOIN users ON users.id = orders.user_id WHERE orders.id = ?`)
@@ -265,7 +279,7 @@ router.patch('/:id', requireAuth, (req, res) => {
     values.push(req.body.status);
   }
 
-  const editableKeys = ['title', 'description', 'category', 'city', 'budget', 'whatsapp_phone'];
+  const editableKeys = ['title', 'description', 'category', 'city', 'address', 'budget', 'whatsapp_phone'];
   const hasEditableField = editableKeys.some((k) => req.body?.[k] !== undefined);
   if (hasEditableField) {
     const { errors, result } = validateOrderFields(req.body, { partial: true });

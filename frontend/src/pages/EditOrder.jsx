@@ -32,6 +32,7 @@ export default function EditOrder() {
           description: order.description,
           category: order.category,
           city: order.city,
+          address: order.address || '',
           budget: order.budget ?? '',
           whatsapp_phone: order.whatsapp_phone,
         });
@@ -117,6 +118,15 @@ export default function EditOrder() {
               />
             </label>
           </div>
+          <label className="field">
+            <span className="label">Примерный адрес или район (необязательно)</span>
+            <input
+              placeholder="Например: мкр. Джал-1, рядом с рынком"
+              maxLength={200}
+              value={form.address}
+              onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+            />
+          </label>
           <div className="field-row">
             <label className="field">
               <span className="label">Бюджет, сом (необязательно)</span>

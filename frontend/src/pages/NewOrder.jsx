@@ -14,6 +14,7 @@ export default function NewOrder() {
     description: '',
     category: '',
     city: user?.city || '',
+    address: '',
     budget: '',
     whatsapp_phone: user?.phone || '',
   });
@@ -60,6 +61,23 @@ export default function NewOrder() {
       <div className="card-body">
         <h1>Разместить заказ</h1>
         <p className="subtitle">Опишите задачу — исполнители напишут вам в WhatsApp.</p>
+
+        <div className="order-tips">
+          <h3>Как оформить заказ, чтобы мастер откликнулся быстрее</h3>
+          <ul>
+            <li>Опишите, что именно нужно сделать, и укажите объём работы.</li>
+            <li>Если знаете бюджет — укажите его, это ускоряет отклик.</li>
+            <li>
+              Напишите <strong>примерный район или ориентир</strong> (например, «мкр. Джал-1» или
+              «рядом с рынком»), чтобы мастер понимал расстояние.
+            </li>
+            <li>
+              Точный адрес, номер дома и подъезд называйте только в переписке в WhatsApp, когда
+              договоритесь с исполнителем — не указывайте их в самом объявлении.
+            </li>
+          </ul>
+        </div>
+
         <form onSubmit={handleSubmit}>
           <label className="field">
             <span className="label">Заголовок</span>
@@ -104,6 +122,15 @@ export default function NewOrder() {
               />
             </label>
           </div>
+          <label className="field">
+            <span className="label">Примерный адрес или район (необязательно)</span>
+            <input
+              placeholder="Например: мкр. Джал-1, рядом с рынком"
+              maxLength={200}
+              value={form.address}
+              onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+            />
+          </label>
           <div className="field-row">
             <label className="field">
               <span className="label">Бюджет, сом (необязательно)</span>

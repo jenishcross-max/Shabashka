@@ -32,6 +32,11 @@ if (needsMigration) {
   db.exec(schema);
 }
 
+// Аддитивная миграция: новые необязательные колонки добавляем на месте, без пересоздания таблиц
+if (!db.prepare("PRAGMA table_info(orders)").all().some((c) => c.name === 'address')) {
+  db.exec('ALTER TABLE orders ADD COLUMN address TEXT');
+}
+
 // Первичное заполнение категорий — дальше список живёт в БД и правится через админку
 const categoriesCount = db.prepare('SELECT COUNT(*) AS n FROM categories').get().n;
 if (categoriesCount === 0) {

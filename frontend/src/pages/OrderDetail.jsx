@@ -79,7 +79,7 @@ export default function OrderDetail() {
         </div>
         <h1>{order.title}</h1>
         <p className="meta">
-          <span>📍 {order.city}</span>
+          <span>📍 {order.city}{order.address ? `, ${order.address}` : ''}</span>
           <span>🗓 Опубликован {relativeDate(order.created_at)}</span>
           <span>👤 Заказчик: {order.owner_name}</span>
           <span>👁 {order.views} просмотров</span>

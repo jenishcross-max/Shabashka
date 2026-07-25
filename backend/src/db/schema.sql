@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS orders (
   description    TEXT NOT NULL,
   category       TEXT NOT NULL,
   city           TEXT NOT NULL,
+  address        TEXT, -- примерный адрес/район — без точного адреса и подъезда
   budget         INTEGER,
   whatsapp_phone TEXT NOT NULL,
   status         TEXT NOT NULL DEFAULT 'open', -- open | closed

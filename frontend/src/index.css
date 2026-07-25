@@ -798,6 +798,31 @@ a:hover {
   line-height: 1.5;
   margin: 0 0 24px;
 }
+.order-tips {
+  background: var(--red-tint);
+  border: 1px solid var(--red-border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 26px;
+}
+.order-tips h3 {
+  font-family: 'Rubik', sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+  margin: 0 0 10px;
+}
+.order-tips ul {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.order-tips li {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #4a3f3d;
+}
 .field {
   display: block;
   margin-bottom: 16px;
