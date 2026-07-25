@@ -1,9 +1,11 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
+import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
 import ProtectedAdminRoute from './components/ProtectedAdminRoute';
 import Home from './pages/Home';
+import AllOrders from './pages/AllOrders';
 import OrderDetail from './pages/OrderDetail';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -28,6 +30,7 @@ function PublicSite() {
       <main className="container">
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/orders" element={<AllOrders />} />
           <Route path="/orders/:id" element={<OrderDetail />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -59,9 +62,7 @@ function PublicSite() {
           <Route path="*" element={<p className="status-msg">Страница не найдена</p>} />
         </Routes>
       </main>
-      <footer className="footer">
-        Шабашка.kg — доска объявлений для поиска подработки и мастеров в Кыргызстане
-      </footer>
+      <Footer />
     </>
   );
 }

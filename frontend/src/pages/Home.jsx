@@ -1,35 +1,31 @@
 import { useEffect, useState } from 'react';
-import { useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { api } from '../api';
 import OrderCard from '../components/OrderCard';
 import { categoryIcon } from '../categoryIcons';
 import { useFavorites } from '../context/FavoritesContext';
 import { useCities } from '../useCities';
 
-const SORTS = [
-  { value: 'new', label: 'Сначала новые' },
-  { value: 'budget', label: 'По бюджету' },
-  { value: 'popular', label: 'Популярные' },
-];
-
 export default function Home() {
+  const navigate = useNavigate();
   const location = useLocation();
   const { ids: favoriteIds } = useFavorites();
   const cities = useCities();
   const [orders, setOrders] = useState([]);
-  const [meta, setMeta] = useState({ total: 0, page: 1, pages: 1 });
   const [categories, setCategories] = useState([]);
   const [counts, setCounts] = useState({});
-  const [filters, setFilters] = useState({ category: '', city: '', q: '', sort: 'new' });
+  const [cityCounts, setCityCounts] = useState([]);
+  const [stats, setStats] = useState(null);
   const [qInput, setQInput] = useState('');
   const [cityInput, setCityInput] = useState('');
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     api.categories().then(({ categories }) => setCategories(categories));
     api.categoryCounts().then(({ counts }) => setCounts(counts));
+    api.cityCounts().then(({ cities }) => setCityCounts(cities));
+    api.publicStats().then(setStats);
   }, []);
 
   useEffect(() => {
@@ -40,42 +36,20 @@ export default function Home() {
 
   useEffect(() => {
     setLoading(true);
-    setError('');
-    const handle = setTimeout(() => {
-      api
-        .orders({ ...filters, page: 1 })
-        .then(({ orders, ...m }) => {
-          setOrders(orders);
-          setMeta(m);
-        })
-        .catch((e) => setError(e.message))
-        .finally(() => setLoading(false));
-    }, 250);
-    return () => clearTimeout(handle);
-  }, [filters]);
+    api
+      .orders({ sort: 'new', page: 1, limit: 6 })
+      .then(({ orders }) => setOrders(orders))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
 
   function submitSearch(e) {
     e.preventDefault();
-    setFilters((f) => ({ ...f, q: qInput, city: cityInput }));
+    const params = new URLSearchParams();
+    if (qInput) params.set('q', qInput);
+    if (cityInput) params.set('city', cityInput);
+    navigate(`/orders${params.toString() ? `?${params}` : ''}`);
   }
-
-  function toggleCategory(category) {
-    setFilters((f) => ({ ...f, category: f.category === category ? '' : category }));
-  }
-
-  function loadMore() {
-    setLoadingMore(true);
-    api
-      .orders({ ...filters, page: meta.page + 1 })
-      .then(({ orders: more, ...m }) => {
-        setOrders((prev) => [...prev, ...more]);
-        setMeta(m);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoadingMore(false));
-  }
-
-  const hasFilters = filters.category || filters.city || filters.q;
 
   return (
     <div>
@@ -121,59 +95,27 @@ export default function Home() {
         </div>
         <div className="category-grid">
           {categories.map((c) => (
-            <button
-              key={c}
-              type="button"
-              className={`category-tile${filters.category === c ? ' active' : ''}`}
-              onClick={() => toggleCategory(c)}
-            >
+            <Link key={c} to={`/orders?category=${encodeURIComponent(c)}`} className="category-tile">
               <span className="category-icon">{categoryIcon(c)}</span>
               <span>
                 <span className="category-name">{c}</span>
                 <span className="category-count">{counts[c] || 0} заказов</span>
               </span>
-            </button>
+            </Link>
           ))}
         </div>
       </section>
 
       <section className="section">
         <div className="section-head">
-          <h2>
-            Свежие заказы{meta.total > 0 && <span className="section-count"> · {meta.total}</span>}
-          </h2>
-          <div className="feed-controls">
-            {hasFilters && (
-              <a
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  setFilters({ category: '', city: '', q: '', sort: filters.sort });
-                  setQInput('');
-                  setCityInput('');
-                }}
-              >
-                Сбросить фильтры →
-              </a>
-            )}
-            <select
-              value={filters.sort}
-              onChange={(e) => setFilters((f) => ({ ...f, sort: e.target.value }))}
-              className="sort-select"
-            >
-              {SORTS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <h2>Свежие заказы</h2>
+          <Link to="/orders">Смотреть все →</Link>
         </div>
 
         {loading && <p className="status-msg">Загрузка заказов…</p>}
         {error && <p className="status-msg error">{error}</p>}
         {!loading && !error && orders.length === 0 && (
-          <p className="status-msg">Пока нет заказов по этим фильтрам.</p>
+          <p className="status-msg">Пока нет заказов.</p>
         )}
 
         <div className="order-grid">
@@ -181,15 +123,43 @@ export default function Home() {
             <OrderCard key={order.id} order={order} />
           ))}
         </div>
-
-        {!loading && meta.page < meta.pages && (
-          <div className="load-more">
-            <button className="admin-btn-ghost" onClick={loadMore} disabled={loadingMore}>
-              {loadingMore ? 'Загружаем…' : 'Показать ещё'}
-            </button>
-          </div>
-        )}
       </section>
+
+      {stats && (
+        <section className="stats-bar">
+          <div>
+            <div className="stat-value">{stats.usersCount}+</div>
+            <div className="stat-label">пользователей</div>
+          </div>
+          <div>
+            <div className="stat-value">{stats.activeOrders}+</div>
+            <div className="stat-label">активных заказов</div>
+          </div>
+          <div>
+            <div className="stat-value">{stats.citiesCount}</div>
+            <div className="stat-label">городов Кыргызстана</div>
+          </div>
+          <div>
+            <div className="stat-value">0%</div>
+            <div className="stat-label">комиссия сайта</div>
+          </div>
+        </section>
+      )}
+
+      {cityCounts.length > 0 && (
+        <section className="section">
+          <div className="section-head">
+            <h2>Заказы по городам</h2>
+          </div>
+          <div className="city-pills">
+            {cityCounts.map((c) => (
+              <Link key={c.city} to={`/orders?city=${encodeURIComponent(c.city)}`} className="city-pill">
+                {c.city} <span className="count">{c.count}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="how-it-works" id="how">
         <h2>Как это работает</h2>
@@ -210,6 +180,12 @@ export default function Home() {
             <p>Обсуждаете цену и сроки напрямую. Сайт не берёт комиссию.</p>
           </div>
         </div>
+      </section>
+
+      <section className="cta-banner">
+        <h2>Ищете подработку?</h2>
+        <p>Смотрите свежие заказы и пишите заказчикам напрямую в WhatsApp — без регистрации.</p>
+        <Link to="/orders">Найти работу →</Link>
       </section>
     </div>
   );

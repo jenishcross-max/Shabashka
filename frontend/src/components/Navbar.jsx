@@ -17,7 +17,7 @@ export default function Navbar() {
         Шабашка<span>.kg</span>
       </Link>
       <nav className="nav-links">
-        <Link to="/">Все заказы</Link>
+        <Link to="/orders">Все заказы</Link>
         <Link to="/favorites" className="muted">
           ★ Избранное
         </Link>

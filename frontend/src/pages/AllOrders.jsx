@@ -1,0 +1,224 @@
+import { useEffect, useState } from 'react';
+import { api } from '../api';
+import OrderCard from '../components/OrderCard';
+import { useCities } from '../useCities';
+
+const SORTS = [
+  { value: 'new', label: 'Сначала новые' },
+  { value: 'priceDesc', label: 'Дороже' },
+  { value: 'priceAsc', label: 'Дешевле' },
+];
+
+function pageList(page, pages) {
+  const set = new Set([1, pages, page, page - 1, page + 1]);
+  const list = [...set].filter((p) => p >= 1 && p <= pages).sort((a, b) => a - b);
+  const result = [];
+  let prev = 0;
+  for (const p of list) {
+    if (prev && p - prev > 1) result.push('…');
+    result.push(p);
+    prev = p;
+  }
+  return result;
+}
+
+export default function AllOrders() {
+  const cities = useCities();
+  const [categories, setCategories] = useState([]);
+  const [counts, setCounts] = useState({});
+  const [orders, setOrders] = useState([]);
+  const [meta, setMeta] = useState({ total: 0, page: 1, pages: 1 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const [q, setQ] = useState('');
+  const [city, setCity] = useState('');
+  const [selectedCategories, setSelectedCategories] = useState([]);
+  const [budgetMin, setBudgetMin] = useState('');
+  const [budgetMax, setBudgetMax] = useState('');
+  const [hasBudget, setHasBudget] = useState(false);
+  const [sort, setSort] = useState('new');
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    api.categories().then(({ categories }) => setCategories(categories));
+    api.categoryCounts().then(({ counts }) => setCounts(counts));
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    setError('');
+    const handle = setTimeout(() => {
+      api
+        .orders({
+          q,
+          city,
+          category: selectedCategories,
+          budgetMin,
+          budgetMax,
+          hasBudget,
+          sort,
+          page,
+          limit: 8,
+        })
+        .then(({ orders, ...m }) => {
+          setOrders(orders);
+          setMeta(m);
+        })
+        .catch((e) => setError(e.message))
+        .finally(() => setLoading(false));
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [q, city, selectedCategories, budgetMin, budgetMax, hasBudget, sort, page]);
+
+  function toggleCategory(c) {
+    setPage(1);
+    setSelectedCategories((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+  }
+
+  return (
+    <div>
+      <section className="orders-search-strip">
+        <input
+          placeholder="Поиск по заказам…"
+          value={q}
+          onChange={(e) => {
+            setPage(1);
+            setQ(e.target.value);
+          }}
+        />
+        <input
+          placeholder="Город"
+          list="cities-list"
+          value={city}
+          onChange={(e) => {
+            setPage(1);
+            setCity(e.target.value);
+          }}
+        />
+        <button type="button" onClick={() => setPage(1)}>
+          Найти
+        </button>
+      </section>
+      <datalist id="cities-list">
+        {cities.map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
+
+      <div className="orders-layout">
+        <aside className="orders-filters">
+          <div className="admin-card">
+            <h3 className="filter-heading">Категория</h3>
+            <div className="filter-checkbox-list">
+              {categories.map((c) => (
+                <label key={c} className="filter-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={selectedCategories.includes(c)}
+                    onChange={() => toggleCategory(c)}
+                  />
+                  {c}
+                  <span className="filter-count">{counts[c] || 0}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="admin-card">
+            <h3 className="filter-heading">Бюджет, сом</h3>
+            <div className="filter-budget-row">
+              <input
+                placeholder="от"
+                type="number"
+                min="0"
+                value={budgetMin}
+                onChange={(e) => {
+                  setPage(1);
+                  setBudgetMin(e.target.value);
+                }}
+              />
+              <input
+                placeholder="до"
+                type="number"
+                min="0"
+                value={budgetMax}
+                onChange={(e) => {
+                  setPage(1);
+                  setBudgetMax(e.target.value);
+                }}
+              />
+            </div>
+            <label className="filter-checkbox">
+              <input
+                type="checkbox"
+                checked={hasBudget}
+                onChange={(e) => {
+                  setPage(1);
+                  setHasBudget(e.target.checked);
+                }}
+              />
+              Только с бюджетом
+            </label>
+          </div>
+        </aside>
+
+        <div>
+          <div className="orders-results-head">
+            <span>
+              {!loading && (
+                <>
+                  <strong>{meta.total}</strong> {meta.total === 1 ? 'заказ' : 'заказа'}
+                </>
+              )}
+            </span>
+            <select className="sort-select" value={sort} onChange={(e) => setSort(e.target.value)}>
+              {SORTS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {loading && <p className="status-msg">Загрузка заказов…</p>}
+          {error && <p className="status-msg error">{error}</p>}
+          {!loading && !error && orders.length === 0 && (
+            <p className="status-msg">Пока нет заказов по этим фильтрам.</p>
+          )}
+
+          <div className="order-grid orders-grid-2col">
+            {orders.map((order) => (
+              <OrderCard key={order.id} order={order} />
+            ))}
+          </div>
+
+          {meta.pages > 1 && (
+            <div className="pagination">
+              <button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                ←
+              </button>
+              {pageList(page, meta.pages).map((p, i) =>
+                p === '…' ? (
+                  <span key={`e${i}`} className="pagination-ellipsis">
+                    …
+                  </span>
+                ) : (
+                  <button
+                    key={p}
+                    className={p === page ? 'active' : ''}
+                    onClick={() => setPage(p)}
+                  >
+                    {p}
+                  </button>
+                )
+              )}
+              <button disabled={page >= meta.pages} onClick={() => setPage((p) => Math.min(meta.pages, p + 1))}>
+                →
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

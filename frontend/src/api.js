@@ -27,9 +27,14 @@ export const api = {
 
   categories: () => request('/orders/categories'),
   categoryCounts: () => request('/orders/category-counts'),
+  cityCounts: () => request('/orders/city-counts'),
+  publicStats: () => request('/orders/public-stats'),
   cities: () => request('/orders/cities'),
   orders: (params = {}) => {
-    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString();
+    const normalized = Object.entries(params)
+      .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v])
+      .filter(([, v]) => v !== '' && v !== null && v !== undefined && v !== false);
+    const qs = new URLSearchParams(normalized).toString();
     return request(`/orders${qs ? `?${qs}` : ''}`);
   },
   order: (id) => request(`/orders/${id}`),

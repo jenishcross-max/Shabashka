@@ -64,7 +64,7 @@ export default function OrderDetail() {
 
   return (
     <div className="order-detail-wrap">
-      <Link to="/" className="back-link">
+      <Link to="/orders" className="back-link">
         ← Ко всем заказам
       </Link>
       <div className="order-detail">

@@ -20,6 +20,8 @@ const ORDER_FIELDS = `
 const SORTS = {
   new: 'orders.pinned DESC, orders.created_at DESC',
   budget: 'orders.pinned DESC, orders.budget IS NULL, orders.budget DESC',
+  priceDesc: 'orders.pinned DESC, orders.budget IS NULL, orders.budget DESC',
+  priceAsc: 'orders.pinned DESC, orders.budget IS NULL, orders.budget ASC',
   popular: 'orders.pinned DESC, orders.views DESC',
 };
 
@@ -46,19 +48,49 @@ router.get('/category-counts', (_req, res) => {
   res.json({ counts });
 });
 
+// Количество открытых заказов по городам — для пилюль на главной
+router.get('/city-counts', (_req, res) => {
+  const rows = db
+    .prepare(
+      "SELECT city, COUNT(*) AS count FROM orders WHERE status = 'open' GROUP BY city ORDER BY count DESC LIMIT 8"
+    )
+    .all();
+  res.json({ cities: rows });
+});
+
+// Публичная сводная статистика — для полосы цифр на главной
+router.get('/public-stats', (_req, res) => {
+  const usersCount = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
+  const activeOrders = db.prepare("SELECT COUNT(*) AS n FROM orders WHERE status = 'open'").get().n;
+  const citiesCount = db
+    .prepare("SELECT COUNT(DISTINCT city) AS n FROM orders WHERE status = 'open'")
+    .get().n;
+  res.json({ usersCount, activeOrders, citiesCount });
+});
+
 // Публичный список заказов — доступен всем без авторизации
 router.get('/', (req, res) => {
-  const { category, city, q, sort } = req.query;
+  const { city, q, sort, budgetMin, budgetMax } = req.query;
+  const hasBudget = req.query.hasBudget === 'true';
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
   const limit = Math.min(48, Math.max(1, parseInt(req.query.limit, 10) || 12));
   const offset = (page - 1) * limit;
 
+  // category принимает как одно значение, так и список через запятую (мультивыбор)
+  const categories = String(req.query.category || '')
+    .split(',')
+    .map((c) => c.trim())
+    .filter((c) => CATEGORIES.includes(c));
+
   const clauses = ["orders.status = 'open'"];
   const params = {};
 
-  if (category) {
-    clauses.push('orders.category = @category');
-    params.category = category;
+  if (categories.length) {
+    const placeholders = categories.map((_, i) => `@cat${i}`).join(',');
+    categories.forEach((c, i) => {
+      params[`cat${i}`] = c;
+    });
+    clauses.push(`orders.category IN (${placeholders})`);
   }
   if (city) {
     clauses.push('orders.city LIKE @city');
@@ -67,6 +99,19 @@ router.get('/', (req, res) => {
   if (q) {
     clauses.push('(orders.title LIKE @q OR orders.description LIKE @q)');
     params.q = `%${q}%`;
+  }
+  if (hasBudget) {
+    clauses.push('orders.budget IS NOT NULL');
+  }
+  const minVal = Number(budgetMin);
+  if (budgetMin && Number.isFinite(minVal)) {
+    clauses.push('orders.budget >= @budgetMin');
+    params.budgetMin = minVal;
+  }
+  const maxVal = Number(budgetMax);
+  if (budgetMax && Number.isFinite(maxVal)) {
+    clauses.push('orders.budget <= @budgetMax');
+    params.budgetMax = maxVal;
   }
 
   const where = `WHERE ${clauses.join(' AND ')}`;
