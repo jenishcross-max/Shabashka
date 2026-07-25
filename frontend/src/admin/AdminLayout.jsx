@@ -2,6 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
+import Logo from '../components/Logo';
 
 export default function AdminLayout() {
   const { user, token } = useAuth();
@@ -15,10 +16,7 @@ export default function AdminLayout() {
     <div className="admin-shell">
       <aside className="admin-sidebar">
         <div className="admin-brand">
-          <span className="brand-mark">Ш</span>
-          <span className="admin-brand-text">
-            Шабашка
-          </span>
+          <Logo size="sm" onDark />
         </div>
         <NavLink to="/admin" end className={({ isActive }) => `admin-nav-link${isActive ? ' active' : ''}`}>
           📊 Обзор

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useCities } from '../useCities';
+import Logo from '../components/Logo';
 
 export default function Register() {
   const { login } = useAuth();
@@ -30,10 +31,7 @@ export default function Register() {
   return (
     <div className="auth-card">
       <div className="card-header">
-        <span className="brand">
-          <span className="brand-mark">Ш</span>
-          Шабашка
-        </span>
+        <Logo size="sm" />
       </div>
       <div className="card-body">
         <h1>Регистрация заказчика</h1>

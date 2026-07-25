@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
+import Logo from '../components/Logo';
 
 export default function Login() {
   const { login } = useAuth();
@@ -29,10 +30,7 @@ export default function Login() {
   return (
     <div className="auth-card">
       <div className="card-header">
-        <span className="brand">
-          <span className="brand-mark">Ш</span>
-          Шабашка
-        </span>
+        <Logo size="sm" />
       </div>
       <div className="card-body">
         <h1>Вход для заказчиков</h1>

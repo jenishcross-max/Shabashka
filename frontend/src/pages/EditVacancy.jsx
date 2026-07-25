@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useCities } from '../useCities';
+import Logo from '../components/Logo';
 
 export default function EditVacancy() {
   const { id } = useParams();
@@ -71,10 +72,7 @@ export default function EditVacancy() {
   return (
     <div className="form-card wide">
       <div className="card-header">
-        <span className="brand">
-          <span className="brand-mark">Ш</span>
-          Шабашка
-        </span>
+        <Logo size="sm" />
         <span className="who">{user?.name} · Мои вакансии</span>
       </div>
       <div className="card-body">

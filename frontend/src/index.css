@@ -70,28 +70,49 @@ a:hover {
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-family: 'Rubik', sans-serif;
-  font-weight: 800;
-  font-size: 22px;
-  letter-spacing: -0.01em;
-  color: var(--text);
 }
-.brand-mark {
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
+.logo-mark-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.logo-mark {
+  border-radius: 12px;
   background: var(--red);
-  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
-  font-size: 22px;
+  position: relative;
   flex: none;
 }
-.brand span {
+.logo-mark-ring {
+  border-radius: 50%;
+  border: 2.5px solid #fff;
+}
+.logo-mark-inset {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.15);
+}
+.logo-text {
+  line-height: 1;
+}
+.logo-title {
+  font-family: 'Rubik', sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+.logo-title-light {
+  color: #fff;
+}
+.logo-subtitle {
+  font-family: 'Golos Text', sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.14em;
   color: var(--red);
+  margin-top: 2px;
 }
 
 .nav-links {
@@ -763,14 +784,6 @@ a:hover {
   background: #fff;
   border-bottom: 1px solid var(--border);
 }
-.card-header .brand {
-  font-size: 20px;
-}
-.card-header .brand-mark {
-  width: 34px;
-  height: 34px;
-  font-size: 19px;
-}
 .card-header .who {
   font-size: 14.5px;
   color: var(--muted);
@@ -1007,15 +1020,6 @@ a:hover {
   align-items: center;
   gap: 9px;
   padding: 6px 10px 20px;
-}
-.admin-brand-text {
-  font-family: 'Rubik', sans-serif;
-  font-weight: 800;
-  font-size: 18px;
-  color: #fff;
-}
-.admin-brand-text span {
-  color: var(--red);
 }
 .admin-nav-link {
   display: flex;
@@ -1596,17 +1600,7 @@ a:hover {
   }
 }
 .site-footer .footer-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-family: 'Rubik', sans-serif;
-  font-weight: 800;
-  font-size: 20px;
-  color: #fff;
   margin-bottom: 12px;
-}
-.site-footer .footer-brand span {
-  color: var(--red);
 }
 .site-footer p {
   font-size: 14px;

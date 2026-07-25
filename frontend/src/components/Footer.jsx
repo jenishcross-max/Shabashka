@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import Logo from './Logo';
 
 export default function Footer() {
   return (
@@ -6,8 +7,7 @@ export default function Footer() {
       <div className="site-footer-cols">
         <div>
           <div className="footer-brand">
-            <span className="brand-mark">Ш</span>
-            Шабашка
+            <Logo size="sm" onDark />
           </div>
           <p>
             Доска объявлений для поиска подработки и мастеров в Кыргызстане. Заказчики размещают
