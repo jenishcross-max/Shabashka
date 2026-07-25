@@ -12,6 +12,7 @@ export default function EditVacancy() {
   const cities = useCities();
   const [categories, setCategories] = useState([]);
   const [employmentTypes, setEmploymentTypes] = useState([]);
+  const [experienceLevels, setExperienceLevels] = useState([]);
   const [form, setForm] = useState(null);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -19,6 +20,7 @@ export default function EditVacancy() {
 
   useEffect(() => {
     api.employmentTypes().then(({ employmentTypes }) => setEmploymentTypes(employmentTypes));
+    api.experienceLevels().then(({ experienceLevels }) => setExperienceLevels(experienceLevels));
     api
       .vacancy(id)
       .then(({ vacancy }) => {
@@ -31,6 +33,9 @@ export default function EditVacancy() {
           description: vacancy.description,
           category: vacancy.category,
           employment_type: vacancy.employment_type,
+          experience: vacancy.experience || 'no_experience',
+          requirements: vacancy.requirements || '',
+          conditions: vacancy.conditions || '',
           city: vacancy.city,
           address: vacancy.address || '',
           work_format: vacancy.work_format || 'offline',
@@ -98,15 +103,6 @@ export default function EditVacancy() {
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
             />
           </label>
-          <label className="field">
-            <span className="label">Описание</span>
-            <textarea
-              required
-              rows={4}
-              value={form.description}
-              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-            />
-          </label>
           <div className="field">
             <span className="label">Формат работы</span>
             <div className="format-toggle">
@@ -168,20 +164,25 @@ export default function EditVacancy() {
           </div>
           <div className="field-row">
             <label className="field">
+              <span className="label">Требуемый опыт работы</span>
+              <select
+                value={form.experience}
+                onChange={(e) => setForm((f) => ({ ...f, experience: e.target.value }))}
+              >
+                {experienceLevels.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
               <span className="label">Город</span>
               <input
                 required
                 list="cities-list"
                 value={form.city}
                 onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
-              />
-            </label>
-            <label className="field">
-              <span className="label">График (необязательно)</span>
-              <input
-                maxLength={120}
-                value={form.schedule}
-                onChange={(e) => setForm((f) => ({ ...f, schedule: e.target.value }))}
               />
             </label>
           </div>
@@ -191,6 +192,33 @@ export default function EditVacancy() {
               maxLength={200}
               value={form.address}
               onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+            />
+          </label>
+          <label className="field">
+            <span className="label">Обязанности</span>
+            <textarea
+              required
+              rows={4}
+              value={form.description}
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+            />
+          </label>
+          <label className="field">
+            <span className="label">Требования к кандидату (необязательно)</span>
+            <textarea
+              rows={3}
+              maxLength={2000}
+              value={form.requirements}
+              onChange={(e) => setForm((f) => ({ ...f, requirements: e.target.value }))}
+            />
+          </label>
+          <label className="field">
+            <span className="label">Условия работы (необязательно)</span>
+            <textarea
+              rows={3}
+              maxLength={2000}
+              value={form.conditions}
+              onChange={(e) => setForm((f) => ({ ...f, conditions: e.target.value }))}
             />
           </label>
           <div className="field-row">
@@ -213,6 +241,14 @@ export default function EditVacancy() {
               />
             </label>
           </div>
+          <label className="field">
+            <span className="label">График (необязательно)</span>
+            <input
+              maxLength={120}
+              value={form.schedule}
+              onChange={(e) => setForm((f) => ({ ...f, schedule: e.target.value }))}
+            />
+          </label>
           <label className="field">
             <span className="label">WhatsApp для связи</span>
             <input

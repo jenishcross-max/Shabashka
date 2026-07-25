@@ -51,6 +51,7 @@ export const api = {
   reportOrder: (id, reason) => request(`/orders/${id}/report`, { method: 'POST', body: { reason } }),
 
   employmentTypes: () => request('/vacancies/employment-types'),
+  experienceLevels: () => request('/vacancies/experience-levels'),
   vacancyCategoryCounts: () => request('/vacancies/category-counts'),
   vacancies: (params = {}) => request(`/vacancies${toQueryString(params)}`),
   vacancy: (id) => request(`/vacancies/${id}`),

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { relativeDate } from '../formatDate';
 import { employmentLabel } from '../employmentTypes';
+import { experienceLabel } from '../experienceLevels';
 import FavoriteButton from './FavoriteButton';
 
 export function formatSalary(min, max) {
@@ -22,7 +23,9 @@ export default function VacancyCard({ vacancy }) {
         <span className="order-city">{vacancy.city}</span>
       </div>
       <h3>{vacancy.title}</h3>
-      <p className="vacancy-employment">{employmentLabel(vacancy.employment_type)}</p>
+      <p className="vacancy-employment">
+        {employmentLabel(vacancy.employment_type)} · {experienceLabel(vacancy.experience)}
+      </p>
       <p>{vacancy.description}</p>
       <div className="order-card-bottom">
         <span className="budget">{formatSalary(vacancy.salary_min, vacancy.salary_max)}</span>

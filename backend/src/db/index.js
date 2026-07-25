@@ -34,6 +34,9 @@ function init() {
       await pool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS work_format TEXT NOT NULL DEFAULT 'offline'");
       await pool.query("ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS work_format TEXT NOT NULL DEFAULT 'offline'");
       await pool.query("ALTER TABLE categories ADD COLUMN IF NOT EXISTS work_formats TEXT NOT NULL DEFAULT 'both'");
+      await pool.query("ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS experience TEXT NOT NULL DEFAULT 'no_experience'");
+      await pool.query('ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS requirements TEXT');
+      await pool.query('ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS conditions TEXT');
 
       // Первичное заполнение категорий — дальше список живёт в БД и правится через админку
       const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM categories');

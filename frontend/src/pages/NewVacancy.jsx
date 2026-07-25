@@ -11,11 +11,15 @@ export default function NewVacancy() {
   const navigate = useNavigate();
   const [categories, setCategories] = useState([]);
   const [employmentTypes, setEmploymentTypes] = useState([]);
+  const [experienceLevels, setExperienceLevels] = useState([]);
   const [form, setForm] = useState({
     title: '',
     description: '',
     category: '',
     employment_type: '',
+    experience: '',
+    requirements: '',
+    conditions: '',
     city: user?.city || '',
     address: '',
     work_format: 'offline',
@@ -31,6 +35,10 @@ export default function NewVacancy() {
     api.employmentTypes().then(({ employmentTypes }) => {
       setEmploymentTypes(employmentTypes);
       setForm((f) => ({ ...f, employment_type: f.employment_type || employmentTypes[0]?.value }));
+    });
+    api.experienceLevels().then(({ experienceLevels }) => {
+      setExperienceLevels(experienceLevels);
+      setForm((f) => ({ ...f, experience: f.experience || experienceLevels[0]?.value }));
     });
   }, []);
 
@@ -76,7 +84,7 @@ export default function NewVacancy() {
         <div className="order-tips">
           <h3>Как оформить вакансию, чтобы отклики были быстрее</h3>
           <ul>
-            <li>Опишите обязанности, требования и условия работы.</li>
+            <li>Отдельно опишите обязанности, требования к кандидату и условия работы.</li>
             <li>Укажите вилку зарплаты — вакансии с зарплатой откликаются охотнее.</li>
             <li>
               Напишите <strong>примерный район или ориентир</strong>, где находится работа, — точный
@@ -93,16 +101,6 @@ export default function NewVacancy() {
               placeholder="Например: мастер маникюра в салон"
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-            />
-          </label>
-          <label className="field">
-            <span className="label">Описание</span>
-            <textarea
-              required
-              rows={4}
-              placeholder="Обязанности, требования, условия работы"
-              value={form.description}
-              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
             />
           </label>
           <div className="field">
@@ -166,21 +164,25 @@ export default function NewVacancy() {
           </div>
           <div className="field-row">
             <label className="field">
+              <span className="label">Требуемый опыт работы</span>
+              <select
+                value={form.experience}
+                onChange={(e) => setForm((f) => ({ ...f, experience: e.target.value }))}
+              >
+                {experienceLevels.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
               <span className="label">Город</span>
               <input
                 required
                 list="cities-list"
                 value={form.city}
                 onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
-              />
-            </label>
-            <label className="field">
-              <span className="label">График (необязательно)</span>
-              <input
-                placeholder="Например: Пн–Пт, 9:00–18:00"
-                maxLength={120}
-                value={form.schedule}
-                onChange={(e) => setForm((f) => ({ ...f, schedule: e.target.value }))}
               />
             </label>
           </div>
@@ -191,6 +193,36 @@ export default function NewVacancy() {
               maxLength={200}
               value={form.address}
               onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+            />
+          </label>
+          <label className="field">
+            <span className="label">Обязанности</span>
+            <textarea
+              required
+              rows={4}
+              placeholder="Чем предстоит заниматься"
+              value={form.description}
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+            />
+          </label>
+          <label className="field">
+            <span className="label">Требования к кандидату (необязательно)</span>
+            <textarea
+              rows={3}
+              placeholder="Опыт, навыки, что важно для этой позиции"
+              maxLength={2000}
+              value={form.requirements}
+              onChange={(e) => setForm((f) => ({ ...f, requirements: e.target.value }))}
+            />
+          </label>
+          <label className="field">
+            <span className="label">Условия работы (необязательно)</span>
+            <textarea
+              rows={3}
+              placeholder="График, оформление, соцпакет и другие условия"
+              maxLength={2000}
+              value={form.conditions}
+              onChange={(e) => setForm((f) => ({ ...f, conditions: e.target.value }))}
             />
           </label>
           <div className="field-row">
@@ -215,6 +247,15 @@ export default function NewVacancy() {
               />
             </label>
           </div>
+          <label className="field">
+            <span className="label">График (необязательно)</span>
+            <input
+              placeholder="Например: Пн–Пт, 9:00–18:00"
+              maxLength={120}
+              value={form.schedule}
+              onChange={(e) => setForm((f) => ({ ...f, schedule: e.target.value }))}
+            />
+          </label>
           <label className="field">
             <span className="label">WhatsApp для связи</span>
             <input

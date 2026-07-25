@@ -4,6 +4,7 @@ import { api } from '../api';
 import { relativeDate } from '../formatDate';
 import { useAuth } from '../context/AuthContext';
 import { employmentLabel } from '../employmentTypes';
+import { experienceLabel } from '../experienceLevels';
 import { formatSalary } from '../components/VacancyCard';
 import FavoriteButton from '../components/FavoriteButton';
 
@@ -65,6 +66,7 @@ export default function VacancyDetail() {
         <p className="meta">
           <span>💼 {employmentLabel(vacancy.employment_type)}</span>
           <span>{vacancy.work_format === 'online' ? '🌐 Онлайн' : '📍 Офлайн'}</span>
+          <span>🎯 Опыт: {experienceLabel(vacancy.experience)}</span>
           <span>
             📍 {vacancy.city}
             {vacancy.address ? `, ${vacancy.address}` : ''}
@@ -79,8 +81,22 @@ export default function VacancyDetail() {
           <span className="value">{formatSalary(vacancy.salary_min, vacancy.salary_max)}</span>
         </div>
 
-        <h3 className="desc-heading">Описание вакансии</h3>
+        <h3 className="desc-heading">Обязанности</h3>
         <p className="description">{vacancy.description}</p>
+
+        {vacancy.requirements && (
+          <>
+            <h3 className="desc-heading">Требования</h3>
+            <p className="description">{vacancy.requirements}</p>
+          </>
+        )}
+
+        {vacancy.conditions && (
+          <>
+            <h3 className="desc-heading">Условия</h3>
+            <p className="description">{vacancy.conditions}</p>
+          </>
+        )}
 
         {vacancy.status === 'closed' ? (
           <p className="status-msg">Эта вакансия уже закрыта.</p>

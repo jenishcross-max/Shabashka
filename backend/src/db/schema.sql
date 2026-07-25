@@ -60,6 +60,9 @@ CREATE TABLE IF NOT EXISTS vacancies (
   city            TEXT NOT NULL,
   address         TEXT,
   work_format     TEXT NOT NULL DEFAULT 'offline', -- online | offline
+  experience      TEXT NOT NULL DEFAULT 'no_experience', -- no_experience | 1-3 | 3-6 | 6+
+  requirements    TEXT, -- требования к кандидату
+  conditions      TEXT, -- условия работы
   salary_min      INTEGER,
   salary_max      INTEGER,
   schedule        TEXT, -- например «Пн–Пт, 9:00–18:00»

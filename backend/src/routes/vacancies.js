@@ -4,14 +4,17 @@ const { requireAuth } = require('../middleware/auth');
 const categoriesRepo = require('../categoriesRepo');
 const KNOWN_CITIES = require('../cities');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
+const EXPERIENCE_LEVELS = require('../experienceLevels');
 const asyncHandler = require('../asyncHandler');
 
 const router = express.Router();
 const EMPLOYMENT_VALUES = EMPLOYMENT_TYPES.map((t) => t.value);
+const EXPERIENCE_VALUES = EXPERIENCE_LEVELS.map((t) => t.value);
 
 const VACANCY_FIELDS = `
   vacancies.id, vacancies.title, vacancies.description, vacancies.category,
   vacancies.employment_type, vacancies.city, vacancies.address, vacancies.work_format,
+  vacancies.experience, vacancies.requirements, vacancies.conditions,
   vacancies.salary_min, vacancies.salary_max, vacancies.schedule,
   vacancies.whatsapp_phone, vacancies.status, vacancies.views, vacancies.pinned,
   vacancies.created_at,
@@ -34,6 +37,10 @@ function toId(raw) {
 
 router.get('/employment-types', (_req, res) => {
   res.json({ employmentTypes: EMPLOYMENT_TYPES });
+});
+
+router.get('/experience-levels', (_req, res) => {
+  res.json({ experienceLevels: EXPERIENCE_LEVELS });
 });
 
 router.get(
@@ -158,6 +165,9 @@ async function validateVacancyFields(body, { partial }) {
     city,
     address,
     work_format,
+    experience,
+    requirements,
+    conditions,
     salary_min,
     salary_max,
     schedule,
@@ -196,6 +206,20 @@ async function validateVacancyFields(body, { partial }) {
     if (!WORK_FORMATS.includes(work_format)) errors.push('Укажите формат работы — онлайн или офлайн');
     else result.work_format = work_format;
   }
+  if (!partial || experience !== undefined) {
+    if (!EXPERIENCE_VALUES.includes(experience)) errors.push('Укажите требуемый опыт работы');
+    else result.experience = experience;
+  }
+  if (!partial || requirements !== undefined) {
+    const trimmed = String(requirements || '').trim();
+    if (trimmed.length > 2000) errors.push('Требования слишком длинные (макс. 2000 символов)');
+    else result.requirements = trimmed || null;
+  }
+  if (!partial || conditions !== undefined) {
+    const trimmed = String(conditions || '').trim();
+    if (trimmed.length > 2000) errors.push('Условия слишком длинные (макс. 2000 символов)');
+    else result.conditions = trimmed || null;
+  }
   if (!partial || schedule !== undefined) {
     const trimmed = String(schedule || '').trim();
     if (trimmed.length > 120) errors.push('График слишком длинный (макс. 120 символов)');
@@ -232,8 +256,9 @@ router.post(
 
     const inserted = await db.query(
       `INSERT INTO vacancies
-        (user_id, title, description, category, employment_type, city, address, work_format, salary_min, salary_max, schedule, whatsapp_phone)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+        (user_id, title, description, category, employment_type, city, address, work_format,
+         experience, requirements, conditions, salary_min, salary_max, schedule, whatsapp_phone)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
       [
         req.user.id,
         result.title,
@@ -243,6 +268,9 @@ router.post(
         result.city,
         result.address,
         result.work_format,
+        result.experience,
+        result.requirements,
+        result.conditions,
         result.salary_min,
         result.salary_max,
         result.schedule,
@@ -307,6 +335,9 @@ router.patch(
       'city',
       'address',
       'work_format',
+      'experience',
+      'requirements',
+      'conditions',
       'salary_min',
       'salary_max',
       'schedule',
