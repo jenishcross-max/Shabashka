@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS orders (
   category       TEXT NOT NULL,
   city           TEXT NOT NULL,
   address        TEXT, -- примерный адрес/район — без точного адреса и подъезда
+  work_format    TEXT NOT NULL DEFAULT 'offline', -- online | offline
   budget         INTEGER,
   whatsapp_phone TEXT NOT NULL,
   status         TEXT NOT NULL DEFAULT 'open', -- open | closed

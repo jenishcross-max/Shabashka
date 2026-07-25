@@ -8,6 +8,7 @@ export default function OrderCard({ order }) {
       <div className="order-card-top">
         <div className="order-card-badges">
           <span className="badge">{order.category}</span>
+          <span className="badge">{order.work_format === 'online' ? '🌐 Онлайн' : '📍 Офлайн'}</span>
           {!!order.pinned && <span className="badge pinned">🔥 Топ</span>}
         </div>
         <span className="order-city">{order.city}</span>

@@ -24,6 +24,9 @@ function init() {
       const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
       await pool.query(schema);
 
+      // Аддитивная миграция для баз, созданных до появления этой колонки
+      await pool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS work_format TEXT NOT NULL DEFAULT 'offline'");
+
       // Первичное заполнение категорий — дальше список живёт в БД и правится через админку
       const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM categories');
       if (rows[0].n === 0) {

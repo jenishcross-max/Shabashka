@@ -31,6 +31,7 @@ export default function EditOrder() {
           category: order.category,
           city: order.city,
           address: order.address || '',
+          work_format: order.work_format || 'offline',
           budget: order.budget ?? '',
           whatsapp_phone: order.whatsapp_phone,
         });
@@ -118,6 +119,35 @@ export default function EditOrder() {
               onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
             />
           </label>
+          <div className="field">
+            <span className="label">Формат работы</span>
+            <div className="format-toggle">
+              <label className={`format-option${form.work_format === 'offline' ? ' active' : ''}`}>
+                <input
+                  type="radio"
+                  name="work_format"
+                  value="offline"
+                  checked={form.work_format === 'offline'}
+                  onChange={(e) => setForm((f) => ({ ...f, work_format: e.target.value }))}
+                />
+                📍 Офлайн
+              </label>
+              <label className={`format-option${form.work_format === 'online' ? ' active' : ''}`}>
+                <input
+                  type="radio"
+                  name="work_format"
+                  value="online"
+                  checked={form.work_format === 'online'}
+                  onChange={(e) => setForm((f) => ({ ...f, work_format: e.target.value }))}
+                />
+                🌐 Онлайн
+              </label>
+            </div>
+            <p className="format-hint">
+              <strong>Офлайн</strong> — нужно приехать или встретиться лично. <strong>Онлайн</strong> —
+              можно сделать удалённо, без личной встречи, например по видеосвязи или через интернет.
+            </p>
+          </div>
           <div className="field-row">
             <label className="field">
               <span className="label">Бюджет, сом (необязательно)</span>

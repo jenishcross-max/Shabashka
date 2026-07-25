@@ -77,6 +77,7 @@ export default function OrderDetail() {
         <h1>{order.title}</h1>
         <p className="meta">
           <span>📍 {order.city}{order.address ? `, ${order.address}` : ''}</span>
+          <span>{order.work_format === 'online' ? '🌐 Онлайн' : '📍 Офлайн'}</span>
           <span>🗓 Опубликован {relativeDate(order.created_at)}</span>
           <span>👤 Заказчик: {order.owner_name}</span>
           <span>👁 {order.views} просмотров</span>

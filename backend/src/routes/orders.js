@@ -10,10 +10,12 @@ const router = express.Router();
 
 const ORDER_FIELDS = `
   orders.id, orders.title, orders.description, orders.category, orders.city, orders.address,
-  orders.budget, orders.whatsapp_phone, orders.status, orders.views, orders.pinned,
+  orders.work_format, orders.budget, orders.whatsapp_phone, orders.status, orders.views, orders.pinned,
   orders.created_at,
   orders.user_id, users.name AS owner_name
 `;
+
+const WORK_FORMATS = ['online', 'offline'];
 
 const SORTS = {
   new: 'orders.pinned DESC, orders.created_at DESC',
@@ -219,7 +221,7 @@ router.get(
 );
 
 async function validateOrderFields(body, { partial }) {
-  const { title, description, category, city, address, budget, whatsapp_phone } = body;
+  const { title, description, category, city, address, work_format, budget, whatsapp_phone } = body;
   const errors = [];
   const result = {};
 
@@ -245,6 +247,10 @@ async function validateOrderFields(body, { partial }) {
     if (trimmed.length > 200) errors.push('Адрес слишком длинный (макс. 200 символов)');
     else result.address = trimmed || null;
   }
+  if (!partial || work_format !== undefined) {
+    if (!WORK_FORMATS.includes(work_format)) errors.push('Укажите формат работы — онлайн или офлайн');
+    else result.work_format = work_format;
+  }
   if (!partial || whatsapp_phone !== undefined) {
     const phone = String(whatsapp_phone || '').replace(/[^\d+]/g, '');
     if (phone.length < 9) errors.push('Укажите корректный номер WhatsApp');
@@ -268,8 +274,8 @@ router.post(
     if (errors.length) return res.status(400).json({ error: errors[0] });
 
     const inserted = await db.query(
-      `INSERT INTO orders (user_id, title, description, category, city, address, budget, whatsapp_phone)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      `INSERT INTO orders (user_id, title, description, category, city, address, work_format, budget, whatsapp_phone)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
       [
         req.user.id,
         result.title,
@@ -277,6 +283,7 @@ router.post(
         result.category,
         result.city,
         result.address,
+        result.work_format,
         result.budget,
         result.whatsapp_phone,
       ]
@@ -332,7 +339,16 @@ router.patch(
       addUpdate('status', req.body.status);
     }
 
-    const editableKeys = ['title', 'description', 'category', 'city', 'address', 'budget', 'whatsapp_phone'];
+    const editableKeys = [
+      'title',
+      'description',
+      'category',
+      'city',
+      'address',
+      'work_format',
+      'budget',
+      'whatsapp_phone',
+    ];
     const hasEditableField = editableKeys.some((k) => req.body?.[k] !== undefined);
     if (hasEditableField) {
       const { errors, result } = await validateOrderFields(req.body, { partial: true });

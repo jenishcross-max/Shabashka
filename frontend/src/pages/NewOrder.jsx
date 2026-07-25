@@ -16,6 +16,7 @@ export default function NewOrder() {
     category: '',
     city: user?.city || '',
     address: '',
+    work_format: 'offline',
     budget: '',
     whatsapp_phone: user?.phone || '',
   });
@@ -125,6 +126,37 @@ export default function NewOrder() {
               onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
             />
           </label>
+          <div className="field">
+            <span className="label">Формат работы</span>
+            <div className="format-toggle">
+              <label className={`format-option${form.work_format === 'offline' ? ' active' : ''}`}>
+                <input
+                  type="radio"
+                  name="work_format"
+                  value="offline"
+                  checked={form.work_format === 'offline'}
+                  onChange={(e) => setForm((f) => ({ ...f, work_format: e.target.value }))}
+                />
+                📍 Офлайн
+              </label>
+              <label className={`format-option${form.work_format === 'online' ? ' active' : ''}`}>
+                <input
+                  type="radio"
+                  name="work_format"
+                  value="online"
+                  checked={form.work_format === 'online'}
+                  onChange={(e) => setForm((f) => ({ ...f, work_format: e.target.value }))}
+                />
+                🌐 Онлайн
+              </label>
+            </div>
+            <p className="format-hint">
+              <strong>Офлайн</strong> — нужно приехать или встретиться лично (ремонт, уборка,
+              доставка и т.п.). <strong>Онлайн</strong> — можно сделать удалённо, без личной
+              встречи, например по видеосвязи или через интернет (репетитор по видео, консультация,
+              дизайн).
+            </p>
+          </div>
           <div className="field-row">
             <label className="field">
               <span className="label">Бюджет, сом (необязательно)</span>
