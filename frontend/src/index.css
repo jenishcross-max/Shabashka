@@ -130,6 +130,10 @@ a:hover {
 .nav-links a.muted {
   color: var(--muted);
 }
+.nav-links a.active {
+  color: var(--red);
+  font-weight: 600;
+}
 .nav-user {
   color: var(--muted);
 }

@@ -1,6 +1,10 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Logo from './Logo';
+
+function navClass({ isActive }) {
+  return `muted${isActive ? ' active' : ''}`;
+}
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -17,22 +21,24 @@ export default function Navbar() {
         <Logo />
       </Link>
       <nav className="nav-links">
-        <Link to="/orders">Все заказы</Link>
-        <Link to="/vacancies" className="muted">
+        <NavLink to="/orders" className={({ isActive }) => (isActive ? 'active' : '')}>
+          Все заказы
+        </NavLink>
+        <NavLink to="/vacancies" className={navClass}>
           Вакансии
-        </Link>
-        <Link to="/favorites" className="muted">
+        </NavLink>
+        <NavLink to="/favorites" className={navClass}>
           ★ Избранное
-        </Link>
+        </NavLink>
         {user ? (
           <>
-            <Link to="/my-orders" className="muted">
+            <NavLink to="/my-orders" className={navClass}>
               Мои объявления
-            </Link>
+            </NavLink>
             {user.role === 'admin' && (
-              <Link to="/admin" className="muted">
+              <NavLink to="/admin" className={navClass}>
                 Админ-панель
-              </Link>
+              </NavLink>
             )}
             <span className="nav-user">{user.name}</span>
             <button className="link-btn" onClick={handleLogout}>
@@ -44,9 +50,9 @@ export default function Navbar() {
           </>
         ) : (
           <>
-            <Link to="/login" className="muted">
+            <NavLink to="/login" className={navClass}>
               Войти
-            </Link>
+            </NavLink>
             <Link to="/register" className="cta">
               + Разместить заказ
             </Link>
