@@ -3,25 +3,29 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useFavorites } from '../context/FavoritesContext';
 import OrderCard from '../components/OrderCard';
+import VacancyCard from '../components/VacancyCard';
 
 export default function Favorites() {
-  const { ids } = useFavorites();
+  const { orderIds, vacancyIds } = useFavorites();
   const [orders, setOrders] = useState([]);
+  const [vacancies, setVacancies] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (ids.length === 0) {
-      setOrders([]);
-      setLoading(false);
-      return;
-    }
     setLoading(true);
-    api
-      .ordersBatch(ids)
-      .then(({ orders }) => setOrders(orders))
+    Promise.all([
+      orderIds.length ? api.ordersBatch(orderIds) : Promise.resolve({ orders: [] }),
+      vacancyIds.length ? api.vacanciesBatch(vacancyIds) : Promise.resolve({ vacancies: [] }),
+    ])
+      .then(([o, v]) => {
+        setOrders(o.orders);
+        setVacancies(v.vacancies);
+      })
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ids.length]);
+  }, [orderIds.length, vacancyIds.length]);
+
+  const isEmpty = orderIds.length === 0 && vacancyIds.length === 0;
 
   return (
     <div>
@@ -29,17 +33,38 @@ export default function Favorites() {
         <h1>Избранное</h1>
       </div>
       {loading && <p className="status-msg">Загрузка…</p>}
-      {!loading && ids.length === 0 && (
+      {!loading && isEmpty && (
         <p className="status-msg">
-          Пока нет сохранённых заказов. Нажмите ☆ на карточке заказа, чтобы добавить его сюда.{' '}
-          <Link to="/">Смотреть заказы</Link>
+          Пока нет сохранённых заказов и вакансий. Нажмите ☆ на карточке, чтобы добавить сюда.{' '}
+          <Link to="/orders">Смотреть заказы</Link> · <Link to="/vacancies">Смотреть вакансии</Link>
         </p>
       )}
-      <div className="order-grid">
-        {orders.map((order) => (
-          <OrderCard key={order.id} order={order} />
-        ))}
-      </div>
+
+      {orders.length > 0 && (
+        <section className="section">
+          <div className="section-head">
+            <h2>Заказы</h2>
+          </div>
+          <div className="order-grid">
+            {orders.map((order) => (
+              <OrderCard key={order.id} order={order} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {vacancies.length > 0 && (
+        <section className="section">
+          <div className="section-head">
+            <h2>Вакансии</h2>
+          </div>
+          <div className="order-grid">
+            {vacancies.map((v) => (
+              <VacancyCard key={v.id} vacancy={v} />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

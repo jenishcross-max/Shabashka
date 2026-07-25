@@ -75,7 +75,7 @@ export default function OrderDetail() {
             {order.status === 'open' ? 'Открыт' : 'Закрыт'}
           </span>
           {!!order.pinned && <span className="badge pinned">🔥 Топ</span>}
-          <FavoriteButton orderId={order.id} className="order-detail-fav" />
+          <FavoriteButton type="order" id={order.id} className="order-detail-fav" />
         </div>
         <h1>{order.title}</h1>
         <p className="meta">

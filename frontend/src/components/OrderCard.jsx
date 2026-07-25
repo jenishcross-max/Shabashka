@@ -28,7 +28,7 @@ export default function OrderCard({ order }) {
         )}
         <span className="date">{relativeDate(order.created_at)}</span>
       </div>
-      <FavoriteButton orderId={order.id} className="order-card-fav" />
+      <FavoriteButton type="order" id={order.id} className="order-card-fav" />
     </Link>
   );
 }

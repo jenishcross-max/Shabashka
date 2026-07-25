@@ -20,6 +20,14 @@ async function request(path, { method = 'GET', body, token, formData } = {}) {
   return data;
 }
 
+function toQueryString(params) {
+  const normalized = Object.entries(params)
+    .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v])
+    .filter(([, v]) => v !== '' && v !== null && v !== undefined && v !== false);
+  const qs = new URLSearchParams(normalized).toString();
+  return qs ? `?${qs}` : '';
+}
+
 export const api = {
   register: (payload) => request('/auth/register', { method: 'POST', body: payload }),
   login: (payload) => request('/auth/login', { method: 'POST', body: payload }),
@@ -30,13 +38,7 @@ export const api = {
   cityCounts: () => request('/orders/city-counts'),
   publicStats: () => request('/orders/public-stats'),
   cities: () => request('/orders/cities'),
-  orders: (params = {}) => {
-    const normalized = Object.entries(params)
-      .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v])
-      .filter(([, v]) => v !== '' && v !== null && v !== undefined && v !== false);
-    const qs = new URLSearchParams(normalized).toString();
-    return request(`/orders${qs ? `?${qs}` : ''}`);
-  },
+  orders: (params = {}) => request(`/orders${toQueryString(params)}`),
   order: (id) => request(`/orders/${id}`),
   similarOrders: (id) => request(`/orders/${id}/similar`),
   ordersBatch: (ids) => request(`/orders/batch?ids=${ids.join(',')}`),
@@ -53,6 +55,24 @@ export const api = {
   deleteOrder: (id, token) => request(`/orders/${id}`, { method: 'DELETE', token }),
   reportOrder: (id, reason) => request(`/orders/${id}/report`, { method: 'POST', body: { reason } }),
 
+  employmentTypes: () => request('/vacancies/employment-types'),
+  vacancyCategoryCounts: () => request('/vacancies/category-counts'),
+  vacancies: (params = {}) => request(`/vacancies${toQueryString(params)}`),
+  vacancy: (id) => request(`/vacancies/${id}`),
+  vacanciesBatch: (ids) => request(`/vacancies/batch?ids=${ids.join(',')}`),
+  myVacancies: (token) => request('/vacancies/mine', { token }),
+  createVacancy: (payload, token) => request('/vacancies', { method: 'POST', body: payload, token }),
+  updateVacancy: (id, payload, token) =>
+    request(`/vacancies/${id}`, { method: 'PATCH', body: payload, token }),
+  setVacancyStatus: (id, status, token) =>
+    request(`/vacancies/${id}`, { method: 'PATCH', body: { status }, token }),
+  uploadVacancyPhoto: (id, file, token) => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    return request(`/vacancies/${id}/photo`, { method: 'POST', formData, token });
+  },
+  deleteVacancy: (id, token) => request(`/vacancies/${id}`, { method: 'DELETE', token }),
+
   adminStats: (token) => request('/admin/stats', { token }),
   adminUsers: (token) => request('/admin/users', { token }),
   adminSetUserBlocked: (id, blocked, token) =>
@@ -62,6 +82,11 @@ export const api = {
     request(`/admin/orders/${id}`, { method: 'PATCH', body: { status }, token }),
   adminSetOrderPinned: (id, pinned, token) =>
     request(`/admin/orders/${id}`, { method: 'PATCH', body: { pinned }, token }),
+  adminVacancies: (token) => request('/admin/vacancies', { token }),
+  adminSetVacancyStatus: (id, status, token) =>
+    request(`/admin/vacancies/${id}`, { method: 'PATCH', body: { status }, token }),
+  adminSetVacancyPinned: (id, pinned, token) =>
+    request(`/admin/vacancies/${id}`, { method: 'PATCH', body: { pinned }, token }),
   adminReports: (token, status = 'open') => request(`/admin/reports?status=${status}`, { token }),
   adminResolveReport: (id, action, token) =>
     request(`/admin/reports/${id}`, { method: 'PATCH', body: { action }, token }),

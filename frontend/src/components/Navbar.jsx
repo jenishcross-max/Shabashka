@@ -18,6 +18,9 @@ export default function Navbar() {
       </Link>
       <nav className="nav-links">
         <Link to="/orders">Все заказы</Link>
+        <Link to="/vacancies" className="muted">
+          Вакансии
+        </Link>
         <Link to="/favorites" className="muted">
           ★ Избранное
         </Link>
@@ -28,6 +31,9 @@ export default function Navbar() {
           <>
             <Link to="/my-orders" className="muted">
               Мои заказы
+            </Link>
+            <Link to="/my-vacancies" className="muted">
+              Мои вакансии
             </Link>
             {user.role === 'admin' && (
               <Link to="/admin" className="muted">

@@ -61,6 +61,10 @@ export default function AdminOverview() {
           <div className="admin-stat-value">{stats.activeOrders}</div>
         </div>
         <div className="admin-stat-card">
+          <div className="admin-stat-label">Активных вакансий</div>
+          <div className="admin-stat-value">{stats.activeVacancies}</div>
+        </div>
+        <div className="admin-stat-card">
           <div className="admin-stat-label">Заказов сегодня</div>
           <div className="admin-stat-value">{stats.ordersToday}</div>
         </div>

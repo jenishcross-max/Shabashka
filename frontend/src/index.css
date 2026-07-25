@@ -490,6 +490,13 @@ a:hover {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.order-card p.vacancy-employment {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--red-dark);
+  margin: 0 0 8px;
+  -webkit-line-clamp: 1;
+}
 .order-card-bottom {
   display: flex;
   justify-content: space-between;
@@ -719,6 +726,9 @@ a:hover {
   grid-template-columns: 1fr 1fr;
   gap: 12px;
   margin-top: 12px;
+}
+.secondary-actions.single {
+  grid-template-columns: 1fr;
 }
 .secondary-actions button,
 .secondary-actions .secondary-link {
@@ -1080,7 +1090,7 @@ a:hover {
 
 .admin-stat-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 16px;
   margin-bottom: 20px;
 }

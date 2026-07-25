@@ -7,6 +7,7 @@ const compression = require('compression');
 
 const authRoutes = require('./routes/auth');
 const orderRoutes = require('./routes/orders');
+const vacancyRoutes = require('./routes/vacancies');
 const adminRoutes = require('./routes/admin');
 const metaRoutes = require('./meta');
 const { apiLimiter } = require('./rateLimit');
@@ -26,6 +27,7 @@ app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads'), { maxA
 app.use('/api', apiLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/vacancies', vacancyRoutes);
 app.use('/api/admin', adminRoutes);
 app.use(metaRoutes);
 

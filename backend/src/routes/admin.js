@@ -12,6 +12,7 @@ router.get('/stats', (_req, res) => {
     .prepare("SELECT COUNT(*) AS n FROM users WHERE created_at >= datetime('now', '-30 days')")
     .get().n;
   const activeOrders = db.prepare("SELECT COUNT(*) AS n FROM orders WHERE status = 'open'").get().n;
+  const activeVacancies = db.prepare("SELECT COUNT(*) AS n FROM vacancies WHERE status = 'open'").get().n;
   const ordersToday = db
     .prepare("SELECT COUNT(*) AS n FROM orders WHERE date(created_at) = date('now')")
     .get().n;
@@ -35,6 +36,7 @@ router.get('/stats', (_req, res) => {
     usersCount,
     newUsers30d,
     activeOrders,
+    activeVacancies,
     ordersToday,
     openReports,
     weekly,
@@ -105,6 +107,48 @@ router.patch('/orders/:id', (req, res) => {
 
   values.push(order.id);
   db.prepare(`UPDATE orders SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  res.json({ ok: true });
+});
+
+router.get('/vacancies', (_req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT vacancies.id, vacancies.title, vacancies.category, vacancies.employment_type,
+              vacancies.city, vacancies.salary_min, vacancies.salary_max, vacancies.status,
+              vacancies.views, vacancies.pinned, vacancies.created_at,
+              users.name AS owner_name, users.email AS owner_email
+       FROM vacancies
+       JOIN users ON users.id = vacancies.user_id
+       ORDER BY vacancies.pinned DESC, vacancies.created_at DESC`
+    )
+    .all();
+  res.json({ vacancies: rows });
+});
+
+router.patch('/vacancies/:id', (req, res) => {
+  const vacancy = db.prepare('SELECT id FROM vacancies WHERE id = ?').get(req.params.id);
+  if (!vacancy) return res.status(404).json({ error: 'Вакансия не найдена' });
+
+  const { status, pinned } = req.body || {};
+  const updates = [];
+  const values = [];
+
+  if (status !== undefined) {
+    if (!['open', 'closed'].includes(status)) {
+      return res.status(400).json({ error: 'Статус может быть только open или closed' });
+    }
+    updates.push('status = ?');
+    values.push(status);
+  }
+  if (pinned !== undefined) {
+    if (typeof pinned !== 'boolean') return res.status(400).json({ error: 'Некорректное значение pinned' });
+    updates.push('pinned = ?');
+    values.push(pinned ? 1 : 0);
+  }
+  if (updates.length === 0) return res.status(400).json({ error: 'Нечего обновлять' });
+
+  values.push(vacancy.id);
+  db.prepare(`UPDATE vacancies SET ${updates.join(', ')} WHERE id = ?`).run(...values);
   res.json({ ok: true });
 });
 

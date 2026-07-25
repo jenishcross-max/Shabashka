@@ -48,3 +48,27 @@ CREATE TABLE IF NOT EXISTS categories (
   name       TEXT NOT NULL UNIQUE,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS vacancies (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title           TEXT NOT NULL,
+  description     TEXT NOT NULL,
+  category        TEXT NOT NULL,
+  employment_type TEXT NOT NULL, -- full_time | part_time | shift | gig | internship
+  city            TEXT NOT NULL,
+  address         TEXT,
+  salary_min      INTEGER,
+  salary_max      INTEGER,
+  schedule        TEXT, -- например «Пн–Пт, 9:00–18:00»
+  whatsapp_phone  TEXT NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'open', -- open | closed
+  views           INTEGER NOT NULL DEFAULT 0,
+  pinned          INTEGER NOT NULL DEFAULT 0,
+  image_path      TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_vacancies_category ON vacancies(category);
+CREATE INDEX IF NOT EXISTS idx_vacancies_city ON vacancies(city);
+CREATE INDEX IF NOT EXISTS idx_vacancies_user ON vacancies(user_id);

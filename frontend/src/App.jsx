@@ -7,6 +7,11 @@ import ProtectedAdminRoute from './components/ProtectedAdminRoute';
 import Home from './pages/Home';
 import AllOrders from './pages/AllOrders';
 import OrderDetail from './pages/OrderDetail';
+import Vacancies from './pages/Vacancies';
+import VacancyDetail from './pages/VacancyDetail';
+import NewVacancy from './pages/NewVacancy';
+import EditVacancy from './pages/EditVacancy';
+import MyVacancies from './pages/MyVacancies';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import NewOrder from './pages/NewOrder';
@@ -20,6 +25,7 @@ const AdminLayout = lazy(() => import('./admin/AdminLayout'));
 const AdminOverview = lazy(() => import('./admin/AdminOverview'));
 const AdminUsers = lazy(() => import('./admin/AdminUsers'));
 const AdminOrders = lazy(() => import('./admin/AdminOrders'));
+const AdminVacancies = lazy(() => import('./admin/AdminVacancies'));
 const AdminReports = lazy(() => import('./admin/AdminReports'));
 const AdminCategories = lazy(() => import('./admin/AdminCategories'));
 
@@ -32,6 +38,8 @@ function PublicSite() {
           <Route path="/" element={<Home />} />
           <Route path="/orders" element={<AllOrders />} />
           <Route path="/orders/:id" element={<OrderDetail />} />
+          <Route path="/vacancies" element={<Vacancies />} />
+          <Route path="/vacancies/:id" element={<VacancyDetail />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/favorites" element={<Favorites />} />
@@ -59,6 +67,30 @@ function PublicSite() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/vacancies/new"
+            element={
+              <ProtectedRoute>
+                <NewVacancy />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/vacancies/:id/edit"
+            element={
+              <ProtectedRoute>
+                <EditVacancy />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-vacancies"
+            element={
+              <ProtectedRoute>
+                <MyVacancies />
+              </ProtectedRoute>
+            }
+          />
           <Route path="*" element={<p className="status-msg">Страница не найдена</p>} />
         </Routes>
       </main>
@@ -82,6 +114,7 @@ export default function App() {
           <Route index element={<AdminOverview />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="orders" element={<AdminOrders />} />
+          <Route path="vacancies" element={<AdminVacancies />} />
           <Route path="reports" element={<AdminReports />} />
           <Route path="categories" element={<AdminCategories />} />
         </Route>

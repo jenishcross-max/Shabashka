@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { api } from '../api';
 import OrderCard from '../components/OrderCard';
+import VacancyCard from '../components/VacancyCard';
 import { categoryIcon } from '../categoryIcons';
 import { useFavorites } from '../context/FavoritesContext';
 import { useCities } from '../useCities';
@@ -9,9 +10,10 @@ import { useCities } from '../useCities';
 export default function Home() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { ids: favoriteIds } = useFavorites();
+  const { keys: favoriteKeys } = useFavorites();
   const cities = useCities();
   const [orders, setOrders] = useState([]);
+  const [vacancies, setVacancies] = useState([]);
   const [categories, setCategories] = useState([]);
   const [counts, setCounts] = useState({});
   const [cityCounts, setCityCounts] = useState([]);
@@ -41,6 +43,10 @@ export default function Home() {
       .then(({ orders }) => setOrders(orders))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
+    api
+      .vacancies({ sort: 'new', page: 1, limit: 3 })
+      .then(({ vacancies }) => setVacancies(vacancies))
+      .catch(() => {});
   }, []);
 
   function submitSearch(e) {
@@ -82,9 +88,9 @@ export default function Home() {
             <option key={c} value={c} />
           ))}
         </datalist>
-        {favoriteIds.length > 0 && (
+        {favoriteKeys.length > 0 && (
           <Link to="/favorites" className="hero-fav-link">
-            ★ Избранное ({favoriteIds.length})
+            ★ Избранное ({favoriteKeys.length})
           </Link>
         )}
       </section>
@@ -124,6 +130,20 @@ export default function Home() {
           ))}
         </div>
       </section>
+
+      {vacancies.length > 0 && (
+        <section className="section">
+          <div className="section-head">
+            <h2>Свежие вакансии</h2>
+            <Link to="/vacancies">Смотреть все →</Link>
+          </div>
+          <div className="order-grid">
+            {vacancies.map((v) => (
+              <VacancyCard key={v.id} vacancy={v} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {stats && (
         <section className="stats-bar">

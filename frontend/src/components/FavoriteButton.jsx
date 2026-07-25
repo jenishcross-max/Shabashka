@@ -1,8 +1,8 @@
 import { useFavorites } from '../context/FavoritesContext';
 
-export default function FavoriteButton({ orderId, className = '' }) {
+export default function FavoriteButton({ type = 'order', id, className = '' }) {
   const { isFavorite, toggle } = useFavorites();
-  const active = isFavorite(orderId);
+  const active = isFavorite(type, id);
 
   return (
     <button
@@ -11,7 +11,7 @@ export default function FavoriteButton({ orderId, className = '' }) {
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        toggle(orderId);
+        toggle(type, id);
       }}
       aria-label={active ? 'Убрать из избранного' : 'В избранное'}
       title={active ? 'Убрать из избранного' : 'В избранное'}

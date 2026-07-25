@@ -90,6 +90,45 @@ const TEMPLATES = {
   ],
 };
 
+const EMPLOYMENT_VALUES = ['full_time', 'part_time', 'shift', 'gig', 'internship'];
+const SCHEDULES = ['Пн–Пт, 9:00–18:00', 'Пн–Сб, 10:00–19:00', 'Сменный график 2/2', 'По договорённости'];
+
+// Вакансии — постоянная/частичная работа, в отличие от разовых заказов
+const VACANCY_TEMPLATES = {
+  'Ремонт': [
+    { title: 'Мастер по ремонту квартир', description: 'Ищем мастера с опытом штукатурных и малярных работ на постоянные объекты компании.', salary: [30000, 55000] },
+    { title: 'Помощник мастера-ремонтника', description: 'Обучим на месте, нужен ответственный человек без вредных привычек.', salary: [20000, 30000] },
+  ],
+  'Уборка': [
+    { title: 'Клинер в клининговую компанию', description: 'Уборка квартир и офисов по графику, объекты в пределах города.', salary: [25000, 40000] },
+    { title: 'Уборщица в бизнес-центр', description: 'Ежедневная уборка офисных помещений, утренняя смена.', salary: [18000, 25000] },
+  ],
+  'Грузоперевозки': [
+    { title: 'Водитель-экспедитор (газель)', description: 'Требуется водитель с категорией B, развоз товара по городу.', salary: [35000, 50000] },
+    { title: 'Грузчик на постоянной основе', description: 'Разгрузка/погрузка на складе, график 5/2.', salary: [25000, 35000] },
+  ],
+  'Репетиторы': [
+    { title: 'Репетитор по математике в учебный центр', description: 'Группы 5–9 класс, вечерние занятия 3 раза в неделю.', salary: [15000, 30000] },
+  ],
+  'Красота': [
+    { title: 'Мастер маникюра в салон', description: 'Аренда места или % от процедур, готовая клиентская база.', salary: [25000, 60000] },
+    { title: 'Парикмахер-универсал', description: 'Требуется мастер с опытом от 1 года, график 2/2.', salary: [20000, 45000] },
+  ],
+  'Электрика': [
+    { title: 'Электрик в обслуживающую компанию', description: 'Обслуживание жилых домов, разъездная работа по городу.', salary: [30000, 45000] },
+  ],
+  'Сантехника': [
+    { title: 'Сантехник в УК', description: 'Обслуживание многоквартирных домов, дежурства по графику.', salary: [28000, 40000] },
+  ],
+  'Сад и огород': [
+    { title: 'Садовник на постоянный участок', description: 'Уход за большим приусадебным участком, 3 дня в неделю.', salary: [15000, 25000] },
+  ],
+  'Другое': [
+    { title: 'Курьер на авто/скутере', description: 'Доставка заказов по городу, свободный график, оплата за смену.', salary: [20000, 35000] },
+    { title: 'Няня на неполный день', description: 'Присмотр за ребёнком 5 лет, 3 раза в неделю после обеда.', salary: [12000, 18000] },
+  ],
+};
+
 function randInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -102,8 +141,8 @@ function daysAgoTimestamp(days) {
 }
 
 console.log('Очищаю старые данные…');
-db.exec('DELETE FROM reports; DELETE FROM orders; DELETE FROM users;');
-db.exec("DELETE FROM sqlite_sequence WHERE name IN ('users','orders','reports')");
+db.exec('DELETE FROM reports; DELETE FROM orders; DELETE FROM vacancies; DELETE FROM users;');
+db.exec("DELETE FROM sqlite_sequence WHERE name IN ('users','orders','vacancies','reports')");
 
 const passwordHash = bcrypt.hashSync('password123', 10);
 const adminHash = bcrypt.hashSync('admin12345', 10);
@@ -159,6 +198,45 @@ for (const category of CATEGORIES) {
   }
 }
 
+console.log('Создаю вакансии…');
+const insertVacancy = db.prepare(
+  `INSERT INTO vacancies
+    (user_id, title, description, category, employment_type, city, salary_min, salary_max, schedule, whatsapp_phone, status, views, pinned, created_at)
+   VALUES (@user_id, @title, @description, @category, @employment_type, @city, @salary_min, @salary_max, @schedule, @whatsapp_phone, @status, @views, @pinned, @created_at)`
+);
+
+const vacancyIds = [];
+let vacancyPinnedCount = 0;
+for (const category of CATEGORIES) {
+  const templates = VACANCY_TEMPLATES[category] || VACANCY_TEMPLATES['Другое'];
+  for (const t of templates) {
+    const owner = pick(userIds);
+    const city = Math.random() < 0.6 ? owner.city : pick(CITIES);
+    const daysAgo = randInt(0, 30);
+    const status = Math.random() < 0.85 ? 'open' : 'closed';
+    const pinned = status === 'open' && vacancyPinnedCount < 2 && Math.random() < 0.2 ? 1 : 0;
+    if (pinned) vacancyPinnedCount++;
+
+    const info = insertVacancy.run({
+      user_id: owner.id,
+      title: t.title,
+      description: t.description,
+      category,
+      employment_type: pick(EMPLOYMENT_VALUES),
+      city,
+      salary_min: t.salary ? t.salary[0] : null,
+      salary_max: t.salary ? t.salary[1] : null,
+      schedule: pick(SCHEDULES),
+      whatsapp_phone: owner.phone,
+      status,
+      views: randInt(0, 180),
+      pinned,
+      created_at: daysAgoTimestamp(daysAgo),
+    });
+    vacancyIds.push(info.lastInsertRowid);
+  }
+}
+
 console.log('Добавляю несколько жалоб…');
 const reasons = [
   'Похоже на спам / нереальная цена',
@@ -175,6 +253,7 @@ console.log(`
 Готово!
   Пользователей: ${userIds.length + 1} (включая администратора)
   Заказов: ${orderIds.length}
+  Вакансий: ${vacancyIds.length}
   Пароль для всех демо-заказчиков: password123
   Админ: admin@shabashka.kg / admin12345
 `);

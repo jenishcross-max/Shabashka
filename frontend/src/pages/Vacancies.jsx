@@ -1,20 +1,21 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import OrderCard from '../components/OrderCard';
+import VacancyCard from '../components/VacancyCard';
 import { useCities } from '../useCities';
 import { pageList } from '../pagination';
 
 const SORTS = [
   { value: 'new', label: 'Сначала новые' },
-  { value: 'priceDesc', label: 'Дороже' },
-  { value: 'priceAsc', label: 'Дешевле' },
+  { value: 'salaryDesc', label: 'Зарплата: больше' },
+  { value: 'salaryAsc', label: 'Зарплата: меньше' },
 ];
 
-export default function AllOrders() {
+export default function Vacancies() {
   const cities = useCities();
   const [categories, setCategories] = useState([]);
   const [counts, setCounts] = useState({});
-  const [orders, setOrders] = useState([]);
+  const [employmentTypes, setEmploymentTypes] = useState([]);
+  const [vacancies, setVacancies] = useState([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, pages: 1 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -22,15 +23,14 @@ export default function AllOrders() {
   const [q, setQ] = useState('');
   const [city, setCity] = useState('');
   const [selectedCategories, setSelectedCategories] = useState([]);
-  const [budgetMin, setBudgetMin] = useState('');
-  const [budgetMax, setBudgetMax] = useState('');
-  const [hasBudget, setHasBudget] = useState(false);
+  const [employmentType, setEmploymentType] = useState('');
   const [sort, setSort] = useState('new');
   const [page, setPage] = useState(1);
 
   useEffect(() => {
     api.categories().then(({ categories }) => setCategories(categories));
-    api.categoryCounts().then(({ counts }) => setCounts(counts));
+    api.vacancyCategoryCounts().then(({ counts }) => setCounts(counts));
+    api.employmentTypes().then(({ employmentTypes }) => setEmploymentTypes(employmentTypes));
   }, []);
 
   useEffect(() => {
@@ -38,26 +38,24 @@ export default function AllOrders() {
     setError('');
     const handle = setTimeout(() => {
       api
-        .orders({
+        .vacancies({
           q,
           city,
           category: selectedCategories,
-          budgetMin,
-          budgetMax,
-          hasBudget,
+          employmentType,
           sort,
           page,
           limit: 8,
         })
-        .then(({ orders, ...m }) => {
-          setOrders(orders);
+        .then(({ vacancies, ...m }) => {
+          setVacancies(vacancies);
           setMeta(m);
         })
         .catch((e) => setError(e.message))
         .finally(() => setLoading(false));
     }, 250);
     return () => clearTimeout(handle);
-  }, [q, city, selectedCategories, budgetMin, budgetMax, hasBudget, sort, page]);
+  }, [q, city, selectedCategories, employmentType, sort, page]);
 
   function toggleCategory(c) {
     setPage(1);
@@ -68,7 +66,7 @@ export default function AllOrders() {
     <div>
       <section className="orders-search-strip">
         <input
-          placeholder="Поиск по заказам…"
+          placeholder="Поиск по вакансиям…"
           value={q}
           onChange={(e) => {
             setPage(1);
@@ -113,40 +111,35 @@ export default function AllOrders() {
             </div>
           </div>
           <div className="admin-card">
-            <h3 className="filter-heading">Бюджет, сом</h3>
-            <div className="filter-budget-row">
-              <input
-                placeholder="от"
-                type="number"
-                min="0"
-                value={budgetMin}
-                onChange={(e) => {
-                  setPage(1);
-                  setBudgetMin(e.target.value);
-                }}
-              />
-              <input
-                placeholder="до"
-                type="number"
-                min="0"
-                value={budgetMax}
-                onChange={(e) => {
-                  setPage(1);
-                  setBudgetMax(e.target.value);
-                }}
-              />
+            <h3 className="filter-heading">Занятость</h3>
+            <div className="filter-checkbox-list">
+              <label className="filter-checkbox">
+                <input
+                  type="radio"
+                  name="employment"
+                  checked={employmentType === ''}
+                  onChange={() => {
+                    setPage(1);
+                    setEmploymentType('');
+                  }}
+                />
+                Любая
+              </label>
+              {employmentTypes.map((t) => (
+                <label key={t.value} className="filter-checkbox">
+                  <input
+                    type="radio"
+                    name="employment"
+                    checked={employmentType === t.value}
+                    onChange={() => {
+                      setPage(1);
+                      setEmploymentType(t.value);
+                    }}
+                  />
+                  {t.label}
+                </label>
+              ))}
             </div>
-            <label className="filter-checkbox">
-              <input
-                type="checkbox"
-                checked={hasBudget}
-                onChange={(e) => {
-                  setPage(1);
-                  setHasBudget(e.target.checked);
-                }}
-              />
-              Только с бюджетом
-            </label>
           </div>
         </aside>
 
@@ -155,7 +148,7 @@ export default function AllOrders() {
             <span>
               {!loading && (
                 <>
-                  <strong>{meta.total}</strong> {meta.total === 1 ? 'заказ' : 'заказа'}
+                  <strong>{meta.total}</strong> {meta.total === 1 ? 'вакансия' : 'вакансий'}
                 </>
               )}
             </span>
@@ -168,15 +161,15 @@ export default function AllOrders() {
             </select>
           </div>
 
-          {loading && <p className="status-msg">Загрузка заказов…</p>}
+          {loading && <p className="status-msg">Загрузка вакансий…</p>}
           {error && <p className="status-msg error">{error}</p>}
-          {!loading && !error && orders.length === 0 && (
-            <p className="status-msg">Пока нет заказов по этим фильтрам.</p>
+          {!loading && !error && vacancies.length === 0 && (
+            <p className="status-msg">Пока нет вакансий по этим фильтрам.</p>
           )}
 
           <div className="order-grid orders-grid-2col">
-            {orders.map((order) => (
-              <OrderCard key={order.id} order={order} />
+            {vacancies.map((v) => (
+              <VacancyCard key={v.id} vacancy={v} />
             ))}
           </div>
 
@@ -191,16 +184,15 @@ export default function AllOrders() {
                     …
                   </span>
                 ) : (
-                  <button
-                    key={p}
-                    className={p === page ? 'active' : ''}
-                    onClick={() => setPage(p)}
-                  >
+                  <button key={p} className={p === page ? 'active' : ''} onClick={() => setPage(p)}>
                     {p}
                   </button>
                 )
               )}
-              <button disabled={page >= meta.pages} onClick={() => setPage((p) => Math.min(meta.pages, p + 1))}>
+              <button
+                disabled={page >= meta.pages}
+                onClick={() => setPage((p) => Math.min(meta.pages, p + 1))}
+              >
                 →
               </button>
             </div>

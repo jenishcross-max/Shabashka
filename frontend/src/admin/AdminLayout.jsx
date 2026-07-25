@@ -29,6 +29,9 @@ export default function AdminLayout() {
         <NavLink to="/admin/orders" className={({ isActive }) => `admin-nav-link${isActive ? ' active' : ''}`}>
           📋 Заказы
         </NavLink>
+        <NavLink to="/admin/vacancies" className={({ isActive }) => `admin-nav-link${isActive ? ' active' : ''}`}>
+          💼 Вакансии
+        </NavLink>
         <NavLink to="/admin/reports" className={({ isActive }) => `admin-nav-link${isActive ? ' active' : ''}`}>
           <span>⚑ Жалобы</span>
           {openReports > 0 && <span className="admin-nav-badge">{openReports}</span>}
