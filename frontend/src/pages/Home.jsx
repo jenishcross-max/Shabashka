@@ -88,6 +88,12 @@ export default function Home() {
             <option key={c} value={c} />
           ))}
         </datalist>
+        <div className="hero-format-links">
+          <span className="hero-format-label">Смотреть подработку:</span>
+          <Link to="/orders">Всю</Link>
+          <Link to="/orders?workFormat=offline">📍 Только офлайн</Link>
+          <Link to="/orders?workFormat=online">🌐 Только онлайн</Link>
+        </div>
         {favoriteKeys.length > 0 && (
           <Link to="/favorites" className="hero-fav-link">
             ★ Избранное ({favoriteKeys.length})
