@@ -1,9 +1,68 @@
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Logo from './Logo';
 
 function navClass({ isActive }) {
   return `muted${isActive ? ' active' : ''}`;
+}
+
+function OrdersMenu() {
+  const location = useLocation();
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function onClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [location.pathname, location.search]);
+
+  const isOrdersSection = location.pathname.startsWith('/orders');
+  const workFormat = new URLSearchParams(location.search).get('workFormat');
+
+  return (
+    <div className="nav-dropdown" ref={ref}>
+      <button
+        type="button"
+        className={`nav-dropdown-trigger${isOrdersSection ? ' active' : ''}`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        Подработка ▾
+      </button>
+      {open && (
+        <div className="nav-dropdown-menu">
+          <Link
+            to="/orders"
+            className={isOrdersSection && !workFormat ? 'active' : ''}
+            onClick={() => setOpen(false)}
+          >
+            Все объявления
+          </Link>
+          <Link
+            to="/orders?workFormat=offline"
+            className={workFormat === 'offline' ? 'active' : ''}
+            onClick={() => setOpen(false)}
+          >
+            📍 Только офлайн
+          </Link>
+          <Link
+            to="/orders?workFormat=online"
+            className={workFormat === 'online' ? 'active' : ''}
+            onClick={() => setOpen(false)}
+          >
+            🌐 Только онлайн
+          </Link>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Navbar() {
@@ -21,9 +80,7 @@ export default function Navbar() {
         <Logo />
       </Link>
       <nav className="nav-links">
-        <NavLink to="/orders" className={({ isActive }) => (isActive ? 'active' : '')}>
-          Все заказы
-        </NavLink>
+        <OrdersMenu />
         <NavLink to="/vacancies" className={navClass}>
           Вакансии
         </NavLink>

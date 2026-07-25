@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import OrderCard from '../components/OrderCard';
 import { useCities } from '../useCities';
@@ -12,6 +13,7 @@ const SORTS = [
 
 export default function AllOrders() {
   const cities = useCities();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [categories, setCategories] = useState([]);
   const [counts, setCounts] = useState({});
   const [orders, setOrders] = useState([]);
@@ -25,8 +27,24 @@ export default function AllOrders() {
   const [budgetMin, setBudgetMin] = useState('');
   const [budgetMax, setBudgetMax] = useState('');
   const [hasBudget, setHasBudget] = useState(false);
+  const [workFormat, setWorkFormatState] = useState('');
   const [sort, setSort] = useState('new');
   const [page, setPage] = useState(1);
+
+  // Формат работы задаётся через query-параметр — так на него можно ссылаться
+  // из меню в навбаре («Онлайн» / «Офлайн»), а не только через фильтр на странице.
+  useEffect(() => {
+    const wf = searchParams.get('workFormat');
+    setWorkFormatState(wf === 'online' || wf === 'offline' ? wf : '');
+    setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get('workFormat')]);
+
+  function setWorkFormat(value) {
+    setPage(1);
+    setWorkFormatState(value);
+    setSearchParams(value ? { workFormat: value } : {}, { replace: true });
+  }
 
   useEffect(() => {
     api.categories().then(({ categories }) => setCategories(categories));
@@ -45,6 +63,7 @@ export default function AllOrders() {
           budgetMin,
           budgetMax,
           hasBudget,
+          workFormat,
           sort,
           page,
           limit: 8,
@@ -57,7 +76,7 @@ export default function AllOrders() {
         .finally(() => setLoading(false));
     }, 250);
     return () => clearTimeout(handle);
-  }, [q, city, selectedCategories, budgetMin, budgetMax, hasBudget, sort, page]);
+  }, [q, city, selectedCategories, budgetMin, budgetMax, hasBudget, workFormat, sort, page]);
 
   function toggleCategory(c) {
     setPage(1);
@@ -96,6 +115,33 @@ export default function AllOrders() {
 
       <div className="orders-layout">
         <aside className="orders-filters">
+          <div className="admin-card">
+            <h3 className="filter-heading">Формат работы</h3>
+            <div className="format-toggle">
+              <label className={`format-option${workFormat === '' ? ' active' : ''}`}>
+                <input type="radio" name="workFormat" checked={workFormat === ''} onChange={() => setWorkFormat('')} />
+                Все
+              </label>
+              <label className={`format-option${workFormat === 'offline' ? ' active' : ''}`}>
+                <input
+                  type="radio"
+                  name="workFormat"
+                  checked={workFormat === 'offline'}
+                  onChange={() => setWorkFormat('offline')}
+                />
+                📍 Офлайн
+              </label>
+              <label className={`format-option${workFormat === 'online' ? ' active' : ''}`}>
+                <input
+                  type="radio"
+                  name="workFormat"
+                  checked={workFormat === 'online'}
+                  onChange={() => setWorkFormat('online')}
+                />
+                🌐 Онлайн
+              </label>
+            </div>
+          </div>
           <div className="admin-card">
             <h3 className="filter-heading">Категория</h3>
             <div className="filter-checkbox-list">

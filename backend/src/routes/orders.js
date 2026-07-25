@@ -88,7 +88,7 @@ router.get(
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const { city, q, sort, budgetMin, budgetMax } = req.query;
+    const { city, q, sort, budgetMin, budgetMax, workFormat } = req.query;
     const hasBudget = req.query.hasBudget === 'true';
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(48, Math.max(1, parseInt(req.query.limit, 10) || 12));
@@ -111,6 +111,9 @@ router.get(
     if (categories.length) {
       const placeholders = categories.map((c) => addParam(c)).join(',');
       clauses.push(`orders.category IN (${placeholders})`);
+    }
+    if (workFormat === 'online' || workFormat === 'offline') {
+      clauses.push(`orders.work_format = ${addParam(workFormat)}`);
     }
     if (city) {
       clauses.push(`orders.city ILIKE ${addParam(`%${city}%`)}`);

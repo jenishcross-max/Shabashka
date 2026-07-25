@@ -1,5 +1,6 @@
 export function relativeDate(isoString) {
-  const date = new Date(isoString.replace(' ', 'T') + 'Z');
+  // Postgres timestamptz сериализуется в валидный ISO ("...T...Z") — парсим как есть.
+  const date = new Date(isoString);
   const diffMs = Date.now() - date.getTime();
   const diffDays = Math.floor(diffMs / 86400000);
 

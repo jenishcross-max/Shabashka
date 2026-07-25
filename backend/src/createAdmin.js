@@ -1,5 +1,6 @@
 // Создаёт (или повышает до admin) пользователя-администратора.
 // Использование: node src/createAdmin.js email@example.com пароль "Имя"
+require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const db = require('./db');
 

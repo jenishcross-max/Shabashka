@@ -150,7 +150,7 @@ export default function AdminOverview() {
                 <div className="strong">
                   Заказ «{r.order_title}» — {r.reason}
                 </div>
-                <div className="admin-subtitle">{new Date(r.created_at.replace(' ', 'T') + 'Z').toLocaleString('ru-RU')}</div>
+                <div className="admin-subtitle">{new Date(r.created_at).toLocaleString('ru-RU')}</div>
               </div>
               <div className="admin-complaint-actions">
                 <button className="admin-btn-danger" onClick={() => resolveReport(r.id, 'hide')}>

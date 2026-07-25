@@ -47,7 +47,7 @@ export default function AdminReports() {
                 <Link to={`/orders/${r.order_id}`}>{r.order_title}</Link>» — {r.reason}
               </div>
               <div className="admin-subtitle">
-                {new Date(r.created_at.replace(' ', 'T') + 'Z').toLocaleString('ru-RU')}
+                {new Date(r.created_at).toLocaleString('ru-RU')}
                 {r.resolved && ' · решено'}
               </div>
             </div>

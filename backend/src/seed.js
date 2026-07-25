@@ -1,6 +1,7 @@
 // Заполняет базу реалистичными демо-данными для показа сайта.
 // Использование: node src/seed.js
 // ВНИМАНИЕ: полностью очищает users/orders/vacancies/reports перед заполнением.
+require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const db = require('./db');
 const categoriesRepo = require('./categoriesRepo');
