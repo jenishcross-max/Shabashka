@@ -2,14 +2,13 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../api';
 import { relativeDate } from '../formatDate';
-import { imageUrl } from '../imageUrl';
 import { useAuth } from '../context/AuthContext';
 import FavoriteButton from '../components/FavoriteButton';
 import OrderCard from '../components/OrderCard';
 
 function waLink(phone, title) {
   const digits = phone.replace(/[^\d]/g, '');
-  const text = encodeURIComponent(`Здравствуйте! Пишу по заказу «${title}» на Шабашка.kg.`);
+  const text = encodeURIComponent(`Здравствуйте! Пишу по заказу «${title}» на Шабашка.`);
   return `https://wa.me/${digits}?text=${text}`;
 }
 
@@ -59,7 +58,6 @@ export default function OrderDetail() {
   if (error) return <p className="status-msg error">{error}</p>;
   if (!order) return <p className="status-msg">Загрузка…</p>;
 
-  const photo = imageUrl(order.image_path);
   const isOwner = user?.id === order.user_id;
 
   return (
@@ -68,7 +66,6 @@ export default function OrderDetail() {
         ← Ко всем заказам
       </Link>
       <div className="order-detail">
-        {photo && <img src={photo} alt={order.title} className="order-detail-photo" />}
         <div className="badges-row">
           <span className="badge">{order.category}</span>
           <span className={`badge status-${order.status}`}>

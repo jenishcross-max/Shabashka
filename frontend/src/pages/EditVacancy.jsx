@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
-import { imageUrl } from '../imageUrl';
 import { useCities } from '../useCities';
 
 export default function EditVacancy() {
@@ -13,8 +12,6 @@ export default function EditVacancy() {
   const [categories, setCategories] = useState([]);
   const [employmentTypes, setEmploymentTypes] = useState([]);
   const [form, setForm] = useState(null);
-  const [photo, setPhoto] = useState(null);
-  const [currentImage, setCurrentImage] = useState(null);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [notFound, setNotFound] = useState(false);
@@ -41,7 +38,6 @@ export default function EditVacancy() {
           salary_max: vacancy.salary_max ?? '',
           whatsapp_phone: vacancy.whatsapp_phone,
         });
-        setCurrentImage(vacancy.image_path);
       })
       .catch(() => setNotFound(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -61,9 +57,6 @@ export default function EditVacancy() {
         },
         token
       );
-      if (photo) {
-        await api.uploadVacancyPhoto(id, photo, token);
-      }
       navigate(`/vacancies/${id}`);
     } catch (err) {
       setError(err.message);
@@ -80,7 +73,7 @@ export default function EditVacancy() {
       <div className="card-header">
         <span className="brand">
           <span className="brand-mark">Ш</span>
-          Шабашка<span>.kg</span>
+          Шабашка
         </span>
         <span className="who">{user?.name} · Мои вакансии</span>
       </div>
@@ -189,17 +182,6 @@ export default function EditVacancy() {
               required
               value={form.whatsapp_phone}
               onChange={(e) => setForm((f) => ({ ...f, whatsapp_phone: e.target.value }))}
-            />
-          </label>
-          <label className="field">
-            <span className="label">Фото {currentImage ? '(заменить)' : '(добавить)'}</span>
-            {currentImage && !photo && (
-              <img src={imageUrl(currentImage)} alt="" className="edit-photo-preview" />
-            )}
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={(e) => setPhoto(e.target.files?.[0] || null)}
             />
           </label>
           {error && <p className="status-msg error">{error}</p>}

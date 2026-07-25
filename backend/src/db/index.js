@@ -24,7 +24,6 @@ const needsMigration =
   !usersColumns.includes('is_blocked') ||
   !ordersColumns.includes('views') ||
   !ordersColumns.includes('pinned') ||
-  !ordersColumns.includes('image_path') ||
   !reportsColumns.includes('resolved');
 
 if (needsMigration) {

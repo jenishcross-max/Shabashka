@@ -22,7 +22,6 @@ export default function NewVacancy() {
     schedule: '',
     whatsapp_phone: user?.phone || '',
   });
-  const [photo, setPhoto] = useState(null);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -50,9 +49,6 @@ export default function NewVacancy() {
         },
         token
       );
-      if (photo) {
-        await api.uploadVacancyPhoto(vacancy.id, photo, token);
-      }
       navigate(`/vacancies/${vacancy.id}`);
     } catch (err) {
       setError(err.message);
@@ -66,7 +62,7 @@ export default function NewVacancy() {
       <div className="card-header">
         <span className="brand">
           <span className="brand-mark">Ш</span>
-          Шабашка<span>.kg</span>
+          Шабашка
         </span>
         <span className="who">{user?.name} · Мои вакансии</span>
       </div>
@@ -192,14 +188,6 @@ export default function NewVacancy() {
               required
               value={form.whatsapp_phone}
               onChange={(e) => setForm((f) => ({ ...f, whatsapp_phone: e.target.value }))}
-            />
-          </label>
-          <label className="field">
-            <span className="label">Фото (необязательно)</span>
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={(e) => setPhoto(e.target.files?.[0] || null)}
             />
           </label>
           {error && <p className="status-msg error">{error}</p>}

@@ -30,14 +30,10 @@ router.get('/orders/:id', (req, res, next) => {
   if (!order) return next();
 
   const url = `${baseUrl(req)}/orders/${order.id}`;
-  const title = `${order.title} — Шабашка.kg`;
+  const title = `${order.title} — Шабашка`;
   const description = `${order.category} · ${order.city}${
     order.budget ? ` · ${order.budget} сом` : ''
   } — ${order.description}`.slice(0, 200);
-  const imageTag = order.image_path
-    ? `<meta property="og:image" content="${escapeHtml(baseUrl(req) + order.image_path)}">\n`
-    : '';
-
   res.send(`<!doctype html>
 <html lang="ru">
 <head>
@@ -46,7 +42,7 @@ router.get('/orders/:id', (req, res, next) => {
 <meta property="og:type" content="website">
 <meta property="og:title" content="${escapeHtml(title)}">
 <meta property="og:description" content="${escapeHtml(description)}">
-${imageTag}<meta property="og:url" content="${escapeHtml(url)}">
+<meta property="og:url" content="${escapeHtml(url)}">
 <meta name="twitter:card" content="summary_large_image">
 <meta http-equiv="refresh" content="0; url=${escapeHtml(url)}">
 </head>

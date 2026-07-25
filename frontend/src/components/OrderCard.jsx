@@ -1,16 +1,10 @@
 import { Link } from 'react-router-dom';
 import { relativeDate } from '../formatDate';
-import { imageUrl } from '../imageUrl';
 import FavoriteButton from './FavoriteButton';
 
 export default function OrderCard({ order }) {
-  const photo = imageUrl(order.image_path);
-
   return (
     <Link to={`/orders/${order.id}`} className="order-card">
-      {photo && (
-        <div className="order-card-photo" style={{ backgroundImage: `url(${photo})` }} />
-      )}
       <div className="order-card-top">
         <div className="order-card-badges">
           <span className="badge">{order.category}</span>

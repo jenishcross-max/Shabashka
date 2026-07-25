@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
-import { imageUrl } from '../imageUrl';
 import { useCities } from '../useCities';
 
 export default function EditOrder() {
@@ -12,8 +11,6 @@ export default function EditOrder() {
   const cities = useCities();
   const [categories, setCategories] = useState([]);
   const [form, setForm] = useState(null);
-  const [photo, setPhoto] = useState(null);
-  const [currentImage, setCurrentImage] = useState(null);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [notFound, setNotFound] = useState(false);
@@ -36,7 +33,6 @@ export default function EditOrder() {
           budget: order.budget ?? '',
           whatsapp_phone: order.whatsapp_phone,
         });
-        setCurrentImage(order.image_path);
       })
       .catch(() => setNotFound(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -48,9 +44,6 @@ export default function EditOrder() {
     setSubmitting(true);
     try {
       await api.updateOrder(id, { ...form, budget: form.budget ? Number(form.budget) : null }, token);
-      if (photo) {
-        await api.uploadOrderPhoto(id, photo, token);
-      }
       navigate(`/orders/${id}`);
     } catch (err) {
       setError(err.message);
@@ -67,7 +60,7 @@ export default function EditOrder() {
       <div className="card-header">
         <span className="brand">
           <span className="brand-mark">Ш</span>
-          Шабашка<span>.kg</span>
+          Шабашка
         </span>
         <span className="who">{user?.name} · Мои заказы</span>
       </div>
@@ -147,17 +140,6 @@ export default function EditOrder() {
               />
             </label>
           </div>
-          <label className="field">
-            <span className="label">Фото {currentImage ? '(заменить)' : '(добавить)'}</span>
-            {currentImage && !photo && (
-              <img src={imageUrl(currentImage)} alt="" className="edit-photo-preview" />
-            )}
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={(e) => setPhoto(e.target.files?.[0] || null)}
-            />
-          </label>
           {error && <p className="status-msg error">{error}</p>}
           <button className="submit-btn" type="submit" disabled={submitting}>
             {submitting ? 'Сохраняем…' : 'Сохранить изменения'}

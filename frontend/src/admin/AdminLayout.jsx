@@ -17,7 +17,7 @@ export default function AdminLayout() {
         <div className="admin-brand">
           <span className="brand-mark">Ш</span>
           <span className="admin-brand-text">
-            Шабашка<span>.kg</span>
+            Шабашка
           </span>
         </div>
         <NavLink to="/admin" end className={({ isActive }) => `admin-nav-link${isActive ? ' active' : ''}`}>

@@ -1,12 +1,9 @@
-const path = require('path');
-const fs = require('fs');
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const categoriesRepo = require('../categoriesRepo');
 const KNOWN_CITIES = require('../cities');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
-const { upload, uploadsDir, processImage } = require('../upload');
 
 const router = express.Router();
 const EMPLOYMENT_VALUES = EMPLOYMENT_TYPES.map((t) => t.value);
@@ -16,7 +13,7 @@ const VACANCY_FIELDS = `
   vacancies.employment_type, vacancies.city, vacancies.address,
   vacancies.salary_min, vacancies.salary_max, vacancies.schedule,
   vacancies.whatsapp_phone, vacancies.status, vacancies.views, vacancies.pinned,
-  vacancies.image_path, vacancies.created_at,
+  vacancies.created_at,
   vacancies.user_id, users.name AS owner_name
 `;
 
@@ -296,37 +293,10 @@ router.patch('/:id', requireAuth, (req, res) => {
   res.json({ vacancy: updated });
 });
 
-function uploadPhoto(req, res, next) {
-  upload.single('photo')(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message || 'Ошибка загрузки файла' });
-    next();
-  });
-}
-
-router.post('/:id/photo', requireAuth, uploadPhoto, processImage, (req, res) => {
-  const vacancy = loadOwnedVacancy(req, res);
-  if (!vacancy) {
-    if (req.file) fs.unlink(req.file.path, () => {});
-    return;
-  }
-  if (!req.file) return res.status(400).json({ error: 'Файл не получен' });
-
-  if (vacancy.image_path) {
-    fs.unlink(path.join(uploadsDir, path.basename(vacancy.image_path)), () => {});
-  }
-
-  const imagePath = `/uploads/orders/${req.file.filename}`;
-  db.prepare('UPDATE vacancies SET image_path = ? WHERE id = ?').run(imagePath, vacancy.id);
-  res.json({ image_path: imagePath });
-});
-
 router.delete('/:id', requireAuth, (req, res) => {
   const vacancy = loadOwnedVacancy(req, res);
   if (!vacancy) return;
 
-  if (vacancy.image_path) {
-    fs.unlink(path.join(uploadsDir, path.basename(vacancy.image_path)), () => {});
-  }
   db.prepare('DELETE FROM vacancies WHERE id = ?').run(vacancy.id);
   res.status(204).end();
 });

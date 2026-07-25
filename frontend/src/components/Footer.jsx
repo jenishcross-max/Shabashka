@@ -7,7 +7,7 @@ export default function Footer() {
         <div>
           <div className="footer-brand">
             <span className="brand-mark">Ш</span>
-            Шабашка<span>.kg</span>
+            Шабашка
           </div>
           <p>
             Доска объявлений для поиска подработки и мастеров в Кыргызстане. Заказчики размещают
@@ -32,7 +32,7 @@ export default function Footer() {
           </ul>
         </div>
       </div>
-      <p className="copyright">© {new Date().getFullYear()} Шабашка.kg</p>
+      <p className="copyright">© {new Date().getFullYear()} Шабашка</p>
     </footer>
   );
 }

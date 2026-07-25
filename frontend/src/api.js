@@ -1,6 +1,6 @@
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
-async function request(path, { method = 'GET', body, token, formData } = {}) {
+async function request(path, { method = 'GET', body, token } = {}) {
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body) headers['Content-Type'] = 'application/json';
@@ -8,7 +8,7 @@ async function request(path, { method = 'GET', body, token, formData } = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
-    body: formData || (body ? JSON.stringify(body) : undefined),
+    body: body ? JSON.stringify(body) : undefined,
   });
 
   const isJson = res.headers.get('content-type')?.includes('application/json');
@@ -47,11 +47,6 @@ export const api = {
   updateOrder: (id, payload, token) => request(`/orders/${id}`, { method: 'PATCH', body: payload, token }),
   setOrderStatus: (id, status, token) =>
     request(`/orders/${id}`, { method: 'PATCH', body: { status }, token }),
-  uploadOrderPhoto: (id, file, token) => {
-    const formData = new FormData();
-    formData.append('photo', file);
-    return request(`/orders/${id}/photo`, { method: 'POST', formData, token });
-  },
   deleteOrder: (id, token) => request(`/orders/${id}`, { method: 'DELETE', token }),
   reportOrder: (id, reason) => request(`/orders/${id}/report`, { method: 'POST', body: { reason } }),
 
@@ -66,11 +61,6 @@ export const api = {
     request(`/vacancies/${id}`, { method: 'PATCH', body: payload, token }),
   setVacancyStatus: (id, status, token) =>
     request(`/vacancies/${id}`, { method: 'PATCH', body: { status }, token }),
-  uploadVacancyPhoto: (id, file, token) => {
-    const formData = new FormData();
-    formData.append('photo', file);
-    return request(`/vacancies/${id}/photo`, { method: 'POST', formData, token });
-  },
   deleteVacancy: (id, token) => request(`/vacancies/${id}`, { method: 'DELETE', token }),
 
   adminStats: (token) => request('/admin/stats', { token }),

@@ -32,7 +32,7 @@ export default function Register() {
       <div className="card-header">
         <span className="brand">
           <span className="brand-mark">Ш</span>
-          Шабашка<span>.kg</span>
+          Шабашка
         </span>
       </div>
       <div className="card-body">

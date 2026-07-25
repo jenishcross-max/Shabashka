@@ -18,7 +18,6 @@ export default function NewOrder() {
     budget: '',
     whatsapp_phone: user?.phone || '',
   });
-  const [photo, setPhoto] = useState(null);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -38,9 +37,6 @@ export default function NewOrder() {
         { ...form, budget: form.budget ? Number(form.budget) : null },
         token
       );
-      if (photo) {
-        await api.uploadOrderPhoto(order.id, photo, token);
-      }
       navigate(`/orders/${order.id}`);
     } catch (err) {
       setError(err.message);
@@ -54,7 +50,7 @@ export default function NewOrder() {
       <div className="card-header">
         <span className="brand">
           <span className="brand-mark">Ш</span>
-          Шабашка<span>.kg</span>
+          Шабашка
         </span>
         <span className="who">{user?.name} · Мои заказы</span>
       </div>
@@ -152,14 +148,6 @@ export default function NewOrder() {
               />
             </label>
           </div>
-          <label className="field">
-            <span className="label">Фото (необязательно)</span>
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={(e) => setPhoto(e.target.files?.[0] || null)}
-            />
-          </label>
           {error && <p className="status-msg error">{error}</p>}
           <button className="submit-btn" type="submit" disabled={submitting}>
             {submitting ? 'Публикуем…' : 'Опубликовать заказ'}

@@ -23,7 +23,6 @@ app.use(cors());
 app.use(express.json());
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads'), { maxAge: '7d' }));
 app.use('/api', apiLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/orders', orderRoutes);

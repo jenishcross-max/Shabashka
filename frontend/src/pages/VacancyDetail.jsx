@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../api';
 import { relativeDate } from '../formatDate';
-import { imageUrl } from '../imageUrl';
 import { useAuth } from '../context/AuthContext';
 import { employmentLabel } from '../employmentTypes';
 import { formatSalary } from '../components/VacancyCard';
@@ -10,7 +9,7 @@ import FavoriteButton from '../components/FavoriteButton';
 
 function waLink(phone, title) {
   const digits = phone.replace(/[^\d]/g, '');
-  const text = encodeURIComponent(`Здравствуйте! Пишу по вакансии «${title}» на Шабашка.kg.`);
+  const text = encodeURIComponent(`Здравствуйте! Пишу по вакансии «${title}» на Шабашка.`);
   return `https://wa.me/${digits}?text=${text}`;
 }
 
@@ -46,7 +45,6 @@ export default function VacancyDetail() {
   if (error) return <p className="status-msg error">{error}</p>;
   if (!vacancy) return <p className="status-msg">Загрузка…</p>;
 
-  const photo = imageUrl(vacancy.image_path);
   const isOwner = user?.id === vacancy.user_id;
 
   return (
@@ -55,7 +53,6 @@ export default function VacancyDetail() {
         ← Ко всем вакансиям
       </Link>
       <div className="order-detail">
-        {photo && <img src={photo} alt={vacancy.title} className="order-detail-photo" />}
         <div className="badges-row">
           <span className="badge">{vacancy.category}</span>
           <span className={`badge status-${vacancy.status}`}>

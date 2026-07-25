@@ -1,11 +1,8 @@
-const path = require('path');
-const fs = require('fs');
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const categoriesRepo = require('../categoriesRepo');
 const KNOWN_CITIES = require('../cities');
-const { upload, uploadsDir, processImage } = require('../upload');
 const { reportLimiter } = require('../rateLimit');
 
 const router = express.Router();
@@ -13,7 +10,7 @@ const router = express.Router();
 const ORDER_FIELDS = `
   orders.id, orders.title, orders.description, orders.category, orders.city, orders.address,
   orders.budget, orders.whatsapp_phone, orders.status, orders.views, orders.pinned,
-  orders.image_path, orders.created_at,
+  orders.created_at,
   orders.user_id, users.name AS owner_name
 `;
 
@@ -303,39 +300,10 @@ router.patch('/:id', requireAuth, (req, res) => {
   res.json({ order: updated });
 });
 
-function uploadPhoto(req, res, next) {
-  upload.single('photo')(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message || 'Ошибка загрузки файла' });
-    next();
-  });
-}
-
-// Загрузить/заменить фото заказа — только владелец
-router.post('/:id/photo', requireAuth, uploadPhoto, processImage, (req, res) => {
-  const order = loadOwnedOrder(req, res);
-  if (!order) {
-    if (req.file) fs.unlink(req.file.path, () => {});
-    return;
-  }
-  if (!req.file) return res.status(400).json({ error: 'Файл не получен' });
-
-  if (order.image_path) {
-    const oldPath = path.join(uploadsDir, path.basename(order.image_path));
-    fs.unlink(oldPath, () => {});
-  }
-
-  const imagePath = `/uploads/orders/${req.file.filename}`;
-  db.prepare('UPDATE orders SET image_path = ? WHERE id = ?').run(imagePath, order.id);
-  res.json({ image_path: imagePath });
-});
-
 router.delete('/:id', requireAuth, (req, res) => {
   const order = loadOwnedOrder(req, res);
   if (!order) return;
 
-  if (order.image_path) {
-    fs.unlink(path.join(uploadsDir, path.basename(order.image_path)), () => {});
-  }
   db.prepare('DELETE FROM orders WHERE id = ?').run(order.id);
   res.status(204).end();
 });

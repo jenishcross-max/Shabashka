@@ -14,7 +14,7 @@ export default function Navbar() {
     <header className="navbar">
       <Link to="/" className="brand">
         <span className="brand-mark">Ш</span>
-        Шабашка<span>.kg</span>
+        Шабашка
       </Link>
       <nav className="nav-links">
         <Link to="/orders">Все заказы</Link>

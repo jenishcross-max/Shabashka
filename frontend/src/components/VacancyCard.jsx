@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom';
 import { relativeDate } from '../formatDate';
-import { imageUrl } from '../imageUrl';
 import { employmentLabel } from '../employmentTypes';
 import FavoriteButton from './FavoriteButton';
 
@@ -12,11 +11,8 @@ export function formatSalary(min, max) {
 }
 
 export default function VacancyCard({ vacancy }) {
-  const photo = imageUrl(vacancy.image_path);
-
   return (
     <Link to={`/vacancies/${vacancy.id}`} className="order-card">
-      {photo && <div className="order-card-photo" style={{ backgroundImage: `url(${photo})` }} />}
       <div className="order-card-top">
         <div className="order-card-badges">
           <span className="badge">{vacancy.category}</span>

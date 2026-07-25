@@ -31,7 +31,7 @@ export default function Login() {
       <div className="card-header">
         <span className="brand">
           <span className="brand-mark">Ш</span>
-          Шабашка<span>.kg</span>
+          Шабашка
         </span>
       </div>
       <div className="card-body">
