@@ -64,6 +64,7 @@ export default function VacancyDetail() {
         <h1>{vacancy.title}</h1>
         <p className="meta">
           <span>💼 {employmentLabel(vacancy.employment_type)}</span>
+          <span>{vacancy.work_format === 'online' ? '🌐 Онлайн' : '📍 Офлайн'}</span>
           <span>
             📍 {vacancy.city}
             {vacancy.address ? `, ${vacancy.address}` : ''}

@@ -1,13 +1,20 @@
 const db = require('./db');
 
-async function listNames() {
+async function listNames({ format } = {}) {
+  if (format === 'online' || format === 'offline') {
+    const { rows } = await db.query(
+      'SELECT name FROM categories WHERE work_formats = $1 OR work_formats = $2 ORDER BY id ASC',
+      [format, 'both']
+    );
+    return rows.map((r) => r.name);
+  }
   const { rows } = await db.query('SELECT name FROM categories ORDER BY id ASC');
   return rows.map((r) => r.name);
 }
 
 async function listAll() {
   const { rows } = await db.query(
-    `SELECT c.id, c.name, c.created_at,
+    `SELECT c.id, c.name, c.work_formats, c.created_at,
             (SELECT COUNT(*) FROM orders WHERE orders.category = c.name)::int AS order_count
      FROM categories c
      ORDER BY c.id ASC`

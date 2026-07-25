@@ -18,7 +18,6 @@ export default function EditVacancy() {
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
-    api.categories().then(({ categories }) => setCategories(categories));
     api.employmentTypes().then(({ employmentTypes }) => setEmploymentTypes(employmentTypes));
     api
       .vacancy(id)
@@ -34,6 +33,7 @@ export default function EditVacancy() {
           employment_type: vacancy.employment_type,
           city: vacancy.city,
           address: vacancy.address || '',
+          work_format: vacancy.work_format || 'offline',
           schedule: vacancy.schedule || '',
           salary_min: vacancy.salary_min ?? '',
           salary_max: vacancy.salary_max ?? '',
@@ -43,6 +43,15 @@ export default function EditVacancy() {
       .catch(() => setNotFound(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    if (!form) return;
+    api.categories(form.work_format).then(({ categories }) => {
+      setCategories(categories);
+      setForm((f) => (categories.includes(f.category) ? f : { ...f, category: categories[0] || '' }));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form?.work_format]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -98,6 +107,37 @@ export default function EditVacancy() {
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
             />
           </label>
+          <div className="field">
+            <span className="label">Формат работы</span>
+            <div className="format-toggle">
+              <label className={`format-option${form.work_format === 'offline' ? ' active' : ''}`}>
+                <input
+                  type="radio"
+                  name="work_format"
+                  value="offline"
+                  checked={form.work_format === 'offline'}
+                  onChange={(e) => setForm((f) => ({ ...f, work_format: e.target.value }))}
+                />
+                📍 Офлайн
+              </label>
+              <label className={`format-option${form.work_format === 'online' ? ' active' : ''}`}>
+                <input
+                  type="radio"
+                  name="work_format"
+                  value="online"
+                  checked={form.work_format === 'online'}
+                  onChange={(e) => setForm((f) => ({ ...f, work_format: e.target.value }))}
+                />
+                🌐 Онлайн
+              </label>
+            </div>
+            <p className="format-hint">
+              <strong>Офлайн</strong> — обычная работа, где нужно физически присутствовать (в
+              мастерской, на объекте, у клиента). <strong>Онлайн</strong> — удалённая работа через
+              интернет, без необходимости куда-то ехать — например, консультации по видеосвязи или
+              работа за компьютером из дома.
+            </p>
+          </div>
           <div className="field-row">
             <label className="field">
               <span className="label">Категория</span>

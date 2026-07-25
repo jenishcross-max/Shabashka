@@ -44,9 +44,10 @@ CREATE TABLE IF NOT EXISTS reports (
 CREATE INDEX IF NOT EXISTS idx_reports_order ON reports(order_id);
 
 CREATE TABLE IF NOT EXISTS categories (
-  id         SERIAL PRIMARY KEY,
-  name       TEXT NOT NULL UNIQUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id            SERIAL PRIMARY KEY,
+  name          TEXT NOT NULL UNIQUE,
+  work_formats  TEXT NOT NULL DEFAULT 'both', -- online | offline | both
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS vacancies (
@@ -58,6 +59,7 @@ CREATE TABLE IF NOT EXISTS vacancies (
   employment_type TEXT NOT NULL, -- full_time | part_time | shift | gig | internship
   city            TEXT NOT NULL,
   address         TEXT,
+  work_format     TEXT NOT NULL DEFAULT 'offline', -- online | offline
   salary_min      INTEGER,
   salary_max      INTEGER,
   schedule        TEXT, -- например «Пн–Пт, 9:00–18:00»

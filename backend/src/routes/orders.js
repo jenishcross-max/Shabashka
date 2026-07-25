@@ -32,8 +32,8 @@ function toId(raw) {
 
 router.get(
   '/categories',
-  asyncHandler(async (_req, res) => {
-    res.json({ categories: await categoriesRepo.listNames() });
+  asyncHandler(async (req, res) => {
+    res.json({ categories: await categoriesRepo.listNames({ format: req.query.format }) });
   })
 );
 

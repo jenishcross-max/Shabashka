@@ -11,12 +11,14 @@ const EMPLOYMENT_VALUES = EMPLOYMENT_TYPES.map((t) => t.value);
 
 const VACANCY_FIELDS = `
   vacancies.id, vacancies.title, vacancies.description, vacancies.category,
-  vacancies.employment_type, vacancies.city, vacancies.address,
+  vacancies.employment_type, vacancies.city, vacancies.address, vacancies.work_format,
   vacancies.salary_min, vacancies.salary_max, vacancies.schedule,
   vacancies.whatsapp_phone, vacancies.status, vacancies.views, vacancies.pinned,
   vacancies.created_at,
   vacancies.user_id, users.name AS owner_name
 `;
+
+const WORK_FORMATS = ['online', 'offline'];
 
 const SORTS = {
   new: 'vacancies.pinned DESC, vacancies.created_at DESC',
@@ -155,6 +157,7 @@ async function validateVacancyFields(body, { partial }) {
     employment_type,
     city,
     address,
+    work_format,
     salary_min,
     salary_max,
     schedule,
@@ -188,6 +191,10 @@ async function validateVacancyFields(body, { partial }) {
     const trimmed = String(address || '').trim();
     if (trimmed.length > 200) errors.push('Адрес слишком длинный (макс. 200 символов)');
     else result.address = trimmed || null;
+  }
+  if (!partial || work_format !== undefined) {
+    if (!WORK_FORMATS.includes(work_format)) errors.push('Укажите формат работы — онлайн или офлайн');
+    else result.work_format = work_format;
   }
   if (!partial || schedule !== undefined) {
     const trimmed = String(schedule || '').trim();
@@ -225,8 +232,8 @@ router.post(
 
     const inserted = await db.query(
       `INSERT INTO vacancies
-        (user_id, title, description, category, employment_type, city, address, salary_min, salary_max, schedule, whatsapp_phone)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+        (user_id, title, description, category, employment_type, city, address, work_format, salary_min, salary_max, schedule, whatsapp_phone)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
       [
         req.user.id,
         result.title,
@@ -235,6 +242,7 @@ router.post(
         result.employment_type,
         result.city,
         result.address,
+        result.work_format,
         result.salary_min,
         result.salary_max,
         result.schedule,
@@ -298,6 +306,7 @@ router.patch(
       'employment_type',
       'city',
       'address',
+      'work_format',
       'salary_min',
       'salary_max',
       'schedule',

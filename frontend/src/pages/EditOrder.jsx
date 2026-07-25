@@ -17,7 +17,6 @@ export default function EditOrder() {
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
-    api.categories().then(({ categories }) => setCategories(categories));
     api
       .order(id)
       .then(({ order }) => {
@@ -39,6 +38,15 @@ export default function EditOrder() {
       .catch(() => setNotFound(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    if (!form) return;
+    api.categories(form.work_format).then(({ categories }) => {
+      setCategories(categories);
+      setForm((f) => (categories.includes(f.category) ? f : { ...f, category: categories[0] || '' }));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form?.work_format]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -86,6 +94,37 @@ export default function EditOrder() {
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
             />
           </label>
+          <div className="field">
+            <span className="label">Формат работы</span>
+            <div className="format-toggle">
+              <label className={`format-option${form.work_format === 'offline' ? ' active' : ''}`}>
+                <input
+                  type="radio"
+                  name="work_format"
+                  value="offline"
+                  checked={form.work_format === 'offline'}
+                  onChange={(e) => setForm((f) => ({ ...f, work_format: e.target.value }))}
+                />
+                📍 Офлайн
+              </label>
+              <label className={`format-option${form.work_format === 'online' ? ' active' : ''}`}>
+                <input
+                  type="radio"
+                  name="work_format"
+                  value="online"
+                  checked={form.work_format === 'online'}
+                  onChange={(e) => setForm((f) => ({ ...f, work_format: e.target.value }))}
+                />
+                🌐 Онлайн
+              </label>
+            </div>
+            <p className="format-hint">
+              <strong>Офлайн</strong> — обычная работа, где нужно физически присутствовать (в
+              мастерской, на объекте, у клиента). <strong>Онлайн</strong> — удалённая работа через
+              интернет, без необходимости куда-то ехать — например, консультации по видеосвязи или
+              работа за компьютером из дома.
+            </p>
+          </div>
           <div className="field-row">
             <label className="field">
               <span className="label">Категория</span>
@@ -119,35 +158,6 @@ export default function EditOrder() {
               onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
             />
           </label>
-          <div className="field">
-            <span className="label">Формат работы</span>
-            <div className="format-toggle">
-              <label className={`format-option${form.work_format === 'offline' ? ' active' : ''}`}>
-                <input
-                  type="radio"
-                  name="work_format"
-                  value="offline"
-                  checked={form.work_format === 'offline'}
-                  onChange={(e) => setForm((f) => ({ ...f, work_format: e.target.value }))}
-                />
-                📍 Офлайн
-              </label>
-              <label className={`format-option${form.work_format === 'online' ? ' active' : ''}`}>
-                <input
-                  type="radio"
-                  name="work_format"
-                  value="online"
-                  checked={form.work_format === 'online'}
-                  onChange={(e) => setForm((f) => ({ ...f, work_format: e.target.value }))}
-                />
-                🌐 Онлайн
-              </label>
-            </div>
-            <p className="format-hint">
-              <strong>Офлайн</strong> — нужно приехать или встретиться лично. <strong>Онлайн</strong> —
-              можно сделать удалённо, без личной встречи, например по видеосвязи или через интернет.
-            </p>
-          </div>
           <div className="field-row">
             <label className="field">
               <span className="label">Бюджет, сом (необязательно)</span>
