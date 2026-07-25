@@ -1,16 +1,17 @@
 services:
   - type: web
-    name: shabashka-kg
+    name: shabashka-backend
     runtime: node
     plan: free
-    buildCommand: npm run build
+    rootDir: backend
+    buildCommand: npm install
     startCommand: npm start
     envVars:
       - key: JWT_SECRET
         generateValue: true
       - key: NODE_VERSION
         value: 20
-    disk:
-      name: shabashka-data
-      mountPath: /opt/render/project/src/backend/data
-      sizeGB: 1
+      - key: DATABASE_URL
+        sync: false
+      - key: PUBLIC_URL
+        sync: false

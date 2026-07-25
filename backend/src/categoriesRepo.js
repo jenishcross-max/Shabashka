@@ -1,44 +1,44 @@
 const db = require('./db');
 
-function listNames() {
-  return db.prepare('SELECT name FROM categories ORDER BY id ASC').all().map((r) => r.name);
+async function listNames() {
+  const { rows } = await db.query('SELECT name FROM categories ORDER BY id ASC');
+  return rows.map((r) => r.name);
 }
 
-function listAll() {
-  return db
-    .prepare(
-      `SELECT categories.id, categories.name, categories.created_at,
-              (SELECT COUNT(*) FROM orders WHERE orders.category = categories.name) AS order_count
-       FROM categories
-       ORDER BY categories.id ASC`
-    )
-    .all();
+async function listAll() {
+  const { rows } = await db.query(
+    `SELECT c.id, c.name, c.created_at,
+            (SELECT COUNT(*) FROM orders WHERE orders.category = c.name)::int AS order_count
+     FROM categories c
+     ORDER BY c.id ASC`
+  );
+  return rows;
 }
 
-function add(name) {
+async function add(name) {
   const trimmed = String(name || '').trim();
   if (!trimmed) throw new Error('Укажите название категории');
   if (trimmed.length > 40) throw new Error('Название слишком длинное (макс. 40 символов)');
 
-  const existing = db.prepare('SELECT id FROM categories WHERE name = ?').get(trimmed);
-  if (existing) throw new Error('Такая категория уже есть');
+  const existing = await db.query('SELECT id FROM categories WHERE name = $1', [trimmed]);
+  if (existing.rows[0]) throw new Error('Такая категория уже есть');
 
-  const info = db.prepare('INSERT INTO categories (name) VALUES (?)').run(trimmed);
-  return { id: info.lastInsertRowid, name: trimmed };
+  const inserted = await db.query('INSERT INTO categories (name) VALUES ($1) RETURNING id', [trimmed]);
+  return { id: inserted.rows[0].id, name: trimmed };
 }
 
-function remove(id) {
-  const category = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
-  if (!category) throw new Error('Категория не найдена');
+async function remove(id) {
+  const category = await db.query('SELECT * FROM categories WHERE id = $1', [id]);
+  if (!category.rows[0]) throw new Error('Категория не найдена');
 
-  const ordersUsingIt = db
-    .prepare('SELECT COUNT(*) AS n FROM orders WHERE category = ?')
-    .get(category.name).n;
-  if (ordersUsingIt > 0) {
-    throw new Error(`Нельзя удалить: ею помечено ${ordersUsingIt} заказ(ов)`);
+  const count = await db.query('SELECT COUNT(*)::int AS n FROM orders WHERE category = $1', [
+    category.rows[0].name,
+  ]);
+  if (count.rows[0].n > 0) {
+    throw new Error(`Нельзя удалить: ею помечено ${count.rows[0].n} заказ(ов)`);
   }
 
-  db.prepare('DELETE FROM categories WHERE id = ?').run(id);
+  await db.query('DELETE FROM categories WHERE id = $1', [id]);
 }
 
 module.exports = { listNames, listAll, add, remove };

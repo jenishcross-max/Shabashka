@@ -1,0 +1,10 @@
+[build]
+  base = "frontend"
+  publish = "frontend/dist"
+  command = "npm install && npm run build"
+
+# SPA-роутинг: любой путь отдаём index.html, React Router разбирается сам.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

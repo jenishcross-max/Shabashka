@@ -1,47 +1,44 @@
 const path = require('path');
 const fs = require('fs');
-const Database = require('better-sqlite3');
+const { Pool } = require('pg');
 
-const dataDir = path.join(__dirname, '..', '..', 'data');
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-
-const dbPath = process.env.DB_PATH || path.join(dataDir, 'shabashka.db');
-const db = new Database(dbPath);
-
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-
-const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
-db.exec(schema);
-
-// Дев-миграция: старые базы без нужных колонок — пересоздаём таблицы под новую схему
-const usersColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
-const ordersColumns = db.prepare("PRAGMA table_info(orders)").all().map((c) => c.name);
-const reportsColumns = db.prepare("PRAGMA table_info(reports)").all().map((c) => c.name);
-const needsMigration =
-  !usersColumns.includes('email') ||
-  !usersColumns.includes('role') ||
-  !usersColumns.includes('is_blocked') ||
-  !ordersColumns.includes('views') ||
-  !ordersColumns.includes('pinned') ||
-  !reportsColumns.includes('resolved');
-
-if (needsMigration) {
-  db.exec('DROP TABLE IF EXISTS reports; DROP TABLE IF EXISTS orders; DROP TABLE IF EXISTS users;');
-  db.exec(schema);
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  console.error(
+    'DATABASE_URL не задан. Укажите строку подключения к Postgres (Neon/Supabase) в backend/.env'
+  );
 }
 
-// Аддитивная миграция: новые необязательные колонки добавляем на месте, без пересоздания таблиц
-if (!db.prepare("PRAGMA table_info(orders)").all().some((c) => c.name === 'address')) {
-  db.exec('ALTER TABLE orders ADD COLUMN address TEXT');
+const isLocal = /localhost|127\.0\.0\.1/.test(connectionString || '');
+
+const pool = new Pool({
+  connectionString,
+  ssl: isLocal ? false : { rejectUnauthorized: false },
+});
+
+let readyPromise = null;
+
+function init() {
+  if (!readyPromise) {
+    readyPromise = (async () => {
+      const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
+      await pool.query(schema);
+
+      // Первичное заполнение категорий — дальше список живёт в БД и правится через админку
+      const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM categories');
+      if (rows[0].n === 0) {
+        const defaultCategories = require('../defaultCategories');
+        for (const name of defaultCategories) {
+          await pool.query('INSERT INTO categories (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [name]);
+        }
+      }
+    })();
+  }
+  return readyPromise;
 }
 
-// Первичное заполнение категорий — дальше список живёт в БД и правится через админку
-const categoriesCount = db.prepare('SELECT COUNT(*) AS n FROM categories').get().n;
-if (categoriesCount === 0) {
-  const defaultCategories = require('../defaultCategories');
-  const insertCategory = db.prepare('INSERT OR IGNORE INTO categories (name) VALUES (?)');
-  for (const name of defaultCategories) insertCategory.run(name);
-}
-
-module.exports = db;
+module.exports = {
+  pool,
+  init,
+  query: (text, params) => pool.query(text, params),
+};

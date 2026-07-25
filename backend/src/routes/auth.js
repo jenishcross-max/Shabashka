@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { signToken, requireAuth } = require('../middleware/auth');
 const { authLimiter } = require('../rateLimit');
+const asyncHandler = require('../asyncHandler');
 
 const router = express.Router();
 
@@ -28,47 +29,58 @@ function toPublicUser(user) {
 }
 
 // Регистрация — только для заказчиков, которые будут размещать заказы
-router.post('/register', authLimiter, (req, res) => {
-  const { name, email, phone, password, city } = req.body || {};
+router.post(
+  '/register',
+  authLimiter,
+  asyncHandler(async (req, res) => {
+    const { name, email, phone, password, city } = req.body || {};
 
-  if (!name || !name.trim()) return res.status(400).json({ error: 'Укажите имя' });
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Укажите имя' });
 
-  const normalizedEmail = normalizeEmail(email);
-  if (!EMAIL_RE.test(normalizedEmail)) return res.status(400).json({ error: 'Укажите корректный email' });
+    const normalizedEmail = normalizeEmail(email);
+    if (!EMAIL_RE.test(normalizedEmail)) return res.status(400).json({ error: 'Укажите корректный email' });
 
-  if (!password || password.length < 6)
-    return res.status(400).json({ error: 'Пароль должен быть не короче 6 символов' });
+    if (!password || password.length < 6)
+      return res.status(400).json({ error: 'Пароль должен быть не короче 6 символов' });
 
-  const normalizedPhone = normalizePhone(phone);
-  if (normalizedPhone.length < 9)
-    return res.status(400).json({ error: 'Укажите корректный номер телефона (WhatsApp)' });
+    const normalizedPhone = normalizePhone(phone);
+    if (normalizedPhone.length < 9)
+      return res.status(400).json({ error: 'Укажите корректный номер телефона (WhatsApp)' });
 
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
-  if (existing) return res.status(409).json({ error: 'Пользователь с таким email уже зарегистрирован' });
+    const existing = await db.query('SELECT id FROM users WHERE email = $1', [normalizedEmail]);
+    if (existing.rows[0]) return res.status(409).json({ error: 'Пользователь с таким email уже зарегистрирован' });
 
-  const passwordHash = bcrypt.hashSync(password, 10);
-  const info = db
-    .prepare('INSERT INTO users (name, email, phone, password_hash, city) VALUES (?, ?, ?, ?, ?)')
-    .run(name.trim(), normalizedEmail, normalizedPhone, passwordHash, city ? city.trim() : null);
+    const passwordHash = bcrypt.hashSync(password, 10);
+    const inserted = await db.query(
+      'INSERT INTO users (name, email, phone, password_hash, city) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+      [name.trim(), normalizedEmail, normalizedPhone, passwordHash, city ? city.trim() : null]
+    );
 
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
-  const token = signToken(user);
-  res.status(201).json({ token, user: toPublicUser(user) });
-});
+    const { rows } = await db.query('SELECT * FROM users WHERE id = $1', [inserted.rows[0].id]);
+    const user = rows[0];
+    const token = signToken(user);
+    res.status(201).json({ token, user: toPublicUser(user) });
+  })
+);
 
-router.post('/login', authLimiter, (req, res) => {
-  const { email, password } = req.body || {};
-  const normalizedEmail = normalizeEmail(email);
+router.post(
+  '/login',
+  authLimiter,
+  asyncHandler(async (req, res) => {
+    const { email, password } = req.body || {};
+    const normalizedEmail = normalizeEmail(email);
 
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(normalizedEmail);
-  if (!user || !bcrypt.compareSync(password || '', user.password_hash)) {
-    return res.status(401).json({ error: 'Неверный email или пароль' });
-  }
-  if (user.is_blocked) return res.status(403).json({ error: 'Ваш аккаунт заблокирован' });
+    const { rows } = await db.query('SELECT * FROM users WHERE email = $1', [normalizedEmail]);
+    const user = rows[0];
+    if (!user || !bcrypt.compareSync(password || '', user.password_hash)) {
+      return res.status(401).json({ error: 'Неверный email или пароль' });
+    }
+    if (user.is_blocked) return res.status(403).json({ error: 'Ваш аккаунт заблокирован' });
 
-  const token = signToken(user);
-  res.json({ token, user: toPublicUser(user) });
-});
+    const token = signToken(user);
+    res.json({ token, user: toPublicUser(user) });
+  })
+);
 
 router.get('/me', requireAuth, (req, res) => {
   res.json({ user: toPublicUser(req.user) });

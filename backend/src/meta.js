@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('./db');
+const asyncHandler = require('./asyncHandler');
 
 const router = express.Router();
 
@@ -22,19 +23,22 @@ function baseUrl(req) {
 
 // Превью-карточка для мессенджеров/соцсетей (WhatsApp, Telegram и т.п.) —
 // им нужен статический HTML с og:-тегами, SPA они не рендерят.
-router.get('/orders/:id', (req, res, next) => {
-  const ua = req.headers['user-agent'] || '';
-  if (!BOT_UA_RE.test(ua)) return next();
+router.get(
+  '/orders/:id',
+  asyncHandler(async (req, res, next) => {
+    const ua = req.headers['user-agent'] || '';
+    if (!BOT_UA_RE.test(ua)) return next();
 
-  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
-  if (!order) return next();
+    const { rows } = await db.query('SELECT * FROM orders WHERE id = $1', [req.params.id]);
+    const order = rows[0];
+    if (!order) return next();
 
-  const url = `${baseUrl(req)}/orders/${order.id}`;
-  const title = `${order.title} — Шабашка`;
-  const description = `${order.category} · ${order.city}${
-    order.budget ? ` · ${order.budget} сом` : ''
-  } — ${order.description}`.slice(0, 200);
-  res.send(`<!doctype html>
+    const url = `${baseUrl(req)}/orders/${order.id}`;
+    const title = `${order.title} — Шабашка`;
+    const description = `${order.category} · ${order.city}${
+      order.budget ? ` · ${order.budget} сом` : ''
+    } — ${order.description}`.slice(0, 200);
+    res.send(`<!doctype html>
 <html lang="ru">
 <head>
 <meta charset="utf-8">
@@ -50,32 +54,38 @@ router.get('/orders/:id', (req, res, next) => {
 <a href="${escapeHtml(url)}">${escapeHtml(title)}</a>
 </body>
 </html>`);
-});
+  })
+);
 
 router.get('/robots.txt', (req, res) => {
   res.type('text/plain').send(`User-agent: *\nAllow: /\nSitemap: ${baseUrl(req)}/sitemap.xml\n`);
 });
 
-router.get('/sitemap.xml', (req, res) => {
-  const base = baseUrl(req);
-  const orders = db
-    .prepare("SELECT id, created_at FROM orders WHERE status = 'open' ORDER BY created_at DESC LIMIT 5000")
-    .all();
+router.get(
+  '/sitemap.xml',
+  asyncHandler(async (req, res) => {
+    const base = baseUrl(req);
+    const { rows: orders } = await db.query(
+      "SELECT id, created_at FROM orders WHERE status = 'open' ORDER BY created_at DESC LIMIT 5000"
+    );
 
-  const staticUrls = ['', '/login', '/register', '/favorites'];
-  const urls = [
-    ...staticUrls.map((p) => `<url><loc>${base}${p}</loc></url>`),
-    ...orders.map(
-      (o) =>
-        `<url><loc>${base}/orders/${o.id}</loc><lastmod>${o.created_at.slice(0, 10)}</lastmod></url>`
-    ),
-  ];
+    const staticUrls = ['', '/login', '/register', '/favorites'];
+    const urls = [
+      ...staticUrls.map((p) => `<url><loc>${base}${p}</loc></url>`),
+      ...orders.map(
+        (o) =>
+          `<url><loc>${base}/orders/${o.id}</loc><lastmod>${new Date(o.created_at)
+            .toISOString()
+            .slice(0, 10)}</lastmod></url>`
+      ),
+    ];
 
-  res.type('application/xml').send(
-    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join(
-      '\n'
-    )}\n</urlset>`
-  );
-});
+    res.type('application/xml').send(
+      `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join(
+        '\n'
+      )}\n</urlset>`
+    );
+  })
+);
 
 module.exports = router;

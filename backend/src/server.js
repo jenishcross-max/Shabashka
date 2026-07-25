@@ -5,6 +5,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 
+const db = require('./db');
 const authRoutes = require('./routes/auth');
 const orderRoutes = require('./routes/orders');
 const vacancyRoutes = require('./routes/vacancies');
@@ -30,7 +31,8 @@ app.use('/api/vacancies', vacancyRoutes);
 app.use('/api/admin', adminRoutes);
 app.use(metaRoutes);
 
-// В проде отдаём собранный React-фронтенд из того же сервера (Render/Railway free tier)
+// В проде фронтенд хостится отдельно на Netlify; это на случай локального
+// запуска в один процесс или альтернативного деплоя без Netlify.
 const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');
 app.use(express.static(frontendDist));
 app.get(/^\/(?!api).*/, (_req, res) => {
@@ -44,6 +46,14 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'Внутренняя ошибка сервера' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Шабашка КГ API запущен на порту ${PORT}`);
+async function bootstrap() {
+  await db.init();
+  app.listen(PORT, () => {
+    console.log(`Шабашка КГ API запущен на порту ${PORT}`);
+  });
+}
+
+bootstrap().catch((err) => {
+  console.error('Не удалось запустить сервер:', err);
+  process.exit(1);
 });

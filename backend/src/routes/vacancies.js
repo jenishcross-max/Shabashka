@@ -4,6 +4,7 @@ const { requireAuth } = require('../middleware/auth');
 const categoriesRepo = require('../categoriesRepo');
 const KNOWN_CITIES = require('../cities');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
+const asyncHandler = require('../asyncHandler');
 
 const router = express.Router();
 const EMPLOYMENT_VALUES = EMPLOYMENT_TYPES.map((t) => t.value);
@@ -24,106 +25,129 @@ const SORTS = {
   popular: 'vacancies.pinned DESC, vacancies.views DESC',
 };
 
+function toId(raw) {
+  const n = parseInt(raw, 10);
+  return Number.isInteger(n) ? n : null;
+}
+
 router.get('/employment-types', (_req, res) => {
   res.json({ employmentTypes: EMPLOYMENT_TYPES });
 });
 
-router.get('/category-counts', (_req, res) => {
-  const rows = db
-    .prepare("SELECT category, COUNT(*) AS count FROM vacancies WHERE status = 'open' GROUP BY category")
-    .all();
-  const counts = Object.fromEntries(rows.map((r) => [r.category, r.count]));
-  res.json({ counts });
-});
+router.get(
+  '/category-counts',
+  asyncHandler(async (_req, res) => {
+    const { rows } = await db.query(
+      "SELECT category, COUNT(*)::int AS count FROM vacancies WHERE status = 'open' GROUP BY category"
+    );
+    const counts = Object.fromEntries(rows.map((r) => [r.category, r.count]));
+    res.json({ counts });
+  })
+);
 
-router.get('/', (req, res) => {
-  const { city, q, sort, employmentType } = req.query;
-  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-  const limit = Math.min(48, Math.max(1, parseInt(req.query.limit, 10) || 12));
-  const offset = (page - 1) * limit;
+router.get(
+  '/',
+  asyncHandler(async (req, res) => {
+    const { city, q, sort, employmentType } = req.query;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(48, Math.max(1, parseInt(req.query.limit, 10) || 12));
+    const offset = (page - 1) * limit;
 
-  const knownCategories = categoriesRepo.listNames();
-  const categories = String(req.query.category || '')
-    .split(',')
-    .map((c) => c.trim())
-    .filter((c) => knownCategories.includes(c));
+    const knownCategories = await categoriesRepo.listNames();
+    const categories = String(req.query.category || '')
+      .split(',')
+      .map((c) => c.trim())
+      .filter((c) => knownCategories.includes(c));
 
-  const clauses = ["vacancies.status = 'open'"];
-  const params = {};
+    const clauses = ["vacancies.status = 'open'"];
+    const params = [];
+    const addParam = (value) => {
+      params.push(value);
+      return `$${params.length}`;
+    };
 
-  if (categories.length) {
-    const placeholders = categories.map((_, i) => `@cat${i}`).join(',');
-    categories.forEach((c, i) => {
-      params[`cat${i}`] = c;
-    });
-    clauses.push(`vacancies.category IN (${placeholders})`);
-  }
-  if (employmentType && EMPLOYMENT_VALUES.includes(employmentType)) {
-    clauses.push('vacancies.employment_type = @employmentType');
-    params.employmentType = employmentType;
-  }
-  if (city) {
-    clauses.push('vacancies.city LIKE @city');
-    params.city = `%${city}%`;
-  }
-  if (q) {
-    clauses.push('(vacancies.title LIKE @q OR vacancies.description LIKE @q)');
-    params.q = `%${q}%`;
-  }
+    if (categories.length) {
+      const placeholders = categories.map((c) => addParam(c)).join(',');
+      clauses.push(`vacancies.category IN (${placeholders})`);
+    }
+    if (employmentType && EMPLOYMENT_VALUES.includes(employmentType)) {
+      clauses.push(`vacancies.employment_type = ${addParam(employmentType)}`);
+    }
+    if (city) {
+      clauses.push(`vacancies.city ILIKE ${addParam(`%${city}%`)}`);
+    }
+    if (q) {
+      const p = addParam(`%${q}%`);
+      clauses.push(`(vacancies.title ILIKE ${p} OR vacancies.description ILIKE ${p})`);
+    }
 
-  const where = `WHERE ${clauses.join(' AND ')}`;
-  const orderBy = SORTS[sort] || SORTS.new;
+    const where = `WHERE ${clauses.join(' AND ')}`;
+    const orderBy = SORTS[sort] || SORTS.new;
 
-  const total = db.prepare(`SELECT COUNT(*) AS n FROM vacancies ${where}`).get(params).n;
-  const rows = db
-    .prepare(
+    const total = (await db.query(`SELECT COUNT(*)::int AS n FROM vacancies ${where}`, params)).rows[0].n;
+
+    const limitPlaceholder = addParam(limit);
+    const offsetPlaceholder = addParam(offset);
+    const { rows } = await db.query(
       `SELECT ${VACANCY_FIELDS} FROM vacancies JOIN users ON users.id = vacancies.user_id
-       ${where} ORDER BY ${orderBy} LIMIT @limit OFFSET @offset`
-    )
-    .all({ ...params, limit, offset });
+       ${where} ORDER BY ${orderBy} LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}`,
+      params
+    );
 
-  res.json({ vacancies: rows, total, page, pages: Math.max(1, Math.ceil(total / limit)) });
-});
+    res.json({ vacancies: rows, total, page, pages: Math.max(1, Math.ceil(total / limit)) });
+  })
+);
 
-router.get('/mine', requireAuth, (req, res) => {
-  const rows = db
-    .prepare(
-      `SELECT ${VACANCY_FIELDS} FROM vacancies JOIN users ON users.id = vacancies.user_id WHERE vacancies.user_id = ? ORDER BY vacancies.created_at DESC`
-    )
-    .all(req.user.id);
-  res.json({ vacancies: rows });
-});
+router.get(
+  '/mine',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { rows } = await db.query(
+      `SELECT ${VACANCY_FIELDS} FROM vacancies JOIN users ON users.id = vacancies.user_id WHERE vacancies.user_id = $1 ORDER BY vacancies.created_at DESC`,
+      [req.user.id]
+    );
+    res.json({ vacancies: rows });
+  })
+);
 
 // Пакетная выборка по id (для избранного) — не увеличивает счётчик просмотров
-router.get('/batch', (req, res) => {
-  const ids = String(req.query.ids || '')
-    .split(',')
-    .map((s) => parseInt(s, 10))
-    .filter(Number.isInteger)
-    .slice(0, 100);
-  if (ids.length === 0) return res.json({ vacancies: [] });
+router.get(
+  '/batch',
+  asyncHandler(async (req, res) => {
+    const ids = String(req.query.ids || '')
+      .split(',')
+      .map((s) => parseInt(s, 10))
+      .filter(Number.isInteger)
+      .slice(0, 100);
+    if (ids.length === 0) return res.json({ vacancies: [] });
 
-  const placeholders = ids.map(() => '?').join(',');
-  const rows = db
-    .prepare(
-      `SELECT ${VACANCY_FIELDS} FROM vacancies JOIN users ON users.id = vacancies.user_id WHERE vacancies.id IN (${placeholders})`
-    )
-    .all(...ids);
-  res.json({ vacancies: rows });
-});
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
+    const { rows } = await db.query(
+      `SELECT ${VACANCY_FIELDS} FROM vacancies JOIN users ON users.id = vacancies.user_id WHERE vacancies.id IN (${placeholders})`,
+      ids
+    );
+    res.json({ vacancies: rows });
+  })
+);
 
-router.get('/:id', (req, res) => {
-  db.prepare('UPDATE vacancies SET views = views + 1 WHERE id = ?').run(req.params.id);
-  const row = db
-    .prepare(
-      `SELECT ${VACANCY_FIELDS} FROM vacancies JOIN users ON users.id = vacancies.user_id WHERE vacancies.id = ?`
-    )
-    .get(req.params.id);
-  if (!row) return res.status(404).json({ error: 'Вакансия не найдена' });
-  res.json({ vacancy: row });
-});
+router.get(
+  '/:id',
+  asyncHandler(async (req, res) => {
+    const id = toId(req.params.id);
+    if (id === null) return res.status(404).json({ error: 'Вакансия не найдена' });
 
-function validateVacancyFields(body, { partial }) {
+    await db.query('UPDATE vacancies SET views = views + 1 WHERE id = $1', [id]);
+    const { rows } = await db.query(
+      `SELECT ${VACANCY_FIELDS} FROM vacancies JOIN users ON users.id = vacancies.user_id WHERE vacancies.id = $1`,
+      [id]
+    );
+    const row = rows[0];
+    if (!row) return res.status(404).json({ error: 'Вакансия не найдена' });
+    res.json({ vacancy: row });
+  })
+);
+
+async function validateVacancyFields(body, { partial }) {
   const {
     title,
     description,
@@ -148,7 +172,8 @@ function validateVacancyFields(body, { partial }) {
     else result.description = description.trim();
   }
   if (!partial || category !== undefined) {
-    if (!categoriesRepo.listNames().includes(category)) errors.push('Некорректная категория');
+    const knownCategories = await categoriesRepo.listNames();
+    if (!knownCategories.includes(category)) errors.push('Некорректная категория');
     else result.category = category;
   }
   if (!partial || employment_type !== undefined) {
@@ -184,52 +209,56 @@ function validateVacancyFields(body, { partial }) {
     if (salary_max && (!Number.isFinite(value) || value < 0)) errors.push('Некорректная максимальная зарплата');
     else result.salary_max = value;
   }
-  if (
-    result.salary_min != null &&
-    result.salary_max != null &&
-    result.salary_min > result.salary_max
-  ) {
+  if (result.salary_min != null && result.salary_max != null && result.salary_min > result.salary_max) {
     errors.push('Минимальная зарплата не может быть больше максимальной');
   }
 
   return { errors, result };
 }
 
-router.post('/', requireAuth, (req, res) => {
-  const { errors, result } = validateVacancyFields(req.body || {}, { partial: false });
-  if (errors.length) return res.status(400).json({ error: errors[0] });
+router.post(
+  '/',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { errors, result } = await validateVacancyFields(req.body || {}, { partial: false });
+    if (errors.length) return res.status(400).json({ error: errors[0] });
 
-  const info = db
-    .prepare(
+    const inserted = await db.query(
       `INSERT INTO vacancies
         (user_id, title, description, category, employment_type, city, address, salary_min, salary_max, schedule, whatsapp_phone)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
-      req.user.id,
-      result.title,
-      result.description,
-      result.category,
-      result.employment_type,
-      result.city,
-      result.address,
-      result.salary_min,
-      result.salary_max,
-      result.schedule,
-      result.whatsapp_phone
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+      [
+        req.user.id,
+        result.title,
+        result.description,
+        result.category,
+        result.employment_type,
+        result.city,
+        result.address,
+        result.salary_min,
+        result.salary_max,
+        result.schedule,
+        result.whatsapp_phone,
+      ]
     );
 
-  const vacancy = db
-    .prepare(
-      `SELECT ${VACANCY_FIELDS} FROM vacancies JOIN users ON users.id = vacancies.user_id WHERE vacancies.id = ?`
-    )
-    .get(info.lastInsertRowid);
+    const { rows } = await db.query(
+      `SELECT ${VACANCY_FIELDS} FROM vacancies JOIN users ON users.id = vacancies.user_id WHERE vacancies.id = $1`,
+      [inserted.rows[0].id]
+    );
 
-  res.status(201).json({ vacancy });
-});
+    res.status(201).json({ vacancy: rows[0] });
+  })
+);
 
-function loadOwnedVacancy(req, res) {
-  const vacancy = db.prepare('SELECT * FROM vacancies WHERE id = ?').get(req.params.id);
+async function loadOwnedVacancy(req, res) {
+  const id = toId(req.params.id);
+  if (id === null) {
+    res.status(404).json({ error: 'Вакансия не найдена' });
+    return null;
+  }
+  const { rows } = await db.query('SELECT * FROM vacancies WHERE id = $1', [id]);
+  const vacancy = rows[0];
   if (!vacancy) {
     res.status(404).json({ error: 'Вакансия не найдена' });
     return null;
@@ -241,64 +270,71 @@ function loadOwnedVacancy(req, res) {
   return vacancy;
 }
 
-router.patch('/:id', requireAuth, (req, res) => {
-  const vacancy = loadOwnedVacancy(req, res);
-  if (!vacancy) return;
+router.patch(
+  '/:id',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const vacancy = await loadOwnedVacancy(req, res);
+    if (!vacancy) return;
 
-  const updates = [];
-  const values = [];
+    const values = [];
+    const updates = [];
+    const addUpdate = (column, value) => {
+      values.push(value);
+      updates.push(`${column} = $${values.length}`);
+    };
 
-  if (req.body?.status !== undefined) {
-    if (!['open', 'closed'].includes(req.body.status)) {
-      return res.status(400).json({ error: 'Статус может быть только open или closed' });
+    if (req.body?.status !== undefined) {
+      if (!['open', 'closed'].includes(req.body.status)) {
+        return res.status(400).json({ error: 'Статус может быть только open или closed' });
+      }
+      addUpdate('status', req.body.status);
     }
-    updates.push('status = ?');
-    values.push(req.body.status);
-  }
 
-  const editableKeys = [
-    'title',
-    'description',
-    'category',
-    'employment_type',
-    'city',
-    'address',
-    'salary_min',
-    'salary_max',
-    'schedule',
-    'whatsapp_phone',
-  ];
-  const hasEditableField = editableKeys.some((k) => req.body?.[k] !== undefined);
-  if (hasEditableField) {
-    const { errors, result } = validateVacancyFields(req.body, { partial: true });
-    if (errors.length) return res.status(400).json({ error: errors[0] });
-    for (const key of editableKeys) {
-      if (result[key] !== undefined) {
-        updates.push(`${key} = ?`);
-        values.push(result[key]);
+    const editableKeys = [
+      'title',
+      'description',
+      'category',
+      'employment_type',
+      'city',
+      'address',
+      'salary_min',
+      'salary_max',
+      'schedule',
+      'whatsapp_phone',
+    ];
+    const hasEditableField = editableKeys.some((k) => req.body?.[k] !== undefined);
+    if (hasEditableField) {
+      const { errors, result } = await validateVacancyFields(req.body, { partial: true });
+      if (errors.length) return res.status(400).json({ error: errors[0] });
+      for (const key of editableKeys) {
+        if (result[key] !== undefined) addUpdate(key, result[key]);
       }
     }
-  }
 
-  if (updates.length === 0) return res.status(400).json({ error: 'Нечего обновлять' });
+    if (updates.length === 0) return res.status(400).json({ error: 'Нечего обновлять' });
 
-  values.push(vacancy.id);
-  db.prepare(`UPDATE vacancies SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    values.push(vacancy.id);
+    await db.query(`UPDATE vacancies SET ${updates.join(', ')} WHERE id = $${values.length}`, values);
 
-  const updated = db
-    .prepare(
-      `SELECT ${VACANCY_FIELDS} FROM vacancies JOIN users ON users.id = vacancies.user_id WHERE vacancies.id = ?`
-    )
-    .get(vacancy.id);
-  res.json({ vacancy: updated });
-});
+    const { rows } = await db.query(
+      `SELECT ${VACANCY_FIELDS} FROM vacancies JOIN users ON users.id = vacancies.user_id WHERE vacancies.id = $1`,
+      [vacancy.id]
+    );
+    res.json({ vacancy: rows[0] });
+  })
+);
 
-router.delete('/:id', requireAuth, (req, res) => {
-  const vacancy = loadOwnedVacancy(req, res);
-  if (!vacancy) return;
+router.delete(
+  '/:id',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const vacancy = await loadOwnedVacancy(req, res);
+    if (!vacancy) return;
 
-  db.prepare('DELETE FROM vacancies WHERE id = ?').run(vacancy.id);
-  res.status(204).end();
-});
+    await db.query('DELETE FROM vacancies WHERE id = $1', [vacancy.id]);
+    res.status(204).end();
+  })
+);
 
 module.exports = router;

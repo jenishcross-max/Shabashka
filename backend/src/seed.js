@@ -1,10 +1,9 @@
 // Заполняет базу реалистичными демо-данными для показа сайта.
 // Использование: node src/seed.js
-// ВНИМАНИЕ: полностью очищает users/orders/reports перед заполнением.
+// ВНИМАНИЕ: полностью очищает users/orders/vacancies/reports перед заполнением.
 const bcrypt = require('bcryptjs');
 const db = require('./db');
 const categoriesRepo = require('./categoriesRepo');
-const CATEGORIES = categoriesRepo.listNames();
 
 const CITIES = ['Бишкек', 'Ош', 'Кант', 'Токмок', 'Каракол', 'Джалал-Абад', 'Нарын', 'Талас', 'Баткен', 'Чолпон-Ата'];
 
@@ -140,116 +139,124 @@ function daysAgoTimestamp(days) {
   return d.toISOString().slice(0, 19).replace('T', ' ');
 }
 
-console.log('Очищаю старые данные…');
-db.exec('DELETE FROM reports; DELETE FROM orders; DELETE FROM vacancies; DELETE FROM users;');
-db.exec("DELETE FROM sqlite_sequence WHERE name IN ('users','orders','vacancies','reports')");
+async function main() {
+  await db.init();
+  const CATEGORIES = await categoriesRepo.listNames();
 
-const passwordHash = bcrypt.hashSync('password123', 10);
-const adminHash = bcrypt.hashSync('admin12345', 10);
+  console.log('Очищаю старые данные…');
+  await db.query('TRUNCATE TABLE reports, orders, vacancies, users RESTART IDENTITY CASCADE');
 
-console.log('Создаю администратора…');
-db.prepare(
-  `INSERT INTO users (name, email, phone, password_hash, city, role) VALUES (?, ?, ?, ?, ?, 'admin')`
-).run('Азамат Админов', 'admin@shabashka.kg', '+996700000000', adminHash, 'Бишкек');
+  const passwordHash = bcrypt.hashSync('password123', 10);
+  const adminHash = bcrypt.hashSync('admin12345', 10);
 
-console.log('Создаю пользователей…');
-const userIds = CUSTOMERS.map(([name, slug], i) => {
-  const city = pick(CITIES);
-  const phone = `+9967001${String(10000 + i * 137).slice(-5)}`;
-  const info = db
-    .prepare(`INSERT INTO users (name, email, phone, password_hash, city) VALUES (?, ?, ?, ?, ?)`)
-    .run(name, `${slug}@example.com`, phone, passwordHash, city);
-  return { id: info.lastInsertRowid, name, phone, city };
-});
+  console.log('Создаю администратора…');
+  await db.query(
+    `INSERT INTO users (name, email, phone, password_hash, city, role) VALUES ($1, $2, $3, $4, $5, 'admin')`,
+    ['Азамат Админов', 'admin@shabashka.kg', '+996700000000', adminHash, 'Бишкек']
+  );
 
-console.log('Создаю заказы…');
-const insertOrder = db.prepare(
-  `INSERT INTO orders (user_id, title, description, category, city, budget, whatsapp_phone, status, views, pinned, created_at)
-   VALUES (@user_id, @title, @description, @category, @city, @budget, @whatsapp_phone, @status, @views, @pinned, @created_at)`
-);
-
-const orderIds = [];
-let pinnedCount = 0;
-for (const category of CATEGORIES) {
-  const templates = TEMPLATES[category] || TEMPLATES['Другое'];
-  for (const t of templates) {
-    const owner = pick(userIds);
-    const city = Math.random() < 0.6 ? owner.city : pick(CITIES);
-    const daysAgo = randInt(0, 40);
-    const status = Math.random() < 0.82 ? 'open' : 'closed';
-    const pinned = status === 'open' && pinnedCount < 3 && Math.random() < 0.15 ? 1 : 0;
-    if (pinned) pinnedCount++;
-    const budget = t.budget ? randInt(t.budget[0], t.budget[1]) : null;
-
-    const info = insertOrder.run({
-      user_id: owner.id,
-      title: t.title,
-      description: t.description,
-      category,
-      city,
-      budget,
-      whatsapp_phone: owner.phone,
-      status,
-      views: randInt(0, 240),
-      pinned,
-      created_at: daysAgoTimestamp(daysAgo),
-    });
-    orderIds.push(info.lastInsertRowid);
+  console.log('Создаю пользователей…');
+  const userIds = [];
+  for (let i = 0; i < CUSTOMERS.length; i++) {
+    const [name, slug] = CUSTOMERS[i];
+    const city = pick(CITIES);
+    const phone = `+9967001${String(10000 + i * 137).slice(-5)}`;
+    const inserted = await db.query(
+      `INSERT INTO users (name, email, phone, password_hash, city) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [name, `${slug}@example.com`, phone, passwordHash, city]
+    );
+    userIds.push({ id: inserted.rows[0].id, name, phone, city });
   }
-}
 
-console.log('Создаю вакансии…');
-const insertVacancy = db.prepare(
-  `INSERT INTO vacancies
-    (user_id, title, description, category, employment_type, city, salary_min, salary_max, schedule, whatsapp_phone, status, views, pinned, created_at)
-   VALUES (@user_id, @title, @description, @category, @employment_type, @city, @salary_min, @salary_max, @schedule, @whatsapp_phone, @status, @views, @pinned, @created_at)`
-);
+  console.log('Создаю заказы…');
+  const orderIds = [];
+  let pinnedCount = 0;
+  for (const category of CATEGORIES) {
+    const templates = TEMPLATES[category] || TEMPLATES['Другое'];
+    for (const t of templates) {
+      const owner = pick(userIds);
+      const city = Math.random() < 0.6 ? owner.city : pick(CITIES);
+      const daysAgo = randInt(0, 40);
+      const status = Math.random() < 0.82 ? 'open' : 'closed';
+      const pinned = status === 'open' && pinnedCount < 3 && Math.random() < 0.15 ? 1 : 0;
+      if (pinned) pinnedCount++;
+      const budget = t.budget ? randInt(t.budget[0], t.budget[1]) : null;
 
-const vacancyIds = [];
-let vacancyPinnedCount = 0;
-for (const category of CATEGORIES) {
-  const templates = VACANCY_TEMPLATES[category] || VACANCY_TEMPLATES['Другое'];
-  for (const t of templates) {
-    const owner = pick(userIds);
-    const city = Math.random() < 0.6 ? owner.city : pick(CITIES);
-    const daysAgo = randInt(0, 30);
-    const status = Math.random() < 0.85 ? 'open' : 'closed';
-    const pinned = status === 'open' && vacancyPinnedCount < 2 && Math.random() < 0.2 ? 1 : 0;
-    if (pinned) vacancyPinnedCount++;
-
-    const info = insertVacancy.run({
-      user_id: owner.id,
-      title: t.title,
-      description: t.description,
-      category,
-      employment_type: pick(EMPLOYMENT_VALUES),
-      city,
-      salary_min: t.salary ? t.salary[0] : null,
-      salary_max: t.salary ? t.salary[1] : null,
-      schedule: pick(SCHEDULES),
-      whatsapp_phone: owner.phone,
-      status,
-      views: randInt(0, 180),
-      pinned,
-      created_at: daysAgoTimestamp(daysAgo),
-    });
-    vacancyIds.push(info.lastInsertRowid);
+      const inserted = await db.query(
+        `INSERT INTO orders (user_id, title, description, category, city, budget, whatsapp_phone, status, views, pinned, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+        [
+          owner.id,
+          t.title,
+          t.description,
+          category,
+          city,
+          budget,
+          owner.phone,
+          status,
+          randInt(0, 240),
+          pinned,
+          daysAgoTimestamp(daysAgo),
+        ]
+      );
+      orderIds.push(inserted.rows[0].id);
+    }
   }
-}
 
-console.log('Добавляю несколько жалоб…');
-const reasons = [
-  'Похоже на спам / нереальная цена',
-  'Заказчик не отвечает в WhatsApp',
-  'Дублирующее объявление',
-  'Подозрение на мошенничество',
-];
-const insertReport = db.prepare('INSERT INTO reports (order_id, reason, resolved) VALUES (?, ?, ?)');
-for (let i = 0; i < 4; i++) {
-  insertReport.run(pick(orderIds), pick(reasons), Math.random() < 0.5 ? 1 : 0);
-}
+  console.log('Создаю вакансии…');
+  const vacancyIds = [];
+  let vacancyPinnedCount = 0;
+  for (const category of CATEGORIES) {
+    const templates = VACANCY_TEMPLATES[category] || VACANCY_TEMPLATES['Другое'];
+    for (const t of templates) {
+      const owner = pick(userIds);
+      const city = Math.random() < 0.6 ? owner.city : pick(CITIES);
+      const daysAgo = randInt(0, 30);
+      const status = Math.random() < 0.85 ? 'open' : 'closed';
+      const pinned = status === 'open' && vacancyPinnedCount < 2 && Math.random() < 0.2 ? 1 : 0;
+      if (pinned) vacancyPinnedCount++;
 
-console.log(`
+      const inserted = await db.query(
+        `INSERT INTO vacancies
+          (user_id, title, description, category, employment_type, city, salary_min, salary_max, schedule, whatsapp_phone, status, views, pinned, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+        [
+          owner.id,
+          t.title,
+          t.description,
+          category,
+          pick(EMPLOYMENT_VALUES),
+          city,
+          t.salary ? t.salary[0] : null,
+          t.salary ? t.salary[1] : null,
+          pick(SCHEDULES),
+          owner.phone,
+          status,
+          randInt(0, 180),
+          pinned,
+          daysAgoTimestamp(daysAgo),
+        ]
+      );
+      vacancyIds.push(inserted.rows[0].id);
+    }
+  }
+
+  console.log('Добавляю несколько жалоб…');
+  const reasons = [
+    'Похоже на спам / нереальная цена',
+    'Заказчик не отвечает в WhatsApp',
+    'Дублирующее объявление',
+    'Подозрение на мошенничество',
+  ];
+  for (let i = 0; i < 4; i++) {
+    await db.query('INSERT INTO reports (order_id, reason, resolved) VALUES ($1, $2, $3)', [
+      pick(orderIds),
+      pick(reasons),
+      Math.random() < 0.5 ? 1 : 0,
+    ]);
+  }
+
+  console.log(`
 Готово!
   Пользователей: ${userIds.length + 1} (включая администратора)
   Заказов: ${orderIds.length}
@@ -257,3 +264,11 @@ console.log(`
   Пароль для всех демо-заказчиков: password123
   Админ: admin@shabashka.kg / admin12345
 `);
+
+  await db.pool.end();
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

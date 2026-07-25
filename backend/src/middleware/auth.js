@@ -7,7 +7,7 @@ function signToken(user) {
   return jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '30d' });
 }
 
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'Требуется авторизация' });
@@ -19,12 +19,17 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Недействительный или истёкший токен' });
   }
 
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(payload.id);
-  if (!user) return res.status(401).json({ error: 'Пользователь не найден' });
-  if (user.is_blocked) return res.status(403).json({ error: 'Ваш аккаунт заблокирован' });
+  try {
+    const { rows } = await db.query('SELECT * FROM users WHERE id = $1', [payload.id]);
+    const user = rows[0];
+    if (!user) return res.status(401).json({ error: 'Пользователь не найден' });
+    if (user.is_blocked) return res.status(403).json({ error: 'Ваш аккаунт заблокирован' });
 
-  req.user = user;
-  next();
+    req.user = user;
+    next();
+  } catch (err) {
+    next(err);
+  }
 }
 
 function requireAdmin(req, res, next) {
