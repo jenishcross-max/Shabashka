@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import Pagination from './Pagination';
+import { SkeletonTableRows } from './Skeleton';
 
 function UserDetailModal({ userId, token, onClose, onChanged }) {
   const [detail, setDetail] = useState(null);
@@ -204,57 +205,59 @@ export default function AdminUsers() {
         />
       </div>
       <div className="admin-card admin-table-card">
-        {loading ? (
-          <p className="status-msg">Загрузка…</p>
-        ) : (
-          <div className="admin-table">
-            <div className="admin-table-row admin-table-head admin-table-row-actions">
-              <span>Пользователь</span>
-              <span>Email</span>
-              <span>Город</span>
-              <span>Заказов</span>
-              <span>Статус</span>
-              <span></span>
-            </div>
-            {users.map((u) => (
-              <div
-                className="admin-table-row admin-table-row-actions"
-                key={u.id}
-                style={{ cursor: 'pointer' }}
-                onClick={() => setSelectedUserId(u.id)}
-              >
-                <span className="strong">
-                  {u.name}
-                  {u.role === 'admin' && <span className="admin-role-tag">admin</span>}
-                </span>
-                <span className="admin-subtitle">{u.email}</span>
-                <span className="admin-subtitle">{u.city || '—'}</span>
-                <span>{u.orders_count}</span>
-                <span>
-                  {u.is_blocked ? (
-                    <span className="badge status-closed">Заблокирован</span>
-                  ) : (
-                    <span className="badge status-open">Активен</span>
-                  )}
-                </span>
-                <span className="admin-row-buttons" onClick={(e) => e.stopPropagation()}>
-                  {u.role !== 'admin' && (
-                    <button
-                      className={u.is_blocked ? 'admin-btn-ghost' : 'admin-btn-danger'}
-                      onClick={() => toggleBlocked(u)}
-                    >
-                      {u.is_blocked ? 'Разблокировать' : 'Заблокировать'}
-                    </button>
-                  )}
-                  <button className="admin-btn-ghost" onClick={() => setSelectedUserId(u.id)}>
-                    Просмотр
-                  </button>
-                </span>
-              </div>
-            ))}
-            {users.length === 0 && <p className="status-msg">Ничего не найдено.</p>}
+        <div className="admin-table">
+          <div className="admin-table-row admin-table-head admin-table-row-actions">
+            <span>Пользователь</span>
+            <span>Email</span>
+            <span>Город</span>
+            <span>Заказов</span>
+            <span>Статус</span>
+            <span></span>
           </div>
-        )}
+          {loading ? (
+            <SkeletonTableRows columns={6} className="admin-table-row-actions" />
+          ) : (
+            <>
+              {users.map((u) => (
+                <div
+                  className="admin-table-row admin-table-row-actions"
+                  key={u.id}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setSelectedUserId(u.id)}
+                >
+                  <span className="strong">
+                    {u.name}
+                    {u.role === 'admin' && <span className="admin-role-tag">admin</span>}
+                  </span>
+                  <span className="admin-subtitle">{u.email}</span>
+                  <span className="admin-subtitle">{u.city || '—'}</span>
+                  <span>{u.orders_count}</span>
+                  <span>
+                    {u.is_blocked ? (
+                      <span className="badge status-closed">Заблокирован</span>
+                    ) : (
+                      <span className="badge status-open">Активен</span>
+                    )}
+                  </span>
+                  <span className="admin-row-buttons" onClick={(e) => e.stopPropagation()}>
+                    {u.role !== 'admin' && (
+                      <button
+                        className={u.is_blocked ? 'admin-btn-ghost' : 'admin-btn-danger'}
+                        onClick={() => toggleBlocked(u)}
+                      >
+                        {u.is_blocked ? 'Разблокировать' : 'Заблокировать'}
+                      </button>
+                    )}
+                    <button className="admin-btn-ghost" onClick={() => setSelectedUserId(u.id)}>
+                      Просмотр
+                    </button>
+                  </span>
+                </div>
+              ))}
+              {users.length === 0 && <p className="status-msg">Ничего не найдено.</p>}
+            </>
+          )}
+        </div>
       </div>
       <Pagination page={meta.page} pages={meta.pages} total={meta.total} onChange={setPage} />
 

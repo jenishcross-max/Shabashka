@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
+import { SkeletonComplaint } from './Skeleton';
 
 export default function AdminReports() {
   const { token } = useAuth();
@@ -26,7 +27,6 @@ export default function AdminReports() {
     load();
   }
 
-  if (loading) return <p className="status-msg">Загрузка…</p>;
   if (error) return <p className="status-msg error">{error}</p>;
 
   return (
@@ -37,9 +37,16 @@ export default function AdminReports() {
           {showAll ? 'Только открытые' : 'Показать все'}
         </button>
       </div>
-      {reports.length === 0 && <p className="status-msg">Жалоб нет.</p>}
+      {!loading && reports.length === 0 && <p className="status-msg">Жалоб нет.</p>}
       <div className="admin-complaints">
-        {reports.map((r) => (
+        {loading && (
+          <>
+            <SkeletonComplaint />
+            <SkeletonComplaint />
+            <SkeletonComplaint />
+          </>
+        )}
+        {!loading && reports.map((r) => (
           <div key={r.id} className={`admin-complaint${r.resolved ? ' resolved' : ''}`}>
             <div className="admin-complaint-text">
               <div className="strong">

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import { categoryIcon } from '../categoryIcons';
+import { SkeletonCategoryTile } from './Skeleton';
 
 export default function AdminCategories() {
   const { token } = useAuth();
@@ -47,8 +48,6 @@ export default function AdminCategories() {
     }
   }
 
-  if (loading) return <p className="status-msg">Загрузка…</p>;
-
   return (
     <div>
       <div className="admin-page-head">
@@ -73,7 +72,9 @@ export default function AdminCategories() {
 
       <div className="admin-card">
         <div className="category-grid">
-          {categories.map((c) => (
+          {loading &&
+            Array.from({ length: 6 }).map((_, i) => <SkeletonCategoryTile key={i} />)}
+          {!loading && categories.map((c) => (
             <div key={c.id} className="category-tile admin-category-tile">
               <span className="category-icon">{categoryIcon(c.name)}</span>
               <span>

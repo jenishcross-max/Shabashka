@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import { relativeDate } from '../formatDate';
 import Pagination from './Pagination';
+import { SkeletonTableRows } from './Skeleton';
 
 export default function AdminOrders() {
   const { token } = useAuth();
@@ -62,21 +63,22 @@ export default function AdminOrders() {
         />
       </div>
       <div className="admin-card admin-table-card">
-        {loading ? (
-          <p className="status-msg">Загрузка…</p>
-        ) : (
-          <div className="admin-table admin-table-orders">
-            <div className="admin-table-row admin-table-head admin-table-orders">
-              <span>ID</span>
-              <span>Заказ</span>
-              <span>Заказчик</span>
-              <span>Категория</span>
-              <span>Город</span>
-              <span>Просмотров</span>
-              <span>Статус</span>
-              <span></span>
-            </div>
-            {orders.map((o) => (
+        <div className="admin-table admin-table-orders">
+          <div className="admin-table-row admin-table-head admin-table-orders">
+            <span>ID</span>
+            <span>Заказ</span>
+            <span>Заказчик</span>
+            <span>Категория</span>
+            <span>Город</span>
+            <span>Просмотров</span>
+            <span>Статус</span>
+            <span></span>
+          </div>
+          {loading ? (
+            <SkeletonTableRows columns={8} className="admin-table-orders" />
+          ) : (
+            <>
+              {orders.map((o) => (
               <div className="admin-table-row admin-table-orders" key={o.id}>
                 <span className="admin-subtitle">#{o.id}</span>
                 <span>
@@ -102,10 +104,11 @@ export default function AdminOrders() {
                   </button>
                 </span>
               </div>
-            ))}
-            {orders.length === 0 && <p className="status-msg">Ничего не найдено.</p>}
-          </div>
-        )}
+              ))}
+              {orders.length === 0 && <p className="status-msg">Ничего не найдено.</p>}
+            </>
+          )}
+        </div>
       </div>
       <Pagination page={meta.page} pages={meta.pages} total={meta.total} onChange={setPage} />
     </div>

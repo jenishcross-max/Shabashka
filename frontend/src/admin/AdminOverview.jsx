@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
+import { SkeletonBox, SkeletonStatCards, SkeletonTableRows, SkeletonComplaint } from './Skeleton';
 
 function StatusBadge({ blocked }) {
   return blocked ? (
@@ -36,7 +37,82 @@ export default function AdminOverview() {
   }
 
   if (error) return <p className="status-msg error">{error}</p>;
-  if (!stats) return <p className="status-msg">Загрузка…</p>;
+
+  if (!stats) {
+    return (
+      <div>
+        <div className="admin-page-head">
+          <div>
+            <h1>Панель управления</h1>
+            <p className="admin-subtitle">Обзор всей платформы · обновлено сейчас</p>
+          </div>
+        </div>
+
+        <div className="admin-stat-grid">
+          <SkeletonStatCards count={5} />
+        </div>
+
+        <div className="admin-split">
+          <div className="admin-card">
+            <div className="admin-card-head">
+              <h3>Новые заказы по неделям</h3>
+            </div>
+            <div className="admin-chart">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div className="admin-chart-col" key={i}>
+                  <span className="skeleton-box" style={{ display: 'block', height: `${30 + ((i * 17) % 60)}%` }} />
+                  <span>Н{i + 1}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="admin-card">
+            <div className="admin-card-head">
+              <h3>Топ категорий</h3>
+            </div>
+            <div className="admin-cat-list">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="admin-cat-row">
+                  <div className="admin-cat-row-top">
+                    <SkeletonBox width="40%" height={13} />
+                    <SkeletonBox width={24} height={13} />
+                  </div>
+                  <SkeletonBox height={8} style={{ borderRadius: 100 }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="admin-card admin-table-card">
+          <div className="admin-card-head">
+            <h3>Последние пользователи</h3>
+            <Link to="/admin/users">Все пользователи →</Link>
+          </div>
+          <div className="admin-table">
+            <div className="admin-table-row admin-table-head">
+              <span>Пользователь</span>
+              <span>Email</span>
+              <span>Город</span>
+              <span>Заказов</span>
+              <span>Статус</span>
+            </div>
+            <SkeletonTableRows columns={5} rows={4} />
+          </div>
+        </div>
+
+        <div className="admin-card">
+          <div className="admin-card-head">
+            <h3>Жалобы на модерации</h3>
+          </div>
+          <div className="admin-complaints">
+            <SkeletonComplaint />
+            <SkeletonComplaint />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const maxWeek = Math.max(1, ...stats.weekly.map((w) => w.count));
   const maxCategory = Math.max(1, ...stats.topCategories.map((c) => c.count));
