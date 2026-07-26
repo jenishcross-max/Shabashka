@@ -37,8 +37,8 @@ export default function Register() {
       <div className="card-body">
         <h1>Регистрация заказчика</h1>
         <p className="subtitle">
-          Аккаунт нужен, только чтобы размещать заказы. Исполнителям регистрация не нужна — они
-          отвечают через WhatsApp напрямую.
+          Аккаунт нужен, только чтобы размещать заказы. Исполнителям регистрация не нужна для
+          отклика в WhatsApp — а для сообщений на сайте достаточно войти в свой аккаунт.
         </p>
         <form onSubmit={handleSubmit}>
           <label className="field">

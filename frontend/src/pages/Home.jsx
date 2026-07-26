@@ -69,7 +69,8 @@ export default function Home() {
         <h1>Шабашка в Кыргызстане</h1>
         <p>
           Найдите подработку или мастера рядом с вами. Заказчики размещают задачи, исполнители
-          пишут напрямую в WhatsApp. Никакой регистрации, чтобы откликнуться.
+          пишут в WhatsApp или в сообщениях на сайте. Регистрация не нужна, чтобы откликнуться в
+          WhatsApp.
         </p>
         <form className="search-bar" onSubmit={submitSearch}>
           <input
@@ -230,7 +231,7 @@ export default function Home() {
           <div className="how-step">
             <div className="how-step-num">2</div>
             <h3>Исполнитель находит вас</h3>
-            <p>Мастера видят заказ и сами пишут вам в WhatsApp. Регистрация не нужна.</p>
+            <p>Мастера видят заказ и пишут вам в WhatsApp или в сообщениях на сайте.</p>
           </div>
           <div className="how-step">
             <div className="how-step-num">3</div>
@@ -242,7 +243,7 @@ export default function Home() {
 
       <section className="cta-banner">
         <h2>Ищете подработку?</h2>
-        <p>Смотрите свежие заказы и пишите заказчикам напрямую в WhatsApp — без регистрации.</p>
+        <p>Смотрите свежие заказы и пишите заказчикам в WhatsApp или в сообщениях на сайте.</p>
         <Link to="/orders">Найти работу →</Link>
       </section>
     </div>
