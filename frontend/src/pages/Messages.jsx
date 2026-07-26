@@ -26,8 +26,8 @@ export default function Messages() {
       <h1>Сообщения</h1>
       {conversations.length === 0 ? (
         <p className="status-msg">
-          Пока нет переписок. Откликнитесь на <Link to="/vacancies">вакансию</Link>, чтобы написать
-          работодателю.
+          Пока нет переписок. Откликнитесь на <Link to="/orders">заказ</Link> или{' '}
+          <Link to="/vacancies">вакансию</Link>, чтобы написать автору объявления.
         </p>
       ) : (
         <div className="conversation-list">
@@ -39,8 +39,8 @@ export default function Messages() {
                   <span className="conversation-date">{relativeDate(c.last_message_at)}</span>
                 </div>
                 <div className="conversation-vacancy">
-                  {c.my_role === 'seeker' ? 'Вакансия: ' : 'Отклик на: '}
-                  {c.vacancy_title}
+                  {c.listing_type === 'order' ? 'Заказ: ' : 'Вакансия: '}
+                  {c.listing_title}
                 </div>
                 <div className="conversation-preview">{c.last_message}</div>
               </div>

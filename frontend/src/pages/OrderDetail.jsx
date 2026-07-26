@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { relativeDate } from '../formatDate';
 import { useAuth } from '../context/AuthContext';
@@ -14,12 +14,16 @@ function waLink(phone, title) {
 
 export default function OrderDetail() {
   const { id } = useParams();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
+  const navigate = useNavigate();
   const [order, setOrder] = useState(null);
   const [similar, setSimilar] = useState([]);
   const [error, setError] = useState('');
   const [shareMsg, setShareMsg] = useState('');
   const [reportMsg, setReportMsg] = useState('');
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
 
   useEffect(() => {
     api
@@ -53,6 +57,21 @@ export default function OrderDetail() {
     await api.reportOrder(order.id, reason);
     setReportMsg('Спасибо, жалоба отправлена на проверку');
     setTimeout(() => setReportMsg(''), 3000);
+  }
+
+  async function handleSendMessage(e) {
+    e.preventDefault();
+    if (!draft.trim() || sending) return;
+    setSendError('');
+    setSending(true);
+    try {
+      const { conversation } = await api.startOrderConversation(order.id, draft, token);
+      navigate(`/messages/${conversation.id}`);
+    } catch (err) {
+      setSendError(err.message);
+    } finally {
+      setSending(false);
+    }
   }
 
   if (error) return <p className="status-msg error">{error}</p>;
@@ -96,14 +115,48 @@ export default function OrderDetail() {
         {order.status === 'closed' ? (
           <p className="status-msg">Этот заказ уже закрыт заказчиком.</p>
         ) : (
-          <a
-            className="whatsapp-btn"
-            href={waLink(order.whatsapp_phone, order.title)}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            💬 Написать в WhatsApp
-          </a>
+          <>
+            {order.whatsapp_phone && (
+              <a
+                className="whatsapp-btn"
+                href={waLink(order.whatsapp_phone, order.title)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                💬 Написать в WhatsApp
+              </a>
+            )}
+
+            {!isOwner && (
+              <div className="apply-box">
+                <h3>Или напишите прямо здесь</h3>
+                {user ? (
+                  <form onSubmit={handleSendMessage}>
+                    <textarea
+                      rows={3}
+                      maxLength={2000}
+                      placeholder="Расскажите коротко, чем можете помочь — заказчик ответит в этой переписке."
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                    />
+                    {sendError && <p className="status-msg error">{sendError}</p>}
+                    <button className="submit-btn" type="submit" disabled={sending || !draft.trim()}>
+                      {sending ? 'Отправляем…' : 'Отправить сообщение'}
+                    </button>
+                  </form>
+                ) : (
+                  <p className="apply-login-hint">
+                    <Link to="/login" state={{ from: { pathname: `/orders/${order.id}` } }}>
+                      Войдите
+                    </Link>{' '}
+                    или <Link to="/register">зарегистрируйтесь</Link>, чтобы переписываться с
+                    заказчиком на сайте.
+                    {order.whatsapp_phone ? ' Написать в WhatsApp можно и без аккаунта.' : ''}
+                  </p>
+                )}
+              </div>
+            )}
+          </>
         )}
 
         <div className="secondary-actions">
@@ -121,7 +174,11 @@ export default function OrderDetail() {
           )}
         </div>
 
-        <p className="hint">Отклик не требует регистрации — просто напишите заказчику напрямую.</p>
+        <p className="hint">
+          {order.whatsapp_phone
+            ? 'В WhatsApp можно написать без регистрации. Переписка на сайте — для тех, кто вошёл в аккаунт.'
+            : 'Заказчик не указал WhatsApp — написать можно только через переписку на сайте, для этого нужен аккаунт.'}
+        </p>
       </div>
 
       {similar.length > 0 && (

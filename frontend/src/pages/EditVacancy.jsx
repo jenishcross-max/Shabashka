@@ -14,6 +14,7 @@ export default function EditVacancy() {
   const [employmentTypes, setEmploymentTypes] = useState([]);
   const [experienceLevels, setExperienceLevels] = useState([]);
   const [form, setForm] = useState(null);
+  const [showPhone, setShowPhone] = useState(true);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [notFound, setNotFound] = useState(false);
@@ -28,6 +29,7 @@ export default function EditVacancy() {
           setNotFound(true);
           return;
         }
+        setShowPhone(!!vacancy.whatsapp_phone);
         setForm({
           title: vacancy.title,
           description: vacancy.description,
@@ -42,7 +44,7 @@ export default function EditVacancy() {
           schedule: vacancy.schedule || '',
           salary_min: vacancy.salary_min ?? '',
           salary_max: vacancy.salary_max ?? '',
-          whatsapp_phone: vacancy.whatsapp_phone,
+          whatsapp_phone: vacancy.whatsapp_phone || '',
         });
       })
       .catch(() => setNotFound(true));
@@ -69,6 +71,7 @@ export default function EditVacancy() {
           ...form,
           salary_min: form.salary_min ? Number(form.salary_min) : null,
           salary_max: form.salary_max ? Number(form.salary_max) : null,
+          whatsapp_phone: showPhone ? form.whatsapp_phone : '',
         },
         token
       );
@@ -249,15 +252,26 @@ export default function EditVacancy() {
               onChange={(e) => setForm((f) => ({ ...f, schedule: e.target.value }))}
             />
           </label>
-          <label className="field">
-            <span className="label">WhatsApp для связи</span>
-            <input
-              type="tel"
-              required
-              value={form.whatsapp_phone}
-              onChange={(e) => setForm((f) => ({ ...f, whatsapp_phone: e.target.value }))}
-            />
-          </label>
+          <div className="field">
+            <label className="filter-checkbox">
+              <input type="checkbox" checked={showPhone} onChange={(e) => setShowPhone(e.target.checked)} />
+              Указать номер WhatsApp для связи
+            </label>
+            {showPhone ? (
+              <input
+                type="tel"
+                required
+                placeholder="+996 700 123 456"
+                value={form.whatsapp_phone}
+                onChange={(e) => setForm((f) => ({ ...f, whatsapp_phone: e.target.value }))}
+              />
+            ) : (
+              <p className="format-hint">
+                Без номера с вами можно будет связаться только через переписку на сайте — для этого
+                соискателю нужно войти в аккаунт.
+              </p>
+            )}
+          </div>
           {error && <p className="status-msg error">{error}</p>}
           <button className="submit-btn" type="submit" disabled={submitting}>
             {submitting ? 'Сохраняем…' : 'Сохранить изменения'}

@@ -219,7 +219,8 @@ async function validateVacancyFields(body, { partial }) {
   }
   if (!partial || whatsapp_phone !== undefined) {
     const phone = String(whatsapp_phone || '').replace(/[^\d+]/g, '');
-    if (phone.length < 9) errors.push('Укажите корректный номер WhatsApp');
+    if (!phone) result.whatsapp_phone = null; // номер необязателен — можно только через сайт
+    else if (phone.length < 9) errors.push('Укажите корректный номер WhatsApp или оставьте поле пустым');
     else result.whatsapp_phone = phone;
   }
   if (!partial || salary_min !== undefined) {

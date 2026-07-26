@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS orders (
   address        TEXT, -- примерный адрес/район — без точного адреса и подъезда
   work_format    TEXT NOT NULL DEFAULT 'offline', -- online | offline
   budget         INTEGER,
-  whatsapp_phone TEXT NOT NULL,
+  whatsapp_phone TEXT, -- необязателен: можно вести переписку только на сайте
   status         TEXT NOT NULL DEFAULT 'open', -- open | closed
   views          INTEGER NOT NULL DEFAULT 0,
   pinned         INTEGER NOT NULL DEFAULT 0,
@@ -66,27 +66,33 @@ CREATE TABLE IF NOT EXISTS vacancies (
   salary_min      INTEGER,
   salary_max      INTEGER,
   schedule        TEXT, -- например «Пн–Пт, 9:00–18:00»
-  whatsapp_phone  TEXT NOT NULL,
+  whatsapp_phone  TEXT, -- необязателен: можно вести переписку только на сайте
   status          TEXT NOT NULL DEFAULT 'open', -- open | closed
   views           INTEGER NOT NULL DEFAULT 0,
   pinned          INTEGER NOT NULL DEFAULT 0,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Переписка соискателя с работодателем по конкретной вакансии.
--- Одна ветка на пару (вакансия, соискатель) — повторное «Написать» открывает её же.
+-- Переписка по объявлению (заказу или вакансии) между тем, кто его разместил,
+-- и тем, кто откликается. listing_type/listing_id — полиморфная ссылка (на
+-- orders или vacancies), поэтому здесь нет FK на конкретную таблицу — целостность
+-- проверяется в коде роута. Одна ветка на пару (объявление, автор отклика).
 CREATE TABLE IF NOT EXISTS conversations (
   id              SERIAL PRIMARY KEY,
-  vacancy_id      INTEGER NOT NULL REFERENCES vacancies(id) ON DELETE CASCADE,
-  seeker_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  employer_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  listing_type    TEXT NOT NULL, -- order | vacancy
+  listing_id      INTEGER NOT NULL,
+  seeker_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, -- автор отклика
+  employer_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, -- автор объявления
   last_message_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (vacancy_id, seeker_id)
+  UNIQUE (listing_type, listing_id, seeker_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_conversations_seeker ON conversations(seeker_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_employer ON conversations(employer_id);
+-- idx_conversations_listing создаётся в db/index.js после миграции — на уже
+-- развёрнутых базах колонки listing_type/listing_id появляются только там,
+-- а этот файл выполняется целиком до миграции.
 
 CREATE TABLE IF NOT EXISTS messages (
   id              SERIAL PRIMARY KEY,

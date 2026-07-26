@@ -1608,6 +1608,9 @@ a:hover {
   height: 17px;
   accent-color: var(--red);
 }
+.field .filter-checkbox {
+  margin-bottom: 8px;
+}
 .filter-count {
   color: var(--muted-light);
   margin-left: auto;

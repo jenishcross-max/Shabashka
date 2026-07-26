@@ -8,6 +8,7 @@ const router = express.Router();
 router.use(requireAuth);
 
 const MAX_BODY = 2000;
+const LISTING_TABLES = { order: 'orders', vacancy: 'vacancies' };
 
 function toId(raw) {
   const n = parseInt(raw, 10);
@@ -21,16 +22,20 @@ function validateBody(raw) {
   return { body };
 }
 
-// Ветка вместе с данными вакансии и именем собеседника — с проверкой,
-// что текущий пользователь действительно её участник.
+// Ветка вместе с данными объявления и именем собеседника — с проверкой,
+// что текущий пользователь действительно её участник. listing_type определяет,
+// из какой таблицы (orders/vacancies) подтягивать заголовок и статус —
+// у обеих ровно одна из них совпадёт по listing_id, вторая даст NULL.
 async function loadParticipantConversation(id, userId) {
   const { rows } = await db.query(
-    `SELECT c.id, c.vacancy_id, c.seeker_id, c.employer_id, c.created_at,
-            v.title AS vacancy_title, v.status AS vacancy_status,
+    `SELECT c.id, c.listing_type, c.listing_id, c.seeker_id, c.employer_id, c.created_at,
+            COALESCE(o.title, v.title) AS listing_title,
+            COALESCE(o.status, v.status) AS listing_status,
             seeker.name AS seeker_name, seeker.phone AS seeker_phone,
             employer.name AS employer_name, employer.phone AS employer_phone
      FROM conversations c
-     JOIN vacancies v ON v.id = c.vacancy_id
+     LEFT JOIN orders o ON c.listing_type = 'order' AND o.id = c.listing_id
+     LEFT JOIN vacancies v ON c.listing_type = 'vacancy' AND v.id = c.listing_id
      JOIN users seeker ON seeker.id = c.seeker_id
      JOIN users employer ON employer.id = c.employer_id
      WHERE c.id = $1`,
@@ -42,52 +47,62 @@ async function loadParticipantConversation(id, userId) {
   return conversation;
 }
 
-// Собеседник и роль — то, что нужно фронтенду для отображения ветки
+// Собеседник и роль — то, что нужно фронтенду для отображения ветки.
+// my_role: 'poster' — я разместил объявление, 'responder' — я откликнулся.
 function shapeConversation(c, userId) {
   const iAmSeeker = c.seeker_id === userId;
   return {
     id: c.id,
-    vacancy_id: c.vacancy_id,
-    vacancy_title: c.vacancy_title,
-    vacancy_status: c.vacancy_status,
+    listing_type: c.listing_type,
+    listing_id: c.listing_id,
+    listing_title: c.listing_title,
+    listing_status: c.listing_status,
     created_at: c.created_at,
-    my_role: iAmSeeker ? 'seeker' : 'employer',
+    my_role: iAmSeeker ? 'responder' : 'poster',
     other_name: iAmSeeker ? c.employer_name : c.seeker_name,
     other_phone: iAmSeeker ? c.employer_phone : c.seeker_phone,
   };
 }
 
-// Начать переписку по вакансии (или получить уже существующую) и сразу отправить сообщение
+// Начать переписку по заказу или вакансии (или получить уже существующую) и сразу отправить сообщение
 router.post(
   '/',
   messageLimiter,
   asyncHandler(async (req, res) => {
+    const orderId = toId(req.body?.orderId);
     const vacancyId = toId(req.body?.vacancyId);
-    if (vacancyId === null) return res.status(400).json({ error: 'Не указана вакансия' });
+    if ((orderId === null) === (vacancyId === null)) {
+      return res.status(400).json({ error: 'Укажите ровно одно объявление — заказ или вакансию' });
+    }
+    const listingType = orderId !== null ? 'order' : 'vacancy';
+    const listingId = orderId !== null ? orderId : vacancyId;
 
     const { body, error } = validateBody(req.body?.message);
     if (error) return res.status(400).json({ error });
 
-    const { rows: vacancyRows } = await db.query('SELECT id, user_id, status FROM vacancies WHERE id = $1', [
-      vacancyId,
-    ]);
-    const vacancy = vacancyRows[0];
-    if (!vacancy) return res.status(404).json({ error: 'Вакансия не найдена' });
-    if (vacancy.user_id === req.user.id) {
-      return res.status(400).json({ error: 'Это ваша вакансия — написать самому себе нельзя' });
+    const { rows: listingRows } = await db.query(
+      `SELECT id, user_id, status FROM ${LISTING_TABLES[listingType]} WHERE id = $1`,
+      [listingId]
+    );
+    const listing = listingRows[0];
+    const notFoundMsg = listingType === 'order' ? 'Заказ не найден' : 'Вакансия не найдена';
+    if (!listing) return res.status(404).json({ error: notFoundMsg });
+    if (listing.user_id === req.user.id) {
+      return res.status(400).json({ error: 'Это ваше объявление — написать самому себе нельзя' });
     }
-    if (vacancy.status !== 'open') {
-      return res.status(400).json({ error: 'Вакансия закрыта, откликнуться уже нельзя' });
+    if (listing.status !== 'open') {
+      const closedMsg = listingType === 'order' ? 'Заказ закрыт, написать уже нельзя' : 'Вакансия закрыта, откликнуться уже нельзя';
+      return res.status(400).json({ error: closedMsg });
     }
 
     // ON CONFLICT DO UPDATE (а не DO NOTHING) — чтобы RETURNING отдал строку
     // и при повторном обращении, когда ветка уже существует.
     const { rows: convRows } = await db.query(
-      `INSERT INTO conversations (vacancy_id, seeker_id, employer_id)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (vacancy_id, seeker_id) DO UPDATE SET last_message_at = NOW()
+      `INSERT INTO conversations (listing_type, listing_id, seeker_id, employer_id)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (listing_type, listing_id, seeker_id) DO UPDATE SET last_message_at = NOW()
        RETURNING id`,
-      [vacancyId, req.user.id, vacancy.user_id]
+      [listingType, listingId, req.user.id, listing.user_id]
     );
     const conversationId = convRows[0].id;
 
@@ -120,20 +135,22 @@ router.get(
   })
 );
 
-// Все мои переписки — и там, где я откликался, и там, где я работодатель
+// Все мои переписки — и там, где я откликался, и там, где я разместил объявление
 router.get(
   '/',
   asyncHandler(async (req, res) => {
     const { rows } = await db.query(
-      `SELECT c.id, c.vacancy_id, c.seeker_id, c.employer_id, c.last_message_at,
-              v.title AS vacancy_title, v.status AS vacancy_status,
+      `SELECT c.id, c.listing_type, c.listing_id, c.seeker_id, c.employer_id, c.last_message_at,
+              COALESCE(o.title, v.title) AS listing_title,
+              COALESCE(o.status, v.status) AS listing_status,
               seeker.name AS seeker_name, employer.name AS employer_name,
               (SELECT m.body FROM messages m WHERE m.conversation_id = c.id
                 ORDER BY m.id DESC LIMIT 1) AS last_message,
               (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id
                 AND m.sender_id <> $1 AND m.read_at IS NULL)::int AS unread
        FROM conversations c
-       JOIN vacancies v ON v.id = c.vacancy_id
+       LEFT JOIN orders o ON c.listing_type = 'order' AND o.id = c.listing_id
+       LEFT JOIN vacancies v ON c.listing_type = 'vacancy' AND v.id = c.listing_id
        JOIN users seeker ON seeker.id = c.seeker_id
        JOIN users employer ON employer.id = c.employer_id
        WHERE c.seeker_id = $1 OR c.employer_id = $1
@@ -145,13 +162,14 @@ router.get(
       const iAmSeeker = c.seeker_id === req.user.id;
       return {
         id: c.id,
-        vacancy_id: c.vacancy_id,
-        vacancy_title: c.vacancy_title,
-        vacancy_status: c.vacancy_status,
+        listing_type: c.listing_type,
+        listing_id: c.listing_id,
+        listing_title: c.listing_title,
+        listing_status: c.listing_status,
         last_message_at: c.last_message_at,
         last_message: c.last_message,
         unread: c.unread,
-        my_role: iAmSeeker ? 'seeker' : 'employer',
+        my_role: iAmSeeker ? 'responder' : 'poster',
         other_name: iAmSeeker ? c.employer_name : c.seeker_name,
       };
     });

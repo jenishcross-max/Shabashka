@@ -53,7 +53,7 @@ export default function VacancyDetail() {
     setSendError('');
     setSending(true);
     try {
-      const { conversation } = await api.startConversation(vacancy.id, draft, token);
+      const { conversation } = await api.startVacancyConversation(vacancy.id, draft, token);
       navigate(`/messages/${conversation.id}`);
     } catch (err) {
       setSendError(err.message);
@@ -121,14 +121,16 @@ export default function VacancyDetail() {
           <p className="status-msg">Эта вакансия уже закрыта.</p>
         ) : (
           <>
-            <a
-              className="whatsapp-btn"
-              href={waLink(vacancy.whatsapp_phone, vacancy.title)}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              💬 Написать в WhatsApp
-            </a>
+            {vacancy.whatsapp_phone && (
+              <a
+                className="whatsapp-btn"
+                href={waLink(vacancy.whatsapp_phone, vacancy.title)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                💬 Написать в WhatsApp
+              </a>
+            )}
 
             {!isOwner && (
               <div className="apply-box">
@@ -173,8 +175,9 @@ export default function VacancyDetail() {
         </div>
 
         <p className="hint">
-          В WhatsApp можно написать без регистрации. Переписка на сайте — для тех, кто вошёл в
-          аккаунт.
+          {vacancy.whatsapp_phone
+            ? 'В WhatsApp можно написать без регистрации. Переписка на сайте — для тех, кто вошёл в аккаунт.'
+            : 'Работодатель не указал WhatsApp — написать можно только через переписку на сайте, для этого нужен аккаунт.'}
         </p>
       </div>
     </div>

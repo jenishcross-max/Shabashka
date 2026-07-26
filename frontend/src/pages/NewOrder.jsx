@@ -20,6 +20,7 @@ export default function NewOrder() {
     budget: '',
     whatsapp_phone: user?.phone || '',
   });
+  const [showPhone, setShowPhone] = useState(true);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -37,7 +38,11 @@ export default function NewOrder() {
     setSubmitting(true);
     try {
       const { order } = await api.createOrder(
-        { ...form, budget: form.budget ? Number(form.budget) : null },
+        {
+          ...form,
+          budget: form.budget ? Number(form.budget) : null,
+          whatsapp_phone: showPhone ? form.whatsapp_phone : '',
+        },
         token
       );
       navigate(`/orders/${order.id}`);
@@ -158,26 +163,35 @@ export default function NewOrder() {
               onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
             />
           </label>
-          <div className="field-row">
-            <label className="field">
-              <span className="label">Бюджет, сом (необязательно)</span>
-              <input
-                type="number"
-                min="0"
-                placeholder="2000"
-                value={form.budget}
-                onChange={(e) => setForm((f) => ({ ...f, budget: e.target.value }))}
-              />
+          <label className="field">
+            <span className="label">Бюджет, сом (необязательно)</span>
+            <input
+              type="number"
+              min="0"
+              placeholder="2000"
+              value={form.budget}
+              onChange={(e) => setForm((f) => ({ ...f, budget: e.target.value }))}
+            />
+          </label>
+          <div className="field">
+            <label className="filter-checkbox">
+              <input type="checkbox" checked={showPhone} onChange={(e) => setShowPhone(e.target.checked)} />
+              Указать номер WhatsApp для связи
             </label>
-            <label className="field">
-              <span className="label">WhatsApp для связи</span>
+            {showPhone ? (
               <input
                 type="tel"
                 required
+                placeholder="+996 700 123 456"
                 value={form.whatsapp_phone}
                 onChange={(e) => setForm((f) => ({ ...f, whatsapp_phone: e.target.value }))}
               />
-            </label>
+            ) : (
+              <p className="format-hint">
+                Без номера с вами можно будет связаться только через переписку на сайте — для этого
+                исполнителю нужно войти в аккаунт.
+              </p>
+            )}
           </div>
           {error && <p className="status-msg error">{error}</p>}
           <button className="submit-btn" type="submit" disabled={submitting}>

@@ -13,6 +13,12 @@ function messageTime(iso) {
   });
 }
 
+// Кем приходится собеседник — зависит от типа объявления и того, кто я в этой переписке
+function otherPersonLabel(listingType, myRole) {
+  if (listingType === 'order') return myRole === 'responder' ? 'Заказчик' : 'Исполнитель';
+  return myRole === 'responder' ? 'Работодатель' : 'Соискатель';
+}
+
 export default function Conversation() {
   const { id } = useParams();
   const { token, user } = useAuth();
@@ -72,8 +78,10 @@ export default function Conversation() {
         <div>
           <h1>{conversation.other_name}</h1>
           <p className="conversation-subtitle">
-            {conversation.my_role === 'seeker' ? 'Работодатель · ' : 'Соискатель · '}
-            <Link to={`/vacancies/${conversation.vacancy_id}`}>{conversation.vacancy_title}</Link>
+            {otherPersonLabel(conversation.listing_type, conversation.my_role)} ·{' '}
+            <Link to={`/${conversation.listing_type === 'order' ? 'orders' : 'vacancies'}/${conversation.listing_id}`}>
+              {conversation.listing_title}
+            </Link>
           </p>
         </div>
         {waDigits && (

@@ -68,8 +68,10 @@ export const api = {
   conversations: (token) => request('/conversations', { token }),
   conversation: (id, token) => request(`/conversations/${id}`, { token }),
   unreadCount: (token) => request('/conversations/unread-count', { token }),
-  startConversation: (vacancyId, message, token) =>
+  startVacancyConversation: (vacancyId, message, token) =>
     request('/conversations', { method: 'POST', body: { vacancyId, message }, token }),
+  startOrderConversation: (orderId, message, token) =>
+    request('/conversations', { method: 'POST', body: { orderId, message }, token }),
   sendMessage: (id, body, token) =>
     request(`/conversations/${id}/messages`, { method: 'POST', body: { body }, token }),
 

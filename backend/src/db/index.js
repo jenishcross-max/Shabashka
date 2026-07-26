@@ -44,6 +44,32 @@ function init() {
       await pool.query('ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS requirements TEXT');
       await pool.query('ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS conditions TEXT');
 
+      // Номер WhatsApp теперь необязателен — можно ограничиться перепиской на сайте
+      await pool.query('ALTER TABLE orders ALTER COLUMN whatsapp_phone DROP NOT NULL');
+      await pool.query('ALTER TABLE vacancies ALTER COLUMN whatsapp_phone DROP NOT NULL');
+
+      // conversations раньше была привязана только к вакансиям (vacancy_id NOT NULL).
+      // Обобщаем на заказы через полиморфную пару listing_type/listing_id;
+      // на уже развёрнутых базах старая колонка есть — доращиваем её аддитивно,
+      // на свежих (schema.sql уже создал финальную форму) этой ветки не будет.
+      const { rows: legacyCol } = await pool.query(
+        "SELECT 1 FROM information_schema.columns WHERE table_name = 'conversations' AND column_name = 'vacancy_id'"
+      );
+      if (legacyCol.length > 0) {
+        await pool.query("ALTER TABLE conversations ADD COLUMN IF NOT EXISTS listing_type TEXT NOT NULL DEFAULT 'vacancy'");
+        await pool.query('ALTER TABLE conversations ADD COLUMN IF NOT EXISTS listing_id INTEGER');
+        await pool.query('UPDATE conversations SET listing_id = vacancy_id WHERE listing_id IS NULL');
+        await pool.query('ALTER TABLE conversations ALTER COLUMN vacancy_id DROP NOT NULL');
+        const { rows: unbackfilled } = await pool.query('SELECT COUNT(*)::int AS n FROM conversations WHERE listing_id IS NULL');
+        if (unbackfilled[0].n === 0) {
+          await pool.query('ALTER TABLE conversations ALTER COLUMN listing_id SET NOT NULL');
+        }
+      }
+      await pool.query('CREATE INDEX IF NOT EXISTS idx_conversations_listing ON conversations(listing_type, listing_id)');
+      await pool.query(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_listing_seeker ON conversations(listing_type, listing_id, seeker_id)'
+      );
+
       // Первичное заполнение категорий — дальше список живёт в БД и правится через админку
       const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM categories');
       if (rows[0].n === 0) {

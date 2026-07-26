@@ -12,6 +12,7 @@ export default function EditOrder() {
   const cities = useCities();
   const [categories, setCategories] = useState([]);
   const [form, setForm] = useState(null);
+  const [showPhone, setShowPhone] = useState(true);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [notFound, setNotFound] = useState(false);
@@ -24,6 +25,7 @@ export default function EditOrder() {
           setNotFound(true);
           return;
         }
+        setShowPhone(!!order.whatsapp_phone);
         setForm({
           title: order.title,
           description: order.description,
@@ -32,7 +34,7 @@ export default function EditOrder() {
           address: order.address || '',
           work_format: order.work_format || 'offline',
           budget: order.budget ?? '',
-          whatsapp_phone: order.whatsapp_phone,
+          whatsapp_phone: order.whatsapp_phone || '',
         });
       })
       .catch(() => setNotFound(true));
@@ -53,7 +55,15 @@ export default function EditOrder() {
     setError('');
     setSubmitting(true);
     try {
-      await api.updateOrder(id, { ...form, budget: form.budget ? Number(form.budget) : null }, token);
+      await api.updateOrder(
+        id,
+        {
+          ...form,
+          budget: form.budget ? Number(form.budget) : null,
+          whatsapp_phone: showPhone ? form.whatsapp_phone : '',
+        },
+        token
+      );
       navigate(`/orders/${id}`);
     } catch (err) {
       setError(err.message);
@@ -158,25 +168,34 @@ export default function EditOrder() {
               onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
             />
           </label>
-          <div className="field-row">
-            <label className="field">
-              <span className="label">Бюджет, сом (необязательно)</span>
-              <input
-                type="number"
-                min="0"
-                value={form.budget}
-                onChange={(e) => setForm((f) => ({ ...f, budget: e.target.value }))}
-              />
+          <label className="field">
+            <span className="label">Бюджет, сом (необязательно)</span>
+            <input
+              type="number"
+              min="0"
+              value={form.budget}
+              onChange={(e) => setForm((f) => ({ ...f, budget: e.target.value }))}
+            />
+          </label>
+          <div className="field">
+            <label className="filter-checkbox">
+              <input type="checkbox" checked={showPhone} onChange={(e) => setShowPhone(e.target.checked)} />
+              Указать номер WhatsApp для связи
             </label>
-            <label className="field">
-              <span className="label">WhatsApp для связи</span>
+            {showPhone ? (
               <input
                 type="tel"
                 required
+                placeholder="+996 700 123 456"
                 value={form.whatsapp_phone}
                 onChange={(e) => setForm((f) => ({ ...f, whatsapp_phone: e.target.value }))}
               />
-            </label>
+            ) : (
+              <p className="format-hint">
+                Без номера с вами можно будет связаться только через переписку на сайте — для этого
+                исполнителю нужно войти в аккаунт.
+              </p>
+            )}
           </div>
           {error && <p className="status-msg error">{error}</p>}
           <button className="submit-btn" type="submit" disabled={submitting}>
