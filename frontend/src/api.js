@@ -76,22 +76,20 @@ export const api = {
     request(`/conversations/${id}/messages`, { method: 'POST', body: { body }, token }),
 
   adminStats: (token) => request('/admin/stats', { token }),
-  adminUsers: (token) => request('/admin/users', { token }),
+  adminUsers: (params = {}, token) => request(`/admin/users${toQueryString(params)}`, { token }),
   adminUserDetail: (id, token) => request(`/admin/users/${id}`, { token }),
   adminSetUserBlocked: (id, blocked, token) =>
     request(`/admin/users/${id}`, { method: 'PATCH', body: { blocked }, token }),
   adminResetUserPassword: (id, token) =>
     request(`/admin/users/${id}/reset-password`, { method: 'POST', token }),
-  adminOrders: (token) => request('/admin/orders', { token }),
-  adminSetOrderStatus: (id, status, token) =>
-    request(`/admin/orders/${id}`, { method: 'PATCH', body: { status }, token }),
+  adminOrders: (params = {}, token) => request(`/admin/orders${toQueryString(params)}`, { token }),
   adminSetOrderPinned: (id, pinned, token) =>
     request(`/admin/orders/${id}`, { method: 'PATCH', body: { pinned }, token }),
-  adminVacancies: (token) => request('/admin/vacancies', { token }),
-  adminSetVacancyStatus: (id, status, token) =>
-    request(`/admin/vacancies/${id}`, { method: 'PATCH', body: { status }, token }),
+  adminDeleteOrder: (id, token) => request(`/admin/orders/${id}`, { method: 'DELETE', token }),
+  adminVacancies: (params = {}, token) => request(`/admin/vacancies${toQueryString(params)}`, { token }),
   adminSetVacancyPinned: (id, pinned, token) =>
     request(`/admin/vacancies/${id}`, { method: 'PATCH', body: { pinned }, token }),
+  adminDeleteVacancy: (id, token) => request(`/admin/vacancies/${id}`, { method: 'DELETE', token }),
   adminReports: (token, status = 'open') => request(`/admin/reports?status=${status}`, { token }),
   adminResolveReport: (id, action, token) =>
     request(`/admin/reports/${id}`, { method: 'PATCH', body: { action }, token }),

@@ -10,6 +10,12 @@ function generateTempPassword() {
   return crypto.randomBytes(9).toString('base64').replace(/[+/=]/g, '');
 }
 
+function pagination(req) {
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+  return { page, limit, offset: (page - 1) * limit };
+}
+
 const router = express.Router();
 router.use(requireAuth, requireAdmin);
 
@@ -59,14 +65,30 @@ router.get(
 
 router.get(
   '/users',
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    const { page, limit, offset } = pagination(req);
+    const q = (req.query.q || '').trim();
+
+    const params = [];
+    let where = '';
+    if (q) {
+      const p = `%${q}%`;
+      params.push(p, p, p);
+      where = `WHERE u.name ILIKE $1 OR u.email ILIKE $2 OR u.city ILIKE $3`;
+    }
+
+    const total = (await db.query(`SELECT COUNT(*)::int AS n FROM users u ${where}`, params)).rows[0].n;
+
     const { rows } = await db.query(
       `SELECT u.id, u.name, u.email, u.city, u.role, u.is_blocked, u.created_at,
               (SELECT COUNT(*) FROM orders WHERE orders.user_id = u.id)::int AS orders_count
        FROM users u
-       ORDER BY u.created_at DESC`
+       ${where}
+       ORDER BY u.created_at DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset]
     );
-    res.json({ users: rows });
+    res.json({ users: rows, total, page, limit, pages: Math.max(1, Math.ceil(total / limit)) });
   })
 );
 
@@ -134,16 +156,46 @@ router.post(
 
 router.get(
   '/orders',
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    const { page, limit, offset } = pagination(req);
+    const q = (req.query.q || '').trim();
+
+    const params = [];
+    const addParam = (value) => {
+      params.push(value);
+      return `$${params.length}`;
+    };
+
+    let where = '';
+    if (q) {
+      const idParam = addParam(q);
+      const likeParam = addParam(`%${q}%`);
+      where = `WHERE orders.id::text = ${idParam}
+               OR orders.title ILIKE ${likeParam}
+               OR users.name ILIKE ${likeParam}
+               OR orders.city ILIKE ${likeParam}
+               OR orders.category ILIKE ${likeParam}`;
+    }
+
+    const total = (
+      await db.query(
+        `SELECT COUNT(*)::int AS n FROM orders JOIN users ON users.id = orders.user_id ${where}`,
+        params
+      )
+    ).rows[0].n;
+
     const { rows } = await db.query(
       `SELECT orders.id, orders.title, orders.category, orders.city, orders.budget, orders.status,
               orders.views, orders.pinned, orders.created_at,
               users.name AS owner_name, users.email AS owner_email
        FROM orders
        JOIN users ON users.id = orders.user_id
-       ORDER BY orders.pinned DESC, orders.created_at DESC`
+       ${where}
+       ORDER BY orders.pinned DESC, orders.created_at DESC
+       LIMIT ${addParam(limit)} OFFSET ${addParam(offset)}`,
+      params
     );
-    res.json({ orders: rows });
+    res.json({ orders: rows, total, page, limit, pages: Math.max(1, Math.ceil(total / limit)) });
   })
 );
 
@@ -179,9 +231,45 @@ router.patch(
   })
 );
 
+router.delete(
+  '/orders/:id',
+  asyncHandler(async (req, res) => {
+    const { rowCount } = await db.query('DELETE FROM orders WHERE id = $1', [req.params.id]);
+    if (!rowCount) return res.status(404).json({ error: 'Заказ не найден' });
+    res.status(204).end();
+  })
+);
+
 router.get(
   '/vacancies',
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    const { page, limit, offset } = pagination(req);
+    const q = (req.query.q || '').trim();
+
+    const params = [];
+    const addParam = (value) => {
+      params.push(value);
+      return `$${params.length}`;
+    };
+
+    let where = '';
+    if (q) {
+      const idParam = addParam(q);
+      const likeParam = addParam(`%${q}%`);
+      where = `WHERE vacancies.id::text = ${idParam}
+               OR vacancies.title ILIKE ${likeParam}
+               OR users.name ILIKE ${likeParam}
+               OR vacancies.city ILIKE ${likeParam}
+               OR vacancies.category ILIKE ${likeParam}`;
+    }
+
+    const total = (
+      await db.query(
+        `SELECT COUNT(*)::int AS n FROM vacancies JOIN users ON users.id = vacancies.user_id ${where}`,
+        params
+      )
+    ).rows[0].n;
+
     const { rows } = await db.query(
       `SELECT vacancies.id, vacancies.title, vacancies.category, vacancies.employment_type,
               vacancies.city, vacancies.salary_min, vacancies.salary_max, vacancies.status,
@@ -189,9 +277,12 @@ router.get(
               users.name AS owner_name, users.email AS owner_email
        FROM vacancies
        JOIN users ON users.id = vacancies.user_id
-       ORDER BY vacancies.pinned DESC, vacancies.created_at DESC`
+       ${where}
+       ORDER BY vacancies.pinned DESC, vacancies.created_at DESC
+       LIMIT ${addParam(limit)} OFFSET ${addParam(offset)}`,
+      params
     );
-    res.json({ vacancies: rows });
+    res.json({ vacancies: rows, total, page, limit, pages: Math.max(1, Math.ceil(total / limit)) });
   })
 );
 
@@ -224,6 +315,15 @@ router.patch(
     values.push(req.params.id);
     await db.query(`UPDATE vacancies SET ${updates.join(', ')} WHERE id = $${values.length}`, values);
     res.json({ ok: true });
+  })
+);
+
+router.delete(
+  '/vacancies/:id',
+  asyncHandler(async (req, res) => {
+    const { rowCount } = await db.query('DELETE FROM vacancies WHERE id = $1', [req.params.id]);
+    if (!rowCount) return res.status(404).json({ error: 'Вакансия не найдена' });
+    res.status(204).end();
   })
 );
 

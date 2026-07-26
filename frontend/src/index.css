@@ -1438,12 +1438,19 @@ a:hover {
   grid-template-columns: 2fr 1.6fr 1fr 0.8fr 1fr 1.2fr;
 }
 .admin-table-orders {
-  grid-template-columns: 2fr 1.2fr 1fr 1fr 0.8fr 0.9fr 1.6fr;
+  grid-template-columns: 0.5fr 2fr 1.2fr 1fr 1fr 0.8fr 0.9fr 1.6fr;
 }
 .admin-row-buttons {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+}
+.admin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 16px;
 }
 .admin-search {
   border: 1px solid var(--border);

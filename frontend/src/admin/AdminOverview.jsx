@@ -19,7 +19,7 @@ export default function AdminOverview() {
   const [error, setError] = useState('');
 
   function load() {
-    Promise.all([api.adminStats(token), api.adminUsers(token), api.adminReports(token, 'open')])
+    Promise.all([api.adminStats(token), api.adminUsers({ limit: 4 }, token), api.adminReports(token, 'open')])
       .then(([s, u, r]) => {
         setStats(s);
         setUsers(u.users.slice(0, 4));

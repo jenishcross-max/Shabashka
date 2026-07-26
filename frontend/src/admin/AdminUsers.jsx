@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
+import Pagination from './Pagination';
 
 function UserDetailModal({ userId, token, onClose, onChanged }) {
   const [detail, setDetail] = useState(null);
@@ -154,39 +155,41 @@ function UserDetailModal({ userId, token, onClose, onChanged }) {
 export default function AdminUsers() {
   const { token } = useAuth();
   const [users, setUsers] = useState([]);
+  const [meta, setMeta] = useState({ page: 1, pages: 1, total: 0 });
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedUserId, setSelectedUserId] = useState(null);
 
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
   function load() {
     setLoading(true);
     api
-      .adminUsers(token)
-      .then(({ users }) => setUsers(users))
+      .adminUsers({ page, q: debouncedSearch }, token)
+      .then(({ users, ...rest }) => {
+        setUsers(users);
+        setMeta(rest);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, [token]);
+  useEffect(load, [token, page, debouncedSearch]);
 
   async function toggleBlocked(u) {
     await api.adminSetUserBlocked(u.id, !u.is_blocked, token);
     load();
   }
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter(
-      (u) =>
-        u.name.toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q) ||
-        (u.city || '').toLowerCase().includes(q)
-    );
-  }, [users, search]);
-
-  if (loading) return <p className="status-msg">Загрузка…</p>;
   if (error) return <p className="status-msg error">{error}</p>;
 
   return (
@@ -201,54 +204,59 @@ export default function AdminUsers() {
         />
       </div>
       <div className="admin-card admin-table-card">
-        <div className="admin-table">
-          <div className="admin-table-row admin-table-head admin-table-row-actions">
-            <span>Пользователь</span>
-            <span>Email</span>
-            <span>Город</span>
-            <span>Заказов</span>
-            <span>Статус</span>
-            <span></span>
-          </div>
-          {filtered.map((u) => (
-            <div
-              className="admin-table-row admin-table-row-actions"
-              key={u.id}
-              style={{ cursor: 'pointer' }}
-              onClick={() => setSelectedUserId(u.id)}
-            >
-              <span className="strong">
-                {u.name}
-                {u.role === 'admin' && <span className="admin-role-tag">admin</span>}
-              </span>
-              <span className="admin-subtitle">{u.email}</span>
-              <span className="admin-subtitle">{u.city || '—'}</span>
-              <span>{u.orders_count}</span>
-              <span>
-                {u.is_blocked ? (
-                  <span className="badge status-closed">Заблокирован</span>
-                ) : (
-                  <span className="badge status-open">Активен</span>
-                )}
-              </span>
-              <span className="admin-row-buttons" onClick={(e) => e.stopPropagation()}>
-                {u.role !== 'admin' && (
-                  <button
-                    className={u.is_blocked ? 'admin-btn-ghost' : 'admin-btn-danger'}
-                    onClick={() => toggleBlocked(u)}
-                  >
-                    {u.is_blocked ? 'Разблокировать' : 'Заблокировать'}
-                  </button>
-                )}
-                <button className="admin-btn-ghost" onClick={() => setSelectedUserId(u.id)}>
-                  Просмотр
-                </button>
-              </span>
+        {loading ? (
+          <p className="status-msg">Загрузка…</p>
+        ) : (
+          <div className="admin-table">
+            <div className="admin-table-row admin-table-head admin-table-row-actions">
+              <span>Пользователь</span>
+              <span>Email</span>
+              <span>Город</span>
+              <span>Заказов</span>
+              <span>Статус</span>
+              <span></span>
             </div>
-          ))}
-          {filtered.length === 0 && <p className="status-msg">Ничего не найдено.</p>}
-        </div>
+            {users.map((u) => (
+              <div
+                className="admin-table-row admin-table-row-actions"
+                key={u.id}
+                style={{ cursor: 'pointer' }}
+                onClick={() => setSelectedUserId(u.id)}
+              >
+                <span className="strong">
+                  {u.name}
+                  {u.role === 'admin' && <span className="admin-role-tag">admin</span>}
+                </span>
+                <span className="admin-subtitle">{u.email}</span>
+                <span className="admin-subtitle">{u.city || '—'}</span>
+                <span>{u.orders_count}</span>
+                <span>
+                  {u.is_blocked ? (
+                    <span className="badge status-closed">Заблокирован</span>
+                  ) : (
+                    <span className="badge status-open">Активен</span>
+                  )}
+                </span>
+                <span className="admin-row-buttons" onClick={(e) => e.stopPropagation()}>
+                  {u.role !== 'admin' && (
+                    <button
+                      className={u.is_blocked ? 'admin-btn-ghost' : 'admin-btn-danger'}
+                      onClick={() => toggleBlocked(u)}
+                    >
+                      {u.is_blocked ? 'Разблокировать' : 'Заблокировать'}
+                    </button>
+                  )}
+                  <button className="admin-btn-ghost" onClick={() => setSelectedUserId(u.id)}>
+                    Просмотр
+                  </button>
+                </span>
+              </div>
+            ))}
+            {users.length === 0 && <p className="status-msg">Ничего не найдено.</p>}
+          </div>
+        )}
       </div>
+      <Pagination page={meta.page} pages={meta.pages} total={meta.total} onChange={setPage} />
 
       {selectedUserId && (
         <UserDetailModal
