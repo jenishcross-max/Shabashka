@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import { relativeDate } from '../formatDate';
 import Pagination from './Pagination';
-import { SkeletonTableRows } from './Skeleton';
+import { SkeletonTableRows } from '../components/Skeleton';
 
 export default function AdminOrders() {
   const { token } = useAuth();

@@ -5,7 +5,7 @@ import { api } from '../api';
 import { relativeDate } from '../formatDate';
 import { formatSalary } from '../components/VacancyCard';
 import Pagination from './Pagination';
-import { SkeletonTableRows } from './Skeleton';
+import { SkeletonTableRows } from '../components/Skeleton';
 
 export default function AdminVacancies() {
   const { token } = useAuth();

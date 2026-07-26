@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
-import { SkeletonBox, SkeletonStatCards, SkeletonTableRows, SkeletonComplaint } from './Skeleton';
+import { SkeletonBox, SkeletonStatCards, SkeletonTableRows, SkeletonComplaint } from '../components/Skeleton';
 
 function StatusBadge({ blocked }) {
   return blocked ? (

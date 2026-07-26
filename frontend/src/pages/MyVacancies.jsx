@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { relativeDate } from '../formatDate';
 import { formatSalary } from '../components/VacancyCard';
 import MyListingsTabs from '../components/MyListingsTabs';
+import { SkeletonMyOrderRow } from '../components/Skeleton';
 
 export default function MyVacancies() {
   const { token } = useAuth();
@@ -35,7 +36,6 @@ export default function MyVacancies() {
     load();
   }
 
-  if (loading) return <p className="status-msg">Загрузка…</p>;
   if (error) return <p className="status-msg error">{error}</p>;
 
   return (
@@ -47,13 +47,20 @@ export default function MyVacancies() {
           + Новая вакансия
         </Link>
       </div>
-      {vacancies.length === 0 && (
+      {!loading && vacancies.length === 0 && (
         <p className="status-msg">
           У вас пока нет вакансий. <Link to="/vacancies/new">Разместить первую вакансию</Link>
         </p>
       )}
       <div className="my-orders-list">
-        {vacancies.map((vacancy) => (
+        {loading && (
+          <>
+            <SkeletonMyOrderRow />
+            <SkeletonMyOrderRow />
+            <SkeletonMyOrderRow />
+          </>
+        )}
+        {!loading && vacancies.map((vacancy) => (
           <div key={vacancy.id} className={`my-order-row${vacancy.status === 'closed' ? ' closed' : ''}`}>
             <div>
               <div className="my-order-title-row">

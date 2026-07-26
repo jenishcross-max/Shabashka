@@ -3,8 +3,15 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { api } from '../api';
 import OrderCard from '../components/OrderCard';
 import VacancyCard from '../components/VacancyCard';
-import { categoryIcon } from '../categoryIcons';
+import CategoryIcon from '../components/CategoryIcon';
+import FormatIcon from '../components/FormatIcon';
 import { useFavorites } from '../context/FavoritesContext';
+import {
+  SkeletonOrderCard,
+  SkeletonHomeCategoryTile,
+  SkeletonStatsBar,
+  SkeletonCityPills,
+} from '../components/Skeleton';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -88,8 +95,12 @@ export default function Home() {
         <div className="hero-format-links">
           <span className="hero-format-label">Смотреть подработку:</span>
           <Link to="/orders">Всю</Link>
-          <Link to="/orders?workFormat=offline">📍 Только офлайн</Link>
-          <Link to="/orders?workFormat=online">🌐 Только онлайн</Link>
+          <Link to="/orders?workFormat=offline" className="hero-format-link">
+            <FormatIcon name="offline" size={15} /> Только офлайн
+          </Link>
+          <Link to="/orders?workFormat=online" className="hero-format-link">
+            <FormatIcon name="online" size={15} /> Только онлайн
+          </Link>
         </div>
         {favoriteKeys.length > 0 && (
           <Link to="/favorites" className="hero-fav-link">
@@ -103,9 +114,13 @@ export default function Home() {
           <h2>Категории</h2>
         </div>
         <div className="category-grid">
+          {loading &&
+            Array.from({ length: 8 }).map((_, i) => <SkeletonHomeCategoryTile key={i} />)}
           {categories.map((c) => (
             <Link key={c} to={`/orders?category=${encodeURIComponent(c)}`} className="category-tile">
-              <span className="category-icon">{categoryIcon(c)}</span>
+              <span className="category-icon">
+                <CategoryIcon name={c} />
+              </span>
               <span>
                 <span className="category-name">{c}</span>
                 <span className="category-count">{counts[c] || 0} заказов</span>
@@ -121,18 +136,31 @@ export default function Home() {
           <Link to="/orders">Смотреть все →</Link>
         </div>
 
-        {loading && <p className="status-msg">Загрузка заказов…</p>}
         {error && <p className="status-msg error">{error}</p>}
         {!loading && !error && orders.length === 0 && (
           <p className="status-msg">Пока нет заказов.</p>
         )}
 
         <div className="order-grid">
+          {loading && Array.from({ length: 6 }).map((_, i) => <SkeletonOrderCard key={i} />)}
           {orders.map((order) => (
             <OrderCard key={order.id} order={order} />
           ))}
         </div>
       </section>
+
+      {loading && (
+        <section className="section">
+          <div className="section-head">
+            <h2>Свежие вакансии</h2>
+          </div>
+          <div className="order-grid">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <SkeletonOrderCard key={i} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {vacancies.length > 0 && (
         <section className="section">
@@ -147,6 +175,8 @@ export default function Home() {
           </div>
         </section>
       )}
+
+      {loading && <SkeletonStatsBar />}
 
       {stats && (
         <section className="stats-bar">
@@ -166,6 +196,15 @@ export default function Home() {
             <div className="stat-value">0%</div>
             <div className="stat-label">комиссия сайта</div>
           </div>
+        </section>
+      )}
+
+      {loading && (
+        <section className="section">
+          <div className="section-head">
+            <h2>Заказы по городам</h2>
+          </div>
+          <SkeletonCityPills />
         </section>
       )}
 

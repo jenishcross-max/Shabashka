@@ -20,6 +20,7 @@ import MyOrders from './pages/MyOrders';
 import Favorites from './pages/Favorites';
 import Messages from './pages/Messages';
 import Conversation from './pages/Conversation';
+import { SkeletonPage } from './components/Skeleton';
 
 // Код админки грузится отдельным чанком только тем, кто реально заходит в /admin —
 // обычные посетители и исполнители его не скачивают.
@@ -119,7 +120,7 @@ function PublicSite() {
 
 export default function App() {
   return (
-    <Suspense fallback={<p className="status-msg">Загрузка…</p>}>
+    <Suspense fallback={<SkeletonPage />}>
       <Routes>
         <Route
           path="/admin/*"

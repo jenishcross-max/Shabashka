@@ -3,6 +3,7 @@ import { relativeDate } from '../formatDate';
 import { employmentLabel } from '../employmentTypes';
 import { experienceLabel } from '../experienceLevels';
 import FavoriteButton from './FavoriteButton';
+import FormatIcon from './FormatIcon';
 
 export function formatSalary(min, max) {
   if (!min && !max) return 'По договорённости';
@@ -17,7 +18,10 @@ export default function VacancyCard({ vacancy }) {
       <div className="order-card-top">
         <div className="order-card-badges">
           <span className="badge">{vacancy.category}</span>
-          <span className="badge">{vacancy.work_format === 'online' ? '🌐 Онлайн' : '📍 Офлайн'}</span>
+          <span className="badge badge-format">
+            <FormatIcon name={vacancy.work_format === 'online' ? 'online' : 'offline'} size={14} />
+            {vacancy.work_format === 'online' ? 'Онлайн' : 'Офлайн'}
+          </span>
           {!!vacancy.pinned && <span className="badge pinned">🔥 Топ</span>}
         </div>
         <div className="order-card-top-right">

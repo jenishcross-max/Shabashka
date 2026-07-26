@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useFavorites } from '../context/FavoritesContext';
 import OrderCard from '../components/OrderCard';
 import VacancyCard from '../components/VacancyCard';
+import { SkeletonOrderCard } from '../components/Skeleton';
 
 export default function Favorites() {
   const { orderIds, vacancyIds } = useFavorites();
@@ -32,7 +33,15 @@ export default function Favorites() {
       <div className="my-orders-head">
         <h1>Избранное</h1>
       </div>
-      {loading && <p className="status-msg">Загрузка…</p>}
+      {loading && (
+        <section className="section">
+          <div className="order-grid">
+            <SkeletonOrderCard />
+            <SkeletonOrderCard />
+            <SkeletonOrderCard />
+          </div>
+        </section>
+      )}
       {!loading && isEmpty && (
         <p className="status-msg">
           Пока нет сохранённых заказов и вакансий. Нажмите ☆ на карточке, чтобы добавить сюда.{' '}
@@ -40,7 +49,7 @@ export default function Favorites() {
         </p>
       )}
 
-      {orders.length > 0 && (
+      {!loading && orders.length > 0 && (
         <section className="section">
           <div className="section-head">
             <h2>Заказы</h2>

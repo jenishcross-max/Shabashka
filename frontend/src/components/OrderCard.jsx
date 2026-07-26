@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { relativeDate } from '../formatDate';
 import FavoriteButton from './FavoriteButton';
+import FormatIcon from './FormatIcon';
 
 export default function OrderCard({ order }) {
   return (
@@ -8,7 +9,10 @@ export default function OrderCard({ order }) {
       <div className="order-card-top">
         <div className="order-card-badges">
           <span className="badge">{order.category}</span>
-          <span className="badge">{order.work_format === 'online' ? '🌐 Онлайн' : '📍 Офлайн'}</span>
+          <span className="badge badge-format">
+            <FormatIcon name={order.work_format === 'online' ? 'online' : 'offline'} size={14} />
+            {order.work_format === 'online' ? 'Онлайн' : 'Офлайн'}
+          </span>
           {!!order.pinned && <span className="badge pinned">🔥 Топ</span>}
         </div>
         <div className="order-card-top-right">

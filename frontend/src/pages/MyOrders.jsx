@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { relativeDate } from '../formatDate';
 import MyListingsTabs from '../components/MyListingsTabs';
+import { SkeletonMyOrderRow } from '../components/Skeleton';
 
 export default function MyOrders() {
   const { token } = useAuth();
@@ -34,7 +35,6 @@ export default function MyOrders() {
     load();
   }
 
-  if (loading) return <p className="status-msg">Загрузка…</p>;
   if (error) return <p className="status-msg error">{error}</p>;
 
   return (
@@ -46,13 +46,20 @@ export default function MyOrders() {
           + Новый заказ
         </Link>
       </div>
-      {orders.length === 0 && (
+      {!loading && orders.length === 0 && (
         <p className="status-msg">
           У вас пока нет заказов. <Link to="/orders/new">Разместить первый заказ</Link>
         </p>
       )}
       <div className="my-orders-list">
-        {orders.map((order) => (
+        {loading && (
+          <>
+            <SkeletonMyOrderRow />
+            <SkeletonMyOrderRow />
+            <SkeletonMyOrderRow />
+          </>
+        )}
+        {!loading && orders.map((order) => (
           <div key={order.id} className={`my-order-row${order.status === 'closed' ? ' closed' : ''}`}>
             <div>
               <div className="my-order-title-row">

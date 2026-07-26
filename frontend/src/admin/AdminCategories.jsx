@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
-import { categoryIcon } from '../categoryIcons';
-import { SkeletonCategoryTile } from './Skeleton';
+import CategoryIcon from '../components/CategoryIcon';
+import { SkeletonCategoryTile } from '../components/Skeleton';
 
 export default function AdminCategories() {
   const { token } = useAuth();
@@ -76,7 +76,9 @@ export default function AdminCategories() {
             Array.from({ length: 6 }).map((_, i) => <SkeletonCategoryTile key={i} />)}
           {!loading && categories.map((c) => (
             <div key={c.id} className="category-tile admin-category-tile">
-              <span className="category-icon">{categoryIcon(c.name)}</span>
+              <span className="category-icon">
+                <CategoryIcon name={c.name} />
+              </span>
               <span>
                 <span className="category-name">{c.name}</span>
                 <span className="category-count">{c.order_count} заказ(ов)</span>

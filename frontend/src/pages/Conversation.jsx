@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useUnread } from '../context/UnreadContext';
+import { SkeletonBox, SkeletonMessageBubble } from '../components/Skeleton';
 
 function messageTime(iso) {
   return new Date(iso).toLocaleString('ru-RU', {
@@ -64,7 +65,24 @@ export default function Conversation() {
   }
 
   if (loadError) return <p className="status-msg error">{loadError}</p>;
-  if (!conversation) return <p className="status-msg">Загрузка…</p>;
+  if (!conversation) {
+    return (
+      <div className="conversation-page">
+        <SkeletonBox width={140} height={14} />
+        <div className="conversation-header" style={{ marginTop: 16 }}>
+          <div>
+            <SkeletonBox width={160} height={22} />
+            <SkeletonBox width={220} height={13} style={{ marginTop: 8 }} />
+          </div>
+        </div>
+        <div className="message-thread">
+          <SkeletonMessageBubble />
+          <SkeletonMessageBubble mine />
+          <SkeletonMessageBubble />
+        </div>
+      </div>
+    );
+  }
 
   const waDigits = conversation.other_phone?.replace(/[^\d]/g, '');
 

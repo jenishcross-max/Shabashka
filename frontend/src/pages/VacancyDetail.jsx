@@ -7,6 +7,8 @@ import { employmentLabel } from '../employmentTypes';
 import { experienceLabel } from '../experienceLevels';
 import { formatSalary } from '../components/VacancyCard';
 import FavoriteButton from '../components/FavoriteButton';
+import FormatIcon from '../components/FormatIcon';
+import { SkeletonOrderDetail } from '../components/Skeleton';
 
 function waLink(phone, title) {
   const digits = phone.replace(/[^\d]/g, '');
@@ -63,7 +65,7 @@ export default function VacancyDetail() {
   }
 
   if (error) return <p className="status-msg error">{error}</p>;
-  if (!vacancy) return <p className="status-msg">Загрузка…</p>;
+  if (!vacancy) return <SkeletonOrderDetail />;
 
   const isOwner = user?.id === vacancy.user_id;
 
@@ -84,7 +86,7 @@ export default function VacancyDetail() {
         <h1>{vacancy.title}</h1>
         <p className="meta">
           <span>💼 {employmentLabel(vacancy.employment_type)}</span>
-          <span>{vacancy.work_format === 'online' ? '🌐 Онлайн' : '📍 Офлайн'}</span>
+          <span><FormatIcon name={vacancy.work_format === 'online' ? 'online' : 'offline'} size={15} /> {vacancy.work_format === 'online' ? 'Онлайн' : 'Офлайн'}</span>
           <span>🎯 Опыт: {experienceLabel(vacancy.experience)}</span>
           <span>
             📍 {vacancy.city}

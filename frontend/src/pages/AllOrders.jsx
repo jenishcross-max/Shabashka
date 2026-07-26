@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import OrderCard from '../components/OrderCard';
+import FormatIcon from '../components/FormatIcon';
 import { useCities } from '../useCities';
 import { pageList } from '../pagination';
+import { SkeletonBox, SkeletonOrderCard, SkeletonFilterList } from '../components/Skeleton';
 
 const SORTS = [
   { value: 'new', label: 'Сначала новые' },
@@ -39,6 +41,17 @@ export default function AllOrders() {
     setPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams.get('workFormat')]);
+
+  // Категория/город/поиск тоже приходят через query-параметры — так работают
+  // ссылки с главной («Категории», «Заказы по городам»).
+  useEffect(() => {
+    const cat = searchParams.get('category');
+    setSelectedCategories(cat ? [cat] : []);
+    setCity(searchParams.get('city') || '');
+    setQ(searchParams.get('q') || '');
+    setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get('category'), searchParams.get('city'), searchParams.get('q')]);
 
   function setWorkFormat(value) {
     setPage(1);
@@ -120,6 +133,7 @@ export default function AllOrders() {
             <div className="format-toggle">
               <label className={`format-option${workFormat === '' ? ' active' : ''}`}>
                 <input type="radio" name="workFormat" checked={workFormat === ''} onChange={() => setWorkFormat('')} />
+                <FormatIcon name="all" />
                 Все
               </label>
               <label className={`format-option${workFormat === 'offline' ? ' active' : ''}`}>
@@ -129,7 +143,8 @@ export default function AllOrders() {
                   checked={workFormat === 'offline'}
                   onChange={() => setWorkFormat('offline')}
                 />
-                📍 Офлайн
+                <FormatIcon name="offline" />
+                Офлайн
               </label>
               <label className={`format-option${workFormat === 'online' ? ' active' : ''}`}>
                 <input
@@ -138,12 +153,14 @@ export default function AllOrders() {
                   checked={workFormat === 'online'}
                   onChange={() => setWorkFormat('online')}
                 />
-                🌐 Онлайн
+                <FormatIcon name="online" />
+                Онлайн
               </label>
             </div>
           </div>
           <div className="admin-card">
             <h3 className="filter-heading">Категория</h3>
+            {categories.length === 0 && <SkeletonFilterList rows={7} />}
             <div className="filter-checkbox-list">
               {categories.map((c) => (
                 <label key={c} className="filter-checkbox">
@@ -199,7 +216,9 @@ export default function AllOrders() {
         <div>
           <div className="orders-results-head">
             <span>
-              {!loading && (
+              {loading ? (
+                <SkeletonBox width={90} height={14} />
+              ) : (
                 <>
                   <strong>{meta.total}</strong> {meta.total === 1 ? 'заказ' : 'заказа'}
                 </>
@@ -214,16 +233,15 @@ export default function AllOrders() {
             </select>
           </div>
 
-          {loading && <p className="status-msg">Загрузка заказов…</p>}
           {error && <p className="status-msg error">{error}</p>}
           {!loading && !error && orders.length === 0 && (
             <p className="status-msg">Пока нет заказов по этим фильтрам.</p>
           )}
 
           <div className="order-grid orders-grid-2col">
-            {orders.map((order) => (
-              <OrderCard key={order.id} order={order} />
-            ))}
+            {loading && Array.from({ length: 8 }).map((_, i) => <SkeletonOrderCard key={i} />)}
+            {!loading &&
+              orders.map((order) => <OrderCard key={order.id} order={order} />)}
           </div>
 
           {meta.pages > 1 && (

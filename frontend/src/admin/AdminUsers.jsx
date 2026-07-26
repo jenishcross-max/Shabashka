@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import Pagination from './Pagination';
-import { SkeletonTableRows } from './Skeleton';
+import { SkeletonTableRows } from '../components/Skeleton';
 
 function UserDetailModal({ userId, token, onClose, onChanged }) {
   const [detail, setDetail] = useState(null);

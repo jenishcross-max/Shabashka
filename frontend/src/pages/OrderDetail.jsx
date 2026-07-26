@@ -5,6 +5,8 @@ import { relativeDate } from '../formatDate';
 import { useAuth } from '../context/AuthContext';
 import FavoriteButton from '../components/FavoriteButton';
 import OrderCard from '../components/OrderCard';
+import FormatIcon from '../components/FormatIcon';
+import { SkeletonOrderDetail } from '../components/Skeleton';
 
 function waLink(phone, title) {
   const digits = phone.replace(/[^\d]/g, '');
@@ -75,7 +77,7 @@ export default function OrderDetail() {
   }
 
   if (error) return <p className="status-msg error">{error}</p>;
-  if (!order) return <p className="status-msg">Загрузка…</p>;
+  if (!order) return <SkeletonOrderDetail />;
 
   const isOwner = user?.id === order.user_id;
 
@@ -96,7 +98,7 @@ export default function OrderDetail() {
         <h1>{order.title}</h1>
         <p className="meta">
           <span>📍 {order.city}{order.address ? `, ${order.address}` : ''}</span>
-          <span>{order.work_format === 'online' ? '🌐 Онлайн' : '📍 Офлайн'}</span>
+          <span><FormatIcon name={order.work_format === 'online' ? 'online' : 'offline'} size={15} /> {order.work_format === 'online' ? 'Онлайн' : 'Офлайн'}</span>
           <span>🗓 Опубликован {relativeDate(order.created_at)}</span>
           <span>👤 Заказчик: {order.owner_name}</span>
           <span>👁 {order.views} просмотров</span>

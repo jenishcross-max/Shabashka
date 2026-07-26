@@ -4,6 +4,8 @@ import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useCities } from '../useCities';
 import Logo from '../components/Logo';
+import FormatIcon from '../components/FormatIcon';
+import { SkeletonForm } from '../components/Skeleton';
 
 export default function EditOrder() {
   const { id } = useParams();
@@ -73,7 +75,7 @@ export default function EditOrder() {
   }
 
   if (notFound) return <p className="status-msg error">Заказ не найден или это не ваш заказ.</p>;
-  if (!form) return <p className="status-msg">Загрузка…</p>;
+  if (!form) return <SkeletonForm fields={6} />;
 
   return (
     <div className="form-card wide">
@@ -115,7 +117,8 @@ export default function EditOrder() {
                   checked={form.work_format === 'offline'}
                   onChange={(e) => setForm((f) => ({ ...f, work_format: e.target.value }))}
                 />
-                📍 Офлайн
+                <FormatIcon name="offline" />
+                Офлайн
               </label>
               <label className={`format-option${form.work_format === 'online' ? ' active' : ''}`}>
                 <input
@@ -125,7 +128,8 @@ export default function EditOrder() {
                   checked={form.work_format === 'online'}
                   onChange={(e) => setForm((f) => ({ ...f, work_format: e.target.value }))}
                 />
-                🌐 Онлайн
+                <FormatIcon name="online" />
+                Онлайн
               </label>
             </div>
             <p className="format-hint">

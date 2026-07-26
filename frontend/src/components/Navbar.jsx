@@ -3,6 +3,7 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useUnread } from '../context/UnreadContext';
 import Logo from './Logo';
+import FormatIcon from './FormatIcon';
 
 function navClass({ isActive }) {
   return `muted${isActive ? ' active' : ''}`;
@@ -51,14 +52,14 @@ function OrdersMenu() {
             className={workFormat === 'offline' ? 'active' : ''}
             onClick={() => setOpen(false)}
           >
-            📍 Только офлайн
+            <FormatIcon name="offline" size={15} /> Только офлайн
           </Link>
           <Link
             to="/orders?workFormat=online"
             className={workFormat === 'online' ? 'active' : ''}
             onClick={() => setOpen(false)}
           >
-            🌐 Только онлайн
+            <FormatIcon name="online" size={15} /> Только онлайн
           </Link>
         </div>
       )}
