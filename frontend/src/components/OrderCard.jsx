@@ -11,7 +11,10 @@ export default function OrderCard({ order }) {
           <span className="badge">{order.work_format === 'online' ? '🌐 Онлайн' : '📍 Офлайн'}</span>
           {!!order.pinned && <span className="badge pinned">🔥 Топ</span>}
         </div>
-        <span className="order-city">{order.city}</span>
+        <div className="order-card-top-right">
+          <span className="order-city">{order.city}</span>
+          <FavoriteButton type="order" id={order.id} className="order-card-fav" />
+        </div>
       </div>
       <h3>{order.title}</h3>
       <p>{order.description}</p>
@@ -23,7 +26,6 @@ export default function OrderCard({ order }) {
         )}
         <span className="date">{relativeDate(order.created_at)}</span>
       </div>
-      <FavoriteButton type="order" id={order.id} className="order-card-fav" />
     </Link>
   );
 }

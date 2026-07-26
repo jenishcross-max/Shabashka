@@ -613,6 +613,12 @@ a:hover {
   gap: 6px;
   flex-wrap: wrap;
 }
+.order-card-top-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
 .badge.pinned {
   background: #fff1e0;
   color: #b5650a;
@@ -641,6 +647,13 @@ a:hover {
 }
 .favorite-btn:hover {
   color: var(--red);
+}
+.order-card-fav {
+  position: static !important;
+  width: 26px;
+  height: 26px;
+  font-size: 15px;
+  flex: none;
 }
 .order-card h3 {
   font-weight: 600;

@@ -20,7 +20,10 @@ export default function VacancyCard({ vacancy }) {
           <span className="badge">{vacancy.work_format === 'online' ? '🌐 Онлайн' : '📍 Офлайн'}</span>
           {!!vacancy.pinned && <span className="badge pinned">🔥 Топ</span>}
         </div>
-        <span className="order-city">{vacancy.city}</span>
+        <div className="order-card-top-right">
+          <span className="order-city">{vacancy.city}</span>
+          <FavoriteButton type="vacancy" id={vacancy.id} className="order-card-fav" />
+        </div>
       </div>
       <h3>{vacancy.title}</h3>
       <p className="vacancy-employment">
@@ -31,7 +34,6 @@ export default function VacancyCard({ vacancy }) {
         <span className="budget">{formatSalary(vacancy.salary_min, vacancy.salary_max)}</span>
         <span className="date">{relativeDate(vacancy.created_at)}</span>
       </div>
-      <FavoriteButton type="vacancy" id={vacancy.id} className="order-card-fav" />
     </Link>
   );
 }
