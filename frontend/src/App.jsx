@@ -1,5 +1,6 @@
-import { lazy, Suspense } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { lazy, Suspense, useEffect } from 'react';
+import { Routes, Route, useLocation } from 'react-router-dom';
+import { trackPageview } from './analytics';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -122,9 +123,20 @@ function PublicSite() {
   );
 }
 
+function RouteTracker() {
+  const location = useLocation();
+
+  useEffect(() => {
+    trackPageview(location.pathname + location.search);
+  }, [location.pathname, location.search]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <Suspense fallback={<SkeletonPage />}>
+      <RouteTracker />
       <Routes>
         <Route
           path="/admin/*"
