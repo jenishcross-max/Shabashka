@@ -14,11 +14,11 @@ const isLocal = /localhost|127\.0\.0\.1/.test(connectionString || '');
 const pool = new Pool({
   connectionString,
   ssl: isLocal ? false : { rejectUnauthorized: false },
-  // База может быть в другом регионе: установка соединения (TCP + TLS + auth)
-  // стоит дороже самого запроса, поэтому держим соединения открытыми подольше
-  // и обходимся небольшим пулом, чтобы они успевали переиспользоваться.
-  max: 6,
-  idleTimeoutMillis: 5 * 60 * 1000,
+  // max рассчитан на нагрузку в сотни одновременных запросов на один backend-процесс;
+  // держим значение ниже лимита пулера Supabase (Supavisor), чтобы не упереться в него
+  // при нескольких инстансах backend одновременно.
+  max: 20,
+  idleTimeoutMillis: 30 * 1000,
   connectionTimeoutMillis: 15 * 1000,
 });
 

@@ -1,8 +1,14 @@
 const express = require('express');
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const categoriesRepo = require('../categoriesRepo');
 const asyncHandler = require('../asyncHandler');
+
+function generateTempPassword() {
+  return crypto.randomBytes(9).toString('base64').replace(/[+/=]/g, '');
+}
 
 const router = express.Router();
 router.use(requireAuth, requireAdmin);
@@ -78,6 +84,51 @@ router.patch(
 
     await db.query('UPDATE users SET is_blocked = $1 WHERE id = $2', [blocked ? 1 : 0, target.id]);
     res.json({ ok: true });
+  })
+);
+
+router.get(
+  '/users/:id',
+  asyncHandler(async (req, res) => {
+    const { rows } = await db.query(
+      `SELECT id, name, email, phone, city, role, is_blocked, created_at FROM users WHERE id = $1`,
+      [req.params.id]
+    );
+    const user = rows[0];
+    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+
+    const orders = (
+      await db.query(
+        `SELECT id, title, status, created_at FROM orders WHERE user_id = $1 ORDER BY created_at DESC LIMIT 20`,
+        [user.id]
+      )
+    ).rows;
+    const vacancies = (
+      await db.query(
+        `SELECT id, title, status, created_at FROM vacancies WHERE user_id = $1 ORDER BY created_at DESC LIMIT 20`,
+        [user.id]
+      )
+    ).rows;
+
+    res.json({ user, orders, vacancies });
+  })
+);
+
+router.post(
+  '/users/:id/reset-password',
+  asyncHandler(async (req, res) => {
+    const { rows } = await db.query('SELECT id, role FROM users WHERE id = $1', [req.params.id]);
+    const target = rows[0];
+    if (!target) return res.status(404).json({ error: 'Пользователь не найден' });
+    if (target.role === 'admin' && target.id !== req.user.id) {
+      return res.status(400).json({ error: 'Нельзя сбросить пароль другому администратору' });
+    }
+
+    const tempPassword = generateTempPassword();
+    const passwordHash = bcrypt.hashSync(tempPassword, 10);
+    await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, target.id]);
+
+    res.json({ ok: true, password: tempPassword });
   })
 );
 

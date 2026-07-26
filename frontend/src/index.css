@@ -1518,6 +1518,92 @@ a:hover {
   font-family: inherit;
 }
 
+.admin-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 20, 20, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+}
+.admin-modal {
+  background: #fff;
+  border-radius: 14px;
+  padding: 24px;
+  width: 100%;
+  max-width: 460px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+.admin-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.admin-modal-head h3 {
+  margin: 0;
+}
+.admin-modal-close {
+  border: none;
+  background: none;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--muted);
+}
+.admin-modal-section {
+  margin-bottom: 16px;
+}
+.admin-modal-section h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.admin-modal-field {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f1e6e4;
+  font-size: 14px;
+}
+.admin-modal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.admin-modal-list-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f1e6e4;
+}
+.admin-modal-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.admin-new-password {
+  background: var(--red-tint);
+  border: 1px solid var(--red-border);
+  border-radius: 9px;
+  padding: 12px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: monospace;
+  margin-top: 10px;
+  word-break: break-all;
+}
+
 @media (max-width: 900px) {
   .admin-shell {
     flex-direction: column;

@@ -77,8 +77,11 @@ export const api = {
 
   adminStats: (token) => request('/admin/stats', { token }),
   adminUsers: (token) => request('/admin/users', { token }),
+  adminUserDetail: (id, token) => request(`/admin/users/${id}`, { token }),
   adminSetUserBlocked: (id, blocked, token) =>
     request(`/admin/users/${id}`, { method: 'PATCH', body: { blocked }, token }),
+  adminResetUserPassword: (id, token) =>
+    request(`/admin/users/${id}/reset-password`, { method: 'POST', token }),
   adminOrders: (token) => request('/admin/orders', { token }),
   adminSetOrderStatus: (id, status, token) =>
     request(`/admin/orders/${id}`, { method: 'PATCH', body: { status }, token }),

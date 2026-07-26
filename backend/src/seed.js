@@ -271,7 +271,7 @@ async function main() {
           city,
           pickWorkFormat(category),
           budget,
-          owner.phone,
+          null, // демо-объявления — без номера, номера в диапазоне +996 700 1xxxx могут принадлежать реальным людям
           status,
           randInt(0, 240),
           pinned,
@@ -314,7 +314,7 @@ async function main() {
           t.salary ? t.salary[0] : null,
           t.salary ? t.salary[1] : null,
           pick(SCHEDULES),
-          owner.phone,
+          null, // демо-объявления — без номера, номера в диапазоне +996 700 1xxxx могут принадлежать реальным людям
           status,
           randInt(0, 180),
           pinned,
