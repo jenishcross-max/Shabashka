@@ -31,6 +31,17 @@ export default function Footer() {
             </li>
           </ul>
         </div>
+        <div>
+          <h4>Информация</h4>
+          <ul>
+            <li>
+              <Link to="/terms">Условия использования</Link>
+            </li>
+            <li>
+              <Link to="/privacy">Политика конфиденциальности</Link>
+            </li>
+          </ul>
+        </div>
       </div>
       <p className="copyright">© {new Date().getFullYear()} Шабашка</p>
     </footer>

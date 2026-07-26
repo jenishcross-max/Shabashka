@@ -20,6 +20,8 @@ import MyOrders from './pages/MyOrders';
 import Favorites from './pages/Favorites';
 import Messages from './pages/Messages';
 import Conversation from './pages/Conversation';
+import Terms from './pages/Terms';
+import Privacy from './pages/Privacy';
 import { SkeletonPage } from './components/Skeleton';
 
 // Код админки грузится отдельным чанком только тем, кто реально заходит в /admin —
@@ -46,6 +48,8 @@ function PublicSite() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/favorites" element={<Favorites />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/privacy" element={<Privacy />} />
           <Route
             path="/orders/new"
             element={

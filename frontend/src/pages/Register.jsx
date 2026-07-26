@@ -95,6 +95,10 @@ export default function Register() {
           <button className="submit-btn" type="submit" disabled={submitting}>
             {submitting ? 'Создаём аккаунт…' : 'Зарегистрироваться'}
           </button>
+          <p className="consent-line">
+            Регистрируясь, вы соглашаетесь с <Link to="/terms">условиями использования</Link> и{' '}
+            <Link to="/privacy">политикой конфиденциальности</Link>.
+          </p>
         </form>
         <p className="switch-line">
           Уже есть аккаунт? <Link to="/login">Войти</Link>
