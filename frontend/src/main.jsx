@@ -5,10 +5,7 @@ import App from './App.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { FavoritesProvider } from './context/FavoritesContext.jsx';
 import { UnreadProvider } from './context/UnreadContext.jsx';
-import { initMetrika } from './analytics';
 import './index.css';
-
-initMetrika();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

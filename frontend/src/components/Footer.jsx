@@ -8,6 +8,7 @@ export default function Footer() {
         <div>
           <div className="footer-brand">
             <Logo size="sm" onDark />
+            <span className="footer-studio">Tirek IT Studio</span>
           </div>
           <p>
             Доска объявлений для поиска подработки и мастеров в Кыргызстане. Заказчики размещают
@@ -42,8 +43,21 @@ export default function Footer() {
             </li>
           </ul>
         </div>
+        <div>
+          <h4>Контакты</h4>
+          <ul>
+            <li>
+              <a href="https://wa.me/996553675070" target="_blank" rel="noopener noreferrer">
+                💬 WhatsApp: 0553675070
+              </a>
+            </li>
+            <li>
+              <a href="mailto:ittirek@gmail.com">✉️ ittirek@gmail.com</a>
+            </li>
+          </ul>
+        </div>
       </div>
-      <p className="copyright">© {new Date().getFullYear()} Шабашка</p>
+      <p className="copyright">© {new Date().getFullYear()} Шабашка · Tirek IT Studio</p>
     </footer>
   );
 }

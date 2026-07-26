@@ -2023,7 +2023,7 @@ a:hover {
   background: #fff1f0;
 }
 
-/* ---------- footer (2 columns) ---------- */
+/* ---------- footer ---------- */
 .site-footer {
   background: var(--footer-bg);
   color: var(--footer-text);
@@ -2033,7 +2033,7 @@ a:hover {
   max-width: 1180px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 1.4fr 1fr;
+  grid-template-columns: 1.4fr 1fr 1fr 1fr;
   gap: 32px;
   padding-bottom: 28px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -2045,6 +2045,15 @@ a:hover {
 }
 .site-footer .footer-brand {
   margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.footer-studio {
+  font-size: 12px;
+  color: var(--footer-text);
+  border-left: 1px solid rgba(255, 255, 255, 0.25);
+  padding-left: 8px;
 }
 .site-footer p {
   font-size: 14px;
