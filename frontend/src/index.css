@@ -351,6 +351,9 @@ a:hover {
 .search-bar .search-city {
   width: 150px;
 }
+.search-bar .search-city input {
+  width: 100%;
+}
 .search-bar button {
   background: var(--red);
   color: #fff;
@@ -1708,9 +1711,12 @@ a:hover {
   border-radius: 11px;
   background: #fff;
 }
-.orders-search-strip input:last-of-type {
+.orders-search-strip .city-autocomplete {
   flex: none;
   width: 170px;
+}
+.orders-search-strip .city-autocomplete input {
+  width: 100%;
 }
 .orders-search-strip button {
   background: var(--red);
@@ -1730,9 +1736,41 @@ a:hover {
   .orders-search-strip {
     flex-wrap: wrap;
   }
-  .orders-search-strip input:last-of-type {
+  .orders-search-strip .city-autocomplete {
     width: 100%;
   }
+}
+
+.city-autocomplete {
+  position: relative;
+}
+.city-autocomplete-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(36, 26, 25, 0.12);
+  padding: 6px;
+  margin: 0;
+  list-style: none;
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 30;
+}
+.city-autocomplete-menu li {
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 14.5px;
+  color: var(--text);
+  cursor: pointer;
+}
+.city-autocomplete-menu li:hover,
+.city-autocomplete-menu li.active {
+  background: var(--red-tint);
+  color: var(--red);
 }
 
 .orders-layout {

@@ -6,6 +6,7 @@ import { useCities } from '../useCities';
 import Logo from '../components/Logo';
 import FormatIcon from '../components/FormatIcon';
 import { SkeletonForm } from '../components/Skeleton';
+import CityAutocomplete from '../components/CityAutocomplete';
 
 export default function EditVacancy() {
   const { id } = useParams();
@@ -185,11 +186,11 @@ export default function EditVacancy() {
             </label>
             <label className="field">
               <span className="label">Город</span>
-              <input
+              <CityAutocomplete
                 required
-                list="cities-list"
+                cities={cities}
                 value={form.city}
-                onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+                onChange={(v) => setForm((f) => ({ ...f, city: v }))}
               />
             </label>
           </div>
@@ -282,11 +283,6 @@ export default function EditVacancy() {
           </button>
         </form>
       </div>
-      <datalist id="cities-list">
-        {cities.map((c) => (
-          <option key={c} value={c} />
-        ))}
-      </datalist>
     </div>
   );
 }

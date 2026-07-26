@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import OrderCard from '../components/OrderCard';
 import FormatIcon from '../components/FormatIcon';
+import CityAutocomplete from '../components/CityAutocomplete';
 import { useCities } from '../useCities';
 import { pageList } from '../pagination';
 import { SkeletonBox, SkeletonOrderCard, SkeletonFilterList } from '../components/Skeleton';
@@ -107,24 +108,19 @@ export default function AllOrders() {
             setQ(e.target.value);
           }}
         />
-        <input
+        <CityAutocomplete
           placeholder="Город"
-          list="cities-list"
+          cities={cities}
           value={city}
-          onChange={(e) => {
+          onChange={(v) => {
             setPage(1);
-            setCity(e.target.value);
+            setCity(v);
           }}
         />
         <button type="button" onClick={() => setPage(1)}>
           Найти
         </button>
       </section>
-      <datalist id="cities-list">
-        {cities.map((c) => (
-          <option key={c} value={c} />
-        ))}
-      </datalist>
 
       <div className="orders-layout">
         <aside className="orders-filters">

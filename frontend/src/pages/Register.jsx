@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useCities } from '../useCities';
 import Logo from '../components/Logo';
+import CityAutocomplete from '../components/CityAutocomplete';
 
 export default function Register() {
   const { login } = useAuth();
@@ -72,11 +73,11 @@ export default function Register() {
           <div className="field-row">
             <label className="field">
               <span className="label">Город</span>
-              <input
+              <CityAutocomplete
                 placeholder="Бишкек"
-                list="cities-list"
+                cities={cities}
                 value={form.city}
-                onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+                onChange={(v) => setForm((f) => ({ ...f, city: v }))}
               />
             </label>
             <label className="field">
@@ -99,11 +100,6 @@ export default function Register() {
           Уже есть аккаунт? <Link to="/login">Войти</Link>
         </p>
       </div>
-      <datalist id="cities-list">
-        {cities.map((c) => (
-          <option key={c} value={c} />
-        ))}
-      </datalist>
     </div>
   );
 }

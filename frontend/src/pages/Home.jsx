@@ -5,6 +5,7 @@ import OrderCard from '../components/OrderCard';
 import VacancyCard from '../components/VacancyCard';
 import CategoryIcon from '../components/CategoryIcon';
 import FormatIcon from '../components/FormatIcon';
+import CityAutocomplete from '../components/CityAutocomplete';
 import { useFavorites } from '../context/FavoritesContext';
 import {
   SkeletonOrderCard,
@@ -78,20 +79,15 @@ export default function Home() {
             onChange={(e) => setQInput(e.target.value)}
           />
           <div className="search-divider" />
-          <input
+          <CityAutocomplete
             className="search-city"
             placeholder="Город"
-            list="cities-list"
+            cities={cities}
             value={cityInput}
-            onChange={(e) => setCityInput(e.target.value)}
+            onChange={setCityInput}
           />
           <button type="submit">Найти</button>
         </form>
-        <datalist id="cities-list">
-          {cities.map((c) => (
-            <option key={c} value={c} />
-          ))}
-        </datalist>
         <div className="hero-format-links">
           <span className="hero-format-label">Смотреть подработку:</span>
           <Link to="/orders">Всю</Link>

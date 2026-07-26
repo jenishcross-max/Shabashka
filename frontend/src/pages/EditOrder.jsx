@@ -6,6 +6,7 @@ import { useCities } from '../useCities';
 import Logo from '../components/Logo';
 import FormatIcon from '../components/FormatIcon';
 import { SkeletonForm } from '../components/Skeleton';
+import CityAutocomplete from '../components/CityAutocomplete';
 
 export default function EditOrder() {
   const { id } = useParams();
@@ -155,11 +156,11 @@ export default function EditOrder() {
             </label>
             <label className="field">
               <span className="label">Город</span>
-              <input
+              <CityAutocomplete
                 required
-                list="cities-list"
+                cities={cities}
                 value={form.city}
-                onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+                onChange={(v) => setForm((f) => ({ ...f, city: v }))}
               />
             </label>
           </div>
@@ -207,11 +208,6 @@ export default function EditOrder() {
           </button>
         </form>
       </div>
-      <datalist id="cities-list">
-        {cities.map((c) => (
-          <option key={c} value={c} />
-        ))}
-      </datalist>
     </div>
   );
 }
