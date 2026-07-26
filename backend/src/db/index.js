@@ -48,6 +48,11 @@ function init() {
       await pool.query('ALTER TABLE orders ALTER COLUMN whatsapp_phone DROP NOT NULL');
       await pool.query('ALTER TABLE vacancies ALTER COLUMN whatsapp_phone DROP NOT NULL');
 
+      // Отмечает витринные объявления-примеры (см. seedExamples.js) — отдельно от
+      // настоящих объявлений пользователей, чтобы честно показывать это в интерфейсе
+      await pool.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_example BOOLEAN NOT NULL DEFAULT false');
+      await pool.query('ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS is_example BOOLEAN NOT NULL DEFAULT false');
+
       // conversations раньше была привязана только к вакансиям (vacancy_id NOT NULL).
       // Обобщаем на заказы через полиморфную пару listing_type/listing_id;
       // на уже развёрнутых базах старая колонка есть — доращиваем её аддитивно,

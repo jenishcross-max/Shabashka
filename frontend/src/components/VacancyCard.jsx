@@ -23,6 +23,7 @@ export default function VacancyCard({ vacancy }) {
             {vacancy.work_format === 'online' ? 'Онлайн' : 'Офлайн'}
           </span>
           {!!vacancy.pinned && <span className="badge pinned">🔥 Топ</span>}
+          {!!vacancy.is_example && <span className="badge badge-example">Пример</span>}
         </div>
         <div className="order-card-top-right">
           <span className="order-city">{vacancy.city}</span>

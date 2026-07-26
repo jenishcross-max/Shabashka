@@ -81,6 +81,7 @@ export default function VacancyDetail() {
             {vacancy.status === 'open' ? 'Открыта' : 'Закрыта'}
           </span>
           {!!vacancy.pinned && <span className="badge pinned">🔥 Топ</span>}
+          {!!vacancy.is_example && <span className="badge badge-example">Пример</span>}
           <FavoriteButton type="vacancy" id={vacancy.id} className="order-detail-fav" />
         </div>
         <h1>{vacancy.title}</h1>
@@ -119,7 +120,12 @@ export default function VacancyDetail() {
           </>
         )}
 
-        {vacancy.status === 'closed' ? (
+        {vacancy.is_example ? (
+          <p className="status-msg">
+            Это пример вакансии — он показывает, как выглядит реальное объявление. Откликнуться
+            нельзя, отклики на него никто не увидит.
+          </p>
+        ) : vacancy.status === 'closed' ? (
           <p className="status-msg">Эта вакансия уже закрыта.</p>
         ) : (
           <>
@@ -176,11 +182,13 @@ export default function VacancyDetail() {
           )}
         </div>
 
-        <p className="hint">
-          {vacancy.whatsapp_phone
-            ? 'В WhatsApp можно написать без регистрации. Переписка на сайте — для тех, кто вошёл в аккаунт.'
-            : 'Работодатель не указал WhatsApp — написать можно только через переписку на сайте, для этого нужен аккаунт.'}
-        </p>
+        {!vacancy.is_example && (
+          <p className="hint">
+            {vacancy.whatsapp_phone
+              ? 'В WhatsApp можно написать без регистрации. Переписка на сайте — для тех, кто вошёл в аккаунт.'
+              : 'Работодатель не указал WhatsApp — написать можно только через переписку на сайте, для этого нужен аккаунт.'}
+          </p>
+        )}
       </div>
     </div>
   );

@@ -14,6 +14,7 @@ export default function OrderCard({ order }) {
             {order.work_format === 'online' ? 'Онлайн' : 'Офлайн'}
           </span>
           {!!order.pinned && <span className="badge pinned">🔥 Топ</span>}
+          {!!order.is_example && <span className="badge badge-example">Пример</span>}
         </div>
         <div className="order-card-top-right">
           <span className="order-city">{order.city}</span>

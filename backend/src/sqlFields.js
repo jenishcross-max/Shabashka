@@ -3,7 +3,7 @@
 const ORDER_FIELDS = `
   orders.id, orders.title, orders.description, orders.category, orders.city, orders.address,
   orders.work_format, orders.budget, orders.whatsapp_phone, orders.status, orders.views, orders.pinned,
-  orders.created_at,
+  orders.is_example, orders.created_at,
   orders.user_id, users.name AS owner_name
 `;
 
@@ -13,7 +13,7 @@ const VACANCY_FIELDS = `
   vacancies.experience, vacancies.requirements, vacancies.conditions,
   vacancies.salary_min, vacancies.salary_max, vacancies.schedule,
   vacancies.whatsapp_phone, vacancies.status, vacancies.views, vacancies.pinned,
-  vacancies.created_at,
+  vacancies.is_example, vacancies.created_at,
   vacancies.user_id, users.name AS owner_name
 `;
 

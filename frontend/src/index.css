@@ -635,6 +635,10 @@ a:hover {
   background: #fff1e0;
   color: #b5650a;
 }
+.badge-example {
+  background: var(--border);
+  color: var(--muted);
+}
 .favorite-btn {
   position: absolute;
   top: 14px;

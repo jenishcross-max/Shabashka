@@ -93,6 +93,7 @@ export default function OrderDetail() {
             {order.status === 'open' ? 'Открыт' : 'Закрыт'}
           </span>
           {!!order.pinned && <span className="badge pinned">🔥 Топ</span>}
+          {!!order.is_example && <span className="badge badge-example">Пример</span>}
           <FavoriteButton type="order" id={order.id} className="order-detail-fav" />
         </div>
         <h1>{order.title}</h1>
@@ -114,7 +115,12 @@ export default function OrderDetail() {
         <h3 className="desc-heading">Описание задачи</h3>
         <p className="description">{order.description}</p>
 
-        {order.status === 'closed' ? (
+        {order.is_example ? (
+          <p className="status-msg">
+            Это пример объявления — он показывает, как выглядит реальный заказ. Написать по нему
+            нельзя, откликов на него никто не увидит.
+          </p>
+        ) : order.status === 'closed' ? (
           <p className="status-msg">Этот заказ уже закрыт заказчиком.</p>
         ) : (
           <>
@@ -170,17 +176,21 @@ export default function OrderDetail() {
               ✏️ Изменить заказ
             </Link>
           ) : (
-            <button type="button" className="muted" onClick={handleReport}>
-              ⚑ {reportMsg || 'Пожаловаться'}
-            </button>
+            !order.is_example && (
+              <button type="button" className="muted" onClick={handleReport}>
+                ⚑ {reportMsg || 'Пожаловаться'}
+              </button>
+            )
           )}
         </div>
 
-        <p className="hint">
-          {order.whatsapp_phone
-            ? 'В WhatsApp можно написать без регистрации. Переписка на сайте — для тех, кто вошёл в аккаунт.'
-            : 'Заказчик не указал WhatsApp — написать можно только через переписку на сайте, для этого нужен аккаунт.'}
-        </p>
+        {!order.is_example && (
+          <p className="hint">
+            {order.whatsapp_phone
+              ? 'В WhatsApp можно написать без регистрации. Переписка на сайте — для тех, кто вошёл в аккаунт.'
+              : 'Заказчик не указал WhatsApp — написать можно только через переписку на сайте, для этого нужен аккаунт.'}
+          </p>
+        )}
       </div>
 
       {similar.length > 0 && (
