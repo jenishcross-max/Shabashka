@@ -7,13 +7,14 @@ const { reportLimiter } = require('../rateLimit');
 const asyncHandler = require('../asyncHandler');
 const { ORDER_FIELDS } = require('../sqlFields');
 const { invalidate } = require('../cache');
+const { canCreateListing } = require('../emailGate');
 
 const router = express.Router();
 
 const WORK_FORMATS = ['online', 'offline'];
 
 const SORTS = {
-  new: 'orders.pinned DESC, orders.created_at DESC',
+  new: 'orders.pinned DESC, COALESCE(orders.bumped_at, orders.created_at) DESC',
   budget: 'orders.pinned DESC, orders.budget IS NULL, orders.budget DESC',
   priceDesc: 'orders.pinned DESC, orders.budget IS NULL, orders.budget DESC',
   priceAsc: 'orders.pinned DESC, orders.budget IS NULL, orders.budget ASC',
@@ -269,6 +270,12 @@ router.post(
   '/',
   requireAuth,
   asyncHandler(async (req, res) => {
+    if (!(await canCreateListing(req.user.id, req.user.email_verified))) {
+      return res
+        .status(403)
+        .json({ error: 'Подтвердите email, чтобы разместить больше одного объявления', code: 'EMAIL_NOT_VERIFIED' });
+    }
+
     const { errors, result } = await validateOrderFields(req.body || {}, { partial: false });
     if (errors.length) return res.status(400).json({ error: errors[0] });
 
@@ -381,6 +388,25 @@ router.delete(
 
     await db.query('DELETE FROM orders WHERE id = $1', [order.id]);
     res.status(204).end();
+  })
+);
+
+// Поднять заказ в списке — только владелец
+router.post(
+  '/:id/bump',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const order = await loadOwnedOrder(req, res);
+    if (!order) return;
+
+    await db.query('UPDATE orders SET bumped_at = NOW() WHERE id = $1', [order.id]);
+    invalidate('home:');
+
+    const { rows } = await db.query(
+      `SELECT ${ORDER_FIELDS} FROM orders JOIN users ON users.id = orders.user_id WHERE orders.id = $1`,
+      [order.id]
+    );
+    res.json({ order: rows[0] });
   })
 );
 

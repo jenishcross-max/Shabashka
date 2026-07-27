@@ -48,10 +48,20 @@ function init() {
       await pool.query('ALTER TABLE orders ALTER COLUMN whatsapp_phone DROP NOT NULL');
       await pool.query('ALTER TABLE vacancies ALTER COLUMN whatsapp_phone DROP NOT NULL');
 
+      // Подтверждение email — старые пользователи считаются подтверждёнными по умолчанию,
+      // новые регистрации явно проставляют email_verified = false и токен в коде роута.
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT true');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_token TEXT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_token_expires TIMESTAMPTZ');
+
       // Отмечает витринные объявления-примеры (см. seedExamples.js) — отдельно от
       // настоящих объявлений пользователей, чтобы честно показывать это в интерфейсе
       await pool.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_example BOOLEAN NOT NULL DEFAULT false');
       await pool.query('ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS is_example BOOLEAN NOT NULL DEFAULT false');
+
+      // «Поднять» объявление в списке — раз в 24 часа для автора, без ограничений из админки
+      await pool.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS bumped_at TIMESTAMPTZ');
+      await pool.query('ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS bumped_at TIMESTAMPTZ');
 
       // conversations раньше была привязана только к вакансиям (vacancy_id NOT NULL).
       // Обобщаем на заказы через полиморфную пару listing_type/listing_id;

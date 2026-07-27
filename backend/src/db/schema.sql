@@ -9,6 +9,9 @@ CREATE TABLE IF NOT EXISTS users (
   city          TEXT,
   role          TEXT NOT NULL DEFAULT 'customer', -- customer | admin
   is_blocked    INTEGER NOT NULL DEFAULT 0,
+  email_verified BOOLEAN NOT NULL DEFAULT true,
+  verify_token  TEXT,
+  verify_token_expires TIMESTAMPTZ,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -26,6 +29,7 @@ CREATE TABLE IF NOT EXISTS orders (
   status         TEXT NOT NULL DEFAULT 'open', -- open | closed
   views          INTEGER NOT NULL DEFAULT 0,
   pinned         INTEGER NOT NULL DEFAULT 0,
+  bumped_at      TIMESTAMPTZ, -- когда объявление последний раз подняли в списке (см. /bump)
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -70,6 +74,7 @@ CREATE TABLE IF NOT EXISTS vacancies (
   status          TEXT NOT NULL DEFAULT 'open', -- open | closed
   views           INTEGER NOT NULL DEFAULT 0,
   pinned          INTEGER NOT NULL DEFAULT 0,
+  bumped_at       TIMESTAMPTZ, -- когда вакансию последний раз подняли в списке (см. /bump)
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

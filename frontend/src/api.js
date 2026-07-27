@@ -32,6 +32,8 @@ export const api = {
   register: (payload) => request('/auth/register', { method: 'POST', body: payload }),
   login: (payload) => request('/auth/login', { method: 'POST', body: payload }),
   me: (token) => request('/auth/me', { token }),
+  verifyEmail: (verifyToken) => request('/auth/verify-email', { method: 'POST', body: { token: verifyToken } }),
+  resendVerification: (token) => request('/auth/resend-verification', { method: 'POST', token }),
 
   home: () => request('/home'),
   categories: (format) => request(`/orders/categories${format ? `?format=${format}` : ''}`),
@@ -50,6 +52,7 @@ export const api = {
     request(`/orders/${id}`, { method: 'PATCH', body: { status }, token }),
   deleteOrder: (id, token) => request(`/orders/${id}`, { method: 'DELETE', token }),
   reportOrder: (id, reason) => request(`/orders/${id}/report`, { method: 'POST', body: { reason } }),
+  bumpOrder: (id, token) => request(`/orders/${id}/bump`, { method: 'POST', token }),
 
   employmentTypes: () => request('/vacancies/employment-types'),
   experienceLevels: () => request('/vacancies/experience-levels'),
@@ -64,6 +67,7 @@ export const api = {
   setVacancyStatus: (id, status, token) =>
     request(`/vacancies/${id}`, { method: 'PATCH', body: { status }, token }),
   deleteVacancy: (id, token) => request(`/vacancies/${id}`, { method: 'DELETE', token }),
+  bumpVacancy: (id, token) => request(`/vacancies/${id}/bump`, { method: 'POST', token }),
 
   conversations: (token) => request('/conversations', { token }),
   conversation: (id, token) => request(`/conversations/${id}`, { token }),
@@ -86,10 +90,12 @@ export const api = {
   adminSetOrderPinned: (id, pinned, token) =>
     request(`/admin/orders/${id}`, { method: 'PATCH', body: { pinned }, token }),
   adminDeleteOrder: (id, token) => request(`/admin/orders/${id}`, { method: 'DELETE', token }),
+  adminBumpOrder: (id, token) => request(`/admin/orders/${id}/bump`, { method: 'POST', token }),
   adminVacancies: (params = {}, token) => request(`/admin/vacancies${toQueryString(params)}`, { token }),
   adminSetVacancyPinned: (id, pinned, token) =>
     request(`/admin/vacancies/${id}`, { method: 'PATCH', body: { pinned }, token }),
   adminDeleteVacancy: (id, token) => request(`/admin/vacancies/${id}`, { method: 'DELETE', token }),
+  adminBumpVacancy: (id, token) => request(`/admin/vacancies/${id}/bump`, { method: 'POST', token }),
   adminReports: (token, status = 'open') => request(`/admin/reports?status=${status}`, { token }),
   adminResolveReport: (id, action, token) =>
     request(`/admin/reports/${id}`, { method: 'PATCH', body: { action }, token }),

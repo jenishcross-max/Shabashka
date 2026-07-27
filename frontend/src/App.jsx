@@ -3,6 +3,7 @@ import { Routes, Route, useLocation } from 'react-router-dom';
 import { trackPageview } from './analytics';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import EmailVerifyBanner from './components/EmailVerifyBanner';
 import ProtectedRoute from './components/ProtectedRoute';
 import ProtectedAdminRoute from './components/ProtectedAdminRoute';
 import Home from './pages/Home';
@@ -23,6 +24,7 @@ import Messages from './pages/Messages';
 import Conversation from './pages/Conversation';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
+import VerifyEmail from './pages/VerifyEmail';
 import { SkeletonPage } from './components/Skeleton';
 
 // Код админки грузится отдельным чанком только тем, кто реально заходит в /admin —
@@ -39,9 +41,11 @@ function PublicSite() {
   return (
     <>
       <Navbar />
+      <EmailVerifyBanner />
       <main className="container">
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/orders" element={<AllOrders />} />
           <Route path="/orders/:id" element={<OrderDetail />} />
           <Route path="/vacancies" element={<Vacancies />} />
@@ -129,6 +133,10 @@ function RouteTracker() {
   useEffect(() => {
     trackPageview(location.pathname + location.search);
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
 
   return null;
 }

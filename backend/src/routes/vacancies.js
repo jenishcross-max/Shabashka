@@ -8,6 +8,7 @@ const EXPERIENCE_LEVELS = require('../experienceLevels');
 const asyncHandler = require('../asyncHandler');
 const { VACANCY_FIELDS } = require('../sqlFields');
 const { invalidate } = require('../cache');
+const { canCreateListing } = require('../emailGate');
 
 const router = express.Router();
 const EMPLOYMENT_VALUES = EMPLOYMENT_TYPES.map((t) => t.value);
@@ -16,7 +17,7 @@ const EXPERIENCE_VALUES = EXPERIENCE_LEVELS.map((t) => t.value);
 const WORK_FORMATS = ['online', 'offline'];
 
 const SORTS = {
-  new: 'vacancies.pinned DESC, vacancies.created_at DESC',
+  new: 'vacancies.pinned DESC, COALESCE(vacancies.bumped_at, vacancies.created_at) DESC',
   salaryDesc: 'vacancies.pinned DESC, vacancies.salary_max IS NULL, vacancies.salary_max DESC',
   salaryAsc: 'vacancies.pinned DESC, vacancies.salary_min IS NULL, vacancies.salary_min ASC',
   popular: 'vacancies.pinned DESC, vacancies.views DESC',
@@ -244,6 +245,12 @@ router.post(
   '/',
   requireAuth,
   asyncHandler(async (req, res) => {
+    if (!(await canCreateListing(req.user.id, req.user.email_verified))) {
+      return res
+        .status(403)
+        .json({ error: 'Подтвердите email, чтобы разместить больше одного объявления', code: 'EMAIL_NOT_VERIFIED' });
+    }
+
     const { errors, result } = await validateVacancyFields(req.body || {}, { partial: false });
     if (errors.length) return res.status(400).json({ error: errors[0] });
 
@@ -369,6 +376,25 @@ router.delete(
 
     await db.query('DELETE FROM vacancies WHERE id = $1', [vacancy.id]);
     res.status(204).end();
+  })
+);
+
+// Поднять вакансию в списке — только владелец
+router.post(
+  '/:id/bump',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const vacancy = await loadOwnedVacancy(req, res);
+    if (!vacancy) return;
+
+    await db.query('UPDATE vacancies SET bumped_at = NOW() WHERE id = $1', [vacancy.id]);
+    invalidate('home:');
+
+    const { rows } = await db.query(
+      `SELECT ${VACANCY_FIELDS} FROM vacancies JOIN users ON users.id = vacancies.user_id WHERE vacancies.id = $1`,
+      [vacancy.id]
+    );
+    res.json({ vacancy: rows[0] });
   })
 );
 
