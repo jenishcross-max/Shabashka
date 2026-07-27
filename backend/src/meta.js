@@ -47,6 +47,10 @@ router.get(
 <meta property="og:title" content="${escapeHtml(title)}">
 <meta property="og:description" content="${escapeHtml(description)}">
 <meta property="og:url" content="${escapeHtml(url)}">
+<meta property="og:image" content="${escapeHtml(`${baseUrl(req)}/og-image.jpg`)}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:site_name" content="Шабашка">
 <meta name="twitter:card" content="summary_large_image">
 <meta http-equiv="refresh" content="0; url=${escapeHtml(url)}">
 </head>
@@ -82,6 +86,10 @@ router.get(
 <meta property="og:title" content="${escapeHtml(title)}">
 <meta property="og:description" content="${escapeHtml(description)}">
 <meta property="og:url" content="${escapeHtml(url)}">
+<meta property="og:image" content="${escapeHtml(`${baseUrl(req)}/og-image.jpg`)}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:site_name" content="Шабашка">
 <meta name="twitter:card" content="summary_large_image">
 <meta http-equiv="refresh" content="0; url=${escapeHtml(url)}">
 </head>

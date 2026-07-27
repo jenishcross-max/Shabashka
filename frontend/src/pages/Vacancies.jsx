@@ -7,6 +7,7 @@ import { useCities } from '../useCities';
 import { pageList } from '../pagination';
 import { SkeletonBox, SkeletonOrderCard, SkeletonFilterList } from '../components/Skeleton';
 import { useMeta } from '../useMeta';
+import { vacancyWord } from '../plural';
 
 const SORTS = [
   { value: 'new', label: 'Сначала новые' },
@@ -174,7 +175,7 @@ export default function Vacancies() {
                 <SkeletonBox width={90} height={14} />
               ) : (
                 <>
-                  <strong>{meta.total}</strong> {meta.total === 1 ? 'вакансия' : 'вакансий'}
+                  <strong>{meta.total}</strong> {vacancyWord(meta.total)}
                 </>
               )}
             </span>

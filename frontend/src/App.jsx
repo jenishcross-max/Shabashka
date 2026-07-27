@@ -25,6 +25,7 @@ import Conversation from './pages/Conversation';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
 import VerifyEmail from './pages/VerifyEmail';
+import NotFound from './pages/NotFound';
 import { SkeletonPage } from './components/Skeleton';
 
 // Код админки грузится отдельным чанком только тем, кто реально заходит в /admin —
@@ -119,7 +120,7 @@ function PublicSite() {
               </ProtectedRoute>
             }
           />
-          <Route path="*" element={<p className="status-msg">Страница не найдена</p>} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
       <Footer />
@@ -136,6 +137,18 @@ function RouteTracker() {
 
   useEffect(() => {
     window.scrollTo(0, 0);
+  }, [location.pathname]);
+
+  // Канонический адрес страницы для поисковиков. Параметры фильтров намеренно
+  // отбрасываем — иначе каждая комбинация фильтров попадёт в индекс как дубль.
+  useEffect(() => {
+    let tag = document.querySelector('link[rel="canonical"]');
+    if (!tag) {
+      tag = document.createElement('link');
+      tag.rel = 'canonical';
+      document.head.appendChild(tag);
+    }
+    tag.setAttribute('href', window.location.origin + location.pathname);
   }, [location.pathname]);
 
   return null;

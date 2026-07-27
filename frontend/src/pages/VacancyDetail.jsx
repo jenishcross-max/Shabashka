@@ -10,6 +10,7 @@ import FavoriteButton from '../components/FavoriteButton';
 import FormatIcon from '../components/FormatIcon';
 import { SkeletonOrderDetail } from '../components/Skeleton';
 import { useMeta, useJsonLd } from '../useMeta';
+import { viewWord } from '../plural';
 
 // schema.org JobPosting ожидает свои значения employmentType, а не наши внутренние коды.
 const SCHEMA_EMPLOYMENT_TYPE = {
@@ -149,7 +150,9 @@ export default function VacancyDetail() {
           </span>
           {vacancy.schedule && <span>🗓 {vacancy.schedule}</span>}
           <span>👤 Работодатель: {vacancy.owner_name}</span>
-          <span>👁 {vacancy.views} просмотров</span>
+          <span>
+            👁 {vacancy.views} {viewWord(vacancy.views)}
+          </span>
         </p>
 
         <div className="budget-box">

@@ -7,6 +7,7 @@ import CategoryIcon from '../components/CategoryIcon';
 import FormatIcon from '../components/FormatIcon';
 import CityAutocomplete from '../components/CityAutocomplete';
 import { useFavorites } from '../context/FavoritesContext';
+import { orderWord } from '../plural';
 import {
   SkeletonOrderCard,
   SkeletonHomeCategoryTile,
@@ -120,7 +121,9 @@ export default function Home() {
               </span>
               <span>
                 <span className="category-name">{c}</span>
-                <span className="category-count">{counts[c] || 0} заказов</span>
+                <span className="category-count">
+                  {counts[c] || 0} {orderWord(counts[c] || 0)}
+                </span>
               </span>
             </Link>
           ))}

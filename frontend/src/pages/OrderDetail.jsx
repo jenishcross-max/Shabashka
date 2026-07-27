@@ -8,6 +8,7 @@ import OrderCard from '../components/OrderCard';
 import FormatIcon from '../components/FormatIcon';
 import { SkeletonOrderDetail } from '../components/Skeleton';
 import { useMeta } from '../useMeta';
+import { viewWord } from '../plural';
 
 function waLink(phone, title) {
   const digits = phone.replace(/[^\d]/g, '');
@@ -112,7 +113,9 @@ export default function OrderDetail() {
           <span><FormatIcon name={order.work_format === 'online' ? 'online' : 'offline'} size={15} /> {order.work_format === 'online' ? 'Онлайн' : 'Офлайн'}</span>
           <span>🗓 Опубликован {relativeDate(order.created_at)}</span>
           <span>👤 Заказчик: {order.owner_name}</span>
-          <span>👁 {order.views} просмотров</span>
+          <span>
+            👁 {order.views} {viewWord(order.views)}
+          </span>
         </p>
 
         <div className="budget-box">

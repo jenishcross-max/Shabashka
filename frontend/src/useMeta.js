@@ -19,6 +19,18 @@ export function useMeta(title, description) {
   }, [title, description]);
 }
 
+// SPA отдаёт 200 на любой путь, поэтому несуществующие страницы поисковик может
+// принять за обычные и проиндексировать. Явно просим этого не делать.
+export function useNoIndex() {
+  useEffect(() => {
+    const tag = document.createElement('meta');
+    tag.name = 'robots';
+    tag.content = 'noindex';
+    document.head.appendChild(tag);
+    return () => tag.remove();
+  }, []);
+}
+
 // Вставляет <script type="application/ld+json"> с структурированными данными
 // (schema.org) для богатых сниппетов в поиске. Убирает скрипт при уходе со страницы.
 export function useJsonLd(data) {

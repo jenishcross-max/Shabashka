@@ -8,6 +8,7 @@ import { useCities } from '../useCities';
 import { pageList } from '../pagination';
 import { SkeletonBox, SkeletonOrderCard, SkeletonFilterList } from '../components/Skeleton';
 import { useMeta } from '../useMeta';
+import { orderWord } from '../plural';
 
 const SORTS = [
   { value: 'new', label: 'Сначала новые' },
@@ -227,7 +228,7 @@ export default function AllOrders() {
                 <SkeletonBox width={90} height={14} />
               ) : (
                 <>
-                  <strong>{meta.total}</strong> {meta.total === 1 ? 'заказ' : 'заказа'}
+                  <strong>{meta.total}</strong> {orderWord(meta.total)}
                 </>
               )}
             </span>
