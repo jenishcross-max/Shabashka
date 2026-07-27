@@ -2,7 +2,6 @@
   base = "frontend"
   publish = "dist"
   command = "npm install && npm run build"
-  edge_functions = "../netlify/edge-functions"
 
 # robots.txt и sitemap.xml генерируются бэкендом (там же, где данные заказов) —
 # проксируем эти два пути на Render, иначе поисковики видят вместо них SPA-страницу.
