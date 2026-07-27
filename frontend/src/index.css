@@ -1156,7 +1156,8 @@ a:hover {
   color: var(--muted);
   margin: 8px 0 0;
 }
-.field span.label {
+.field span.label,
+.field label.label {
   display: block;
   font-size: 14px;
   color: var(--muted);
@@ -1177,6 +1178,35 @@ a:hover {
 }
 .field textarea {
   resize: vertical;
+}
+.password-input {
+  position: relative;
+}
+/* Оставляем место под кнопку, чтобы длинный пароль не уезжал под «глазок». */
+.password-input input {
+  padding-right: 48px;
+}
+/* В Edge есть свой встроенный глазок — иначе их будет два подряд. */
+.password-input input::-ms-reveal {
+  display: none;
+}
+.password-toggle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.password-toggle:hover {
+  color: var(--text);
 }
 .field-row {
   display: grid;

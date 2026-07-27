@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useCities } from '../useCities';
 import Logo from '../components/Logo';
 import CityAutocomplete from '../components/CityAutocomplete';
+import PasswordField from '../components/PasswordField';
 
 export default function Register() {
   const { login } = useAuth();
@@ -80,16 +81,13 @@ export default function Register() {
                 onChange={(v) => setForm((f) => ({ ...f, city: v }))}
               />
             </label>
-            <label className="field">
-              <span className="label">Пароль</span>
-              <input
-                type="password"
-                required
-                minLength={8}
-                value={form.password}
-                onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-              />
-            </label>
+            <PasswordField
+              required
+              minLength={8}
+              autoComplete="new-password"
+              value={form.password}
+              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+            />
           </div>
           {error && <p className="status-msg error">{error}</p>}
           <button className="submit-btn" type="submit" disabled={submitting}>

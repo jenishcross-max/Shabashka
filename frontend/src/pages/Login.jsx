@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import Logo from '../components/Logo';
+import PasswordField from '../components/PasswordField';
 
 export default function Login() {
   const { login } = useAuth();
@@ -48,15 +49,12 @@ export default function Login() {
               onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
             />
           </label>
-          <label className="field">
-            <span className="label">Пароль</span>
-            <input
-              type="password"
-              required
-              value={form.password}
-              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-            />
-          </label>
+          <PasswordField
+            required
+            autoComplete="current-password"
+            value={form.password}
+            onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+          />
           {error && <p className="status-msg error">{error}</p>}
           <button className="submit-btn" type="submit" disabled={submitting}>
             {submitting ? 'Входим…' : 'Войти'}
