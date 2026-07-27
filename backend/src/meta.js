@@ -57,8 +57,47 @@ router.get(
   })
 );
 
+router.get(
+  '/vacancies/:id',
+  asyncHandler(async (req, res, next) => {
+    const ua = req.headers['user-agent'] || '';
+    if (!BOT_UA_RE.test(ua)) return next();
+
+    const { rows } = await db.query('SELECT * FROM vacancies WHERE id = $1', [req.params.id]);
+    const vacancy = rows[0];
+    if (!vacancy) return next();
+
+    const url = `${baseUrl(req)}/vacancies/${vacancy.id}`;
+    const title = `${vacancy.title} — Шабашка`;
+    const description = `${vacancy.category} · ${vacancy.city} — ${vacancy.description}`.slice(
+      0,
+      200
+    );
+    res.send(`<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>${escapeHtml(title)}</title>
+<meta property="og:type" content="website">
+<meta property="og:title" content="${escapeHtml(title)}">
+<meta property="og:description" content="${escapeHtml(description)}">
+<meta property="og:url" content="${escapeHtml(url)}">
+<meta name="twitter:card" content="summary_large_image">
+<meta http-equiv="refresh" content="0; url=${escapeHtml(url)}">
+</head>
+<body>
+<a href="${escapeHtml(url)}">${escapeHtml(title)}</a>
+</body>
+</html>`);
+  })
+);
+
 router.get('/robots.txt', (req, res) => {
-  res.type('text/plain').send(`User-agent: *\nAllow: /\nSitemap: ${baseUrl(req)}/sitemap.xml\n`);
+  res.type('text/plain').send(
+    `User-agent: *\nAllow: /\nDisallow: /my-orders\nDisallow: /my-vacancies\nDisallow: /messages\nDisallow: /admin\nDisallow: /verify-email\nSitemap: ${baseUrl(
+      req
+    )}/sitemap.xml\n`
+  );
 });
 
 router.get(
@@ -68,13 +107,22 @@ router.get(
     const { rows: orders } = await db.query(
       "SELECT id, created_at FROM orders WHERE status = 'open' ORDER BY created_at DESC LIMIT 5000"
     );
+    const { rows: vacancies } = await db.query(
+      "SELECT id, created_at FROM vacancies WHERE status = 'open' ORDER BY created_at DESC LIMIT 5000"
+    );
 
-    const staticUrls = ['', '/login', '/register', '/favorites'];
+    const staticUrls = ['', '/orders', '/vacancies', '/terms', '/privacy'];
     const urls = [
       ...staticUrls.map((p) => `<url><loc>${base}${p}</loc></url>`),
       ...orders.map(
         (o) =>
           `<url><loc>${base}/orders/${o.id}</loc><lastmod>${new Date(o.created_at)
+            .toISOString()
+            .slice(0, 10)}</lastmod></url>`
+      ),
+      ...vacancies.map(
+        (v) =>
+          `<url><loc>${base}/vacancies/${v.id}</loc><lastmod>${new Date(v.created_at)
             .toISOString()
             .slice(0, 10)}</lastmod></url>`
       ),

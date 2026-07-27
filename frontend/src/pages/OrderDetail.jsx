@@ -7,6 +7,7 @@ import FavoriteButton from '../components/FavoriteButton';
 import OrderCard from '../components/OrderCard';
 import FormatIcon from '../components/FormatIcon';
 import { SkeletonOrderDetail } from '../components/Skeleton';
+import { useMeta } from '../useMeta';
 
 function waLink(phone, title) {
   const digits = phone.replace(/[^\d]/g, '');
@@ -75,6 +76,15 @@ export default function OrderDetail() {
       setSending(false);
     }
   }
+
+  useMeta(
+    order && `${order.title} — Шабашка`,
+    order &&
+      `${order.category} · ${order.city}${order.budget ? ` · ${order.budget} сом` : ''} — ${order.description}`.slice(
+        0,
+        160
+      )
+  );
 
   if (error) return <p className="status-msg error">{error}</p>;
   if (!order) return <SkeletonOrderDetail />;

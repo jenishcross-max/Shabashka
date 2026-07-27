@@ -2,6 +2,19 @@
   base = "frontend"
   publish = "dist"
   command = "npm install && npm run build"
+  edge_functions = "../netlify/edge-functions"
+
+# robots.txt и sitemap.xml генерируются бэкендом (там же, где данные заказов) —
+# проксируем эти два пути на Render, иначе поисковики видят вместо них SPA-страницу.
+[[redirects]]
+  from = "/robots.txt"
+  to = "https://shabashka-zvkc.onrender.com/robots.txt"
+  status = 200
+
+[[redirects]]
+  from = "/sitemap.xml"
+  to = "https://shabashka-zvkc.onrender.com/sitemap.xml"
+  status = 200
 
 # SPA-роутинг: любой путь отдаём index.html, React Router разбирается сам.
 [[redirects]]

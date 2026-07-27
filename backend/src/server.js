@@ -26,7 +26,13 @@ app.set('trust proxy', 1);
 // потребовала бы отдельной проверки прод-сборки — остальные защиты helmet включены.
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
-app.use(cors());
+
+// В проде разрешаем только домен фронтенда; без CORS_ORIGIN (локально) — все origin,
+// чтобы не мешать разработке.
+const corsOrigin = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
+  : true;
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));

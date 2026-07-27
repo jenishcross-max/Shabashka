@@ -3,6 +3,7 @@
 // ВНИМАНИЕ: полностью очищает users/orders/vacancies/reports перед заполнением.
 // Только для локальной разработки — на проде используйте seedExamples.js, он не трогает реальных пользователей.
 require('dotenv').config();
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const db = require('./db');
 const categoriesRepo = require('./categoriesRepo');
@@ -47,7 +48,8 @@ async function main() {
   await db.query('TRUNCATE TABLE users RESTART IDENTITY CASCADE');
 
   const passwordHash = bcrypt.hashSync('password123', 10);
-  const adminHash = bcrypt.hashSync('admin12345', 10);
+  const adminPassword = crypto.randomBytes(9).toString('base64url');
+  const adminHash = bcrypt.hashSync(adminPassword, 10);
 
   console.log('Создаю администратора…');
   await db.query(
@@ -168,7 +170,7 @@ async function main() {
   Заказов: ${orderIds.length}
   Вакансий: ${vacancyIds.length}
   Пароль для всех демо-заказчиков: password123
-  Админ: admin@shabashka.kg / admin12345
+  Админ: admin@shabashka.kg / ${adminPassword}
 `);
 
   await db.pool.end();

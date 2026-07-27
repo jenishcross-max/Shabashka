@@ -20,9 +20,12 @@ export default function EmailVerifyBanner() {
 
   return (
     <div className="email-verify-banner">
-      <span>Подтвердите почту {user.email} — мы отправили письмо со ссылкой.</span>
+      <span>
+        Подтвердите почту {user.email} — мы отправили письмо со ссылкой. Если не видите его во
+        «Входящих», загляните в папку «Спам».
+      </span>
       {state === 'sent' ? (
-        <span>Письмо отправлено ✓</span>
+        <span>Письмо отправлено ✓ Проверьте папку «Спам», если его нет во «Входящих».</span>
       ) : (
         <button type="button" onClick={handleResend} disabled={state === 'sending'}>
           {state === 'sending' ? 'Отправляем…' : 'Отправить ещё раз'}

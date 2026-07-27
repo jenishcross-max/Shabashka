@@ -6,6 +6,7 @@ import CityAutocomplete from '../components/CityAutocomplete';
 import { useCities } from '../useCities';
 import { pageList } from '../pagination';
 import { SkeletonBox, SkeletonOrderCard, SkeletonFilterList } from '../components/Skeleton';
+import { useMeta } from '../useMeta';
 
 const SORTS = [
   { value: 'new', label: 'Сначала новые' },
@@ -14,6 +15,10 @@ const SORTS = [
 ];
 
 export default function Vacancies() {
+  useMeta(
+    'Все вакансии — Шабашка',
+    'Список актуальных вакансий и подработки в Кыргызстане: фильтры по городу, категории и зарплате.'
+  );
   const cities = useCities();
   const [searchParams] = useSearchParams();
   const [categories, setCategories] = useState([]);

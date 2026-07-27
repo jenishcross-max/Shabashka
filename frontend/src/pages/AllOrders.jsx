@@ -7,6 +7,7 @@ import CityAutocomplete from '../components/CityAutocomplete';
 import { useCities } from '../useCities';
 import { pageList } from '../pagination';
 import { SkeletonBox, SkeletonOrderCard, SkeletonFilterList } from '../components/Skeleton';
+import { useMeta } from '../useMeta';
 
 const SORTS = [
   { value: 'new', label: 'Сначала новые' },
@@ -15,6 +16,10 @@ const SORTS = [
 ];
 
 export default function AllOrders() {
+  useMeta(
+    'Все заказы — Шабашка',
+    'Список всех актуальных заказов на подработку в Кыргызстане: фильтры по городу, категории и бюджету.'
+  );
   const cities = useCities();
   const [searchParams, setSearchParams] = useSearchParams();
   const [categories, setCategories] = useState([]);

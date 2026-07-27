@@ -9,6 +9,16 @@ import { formatSalary } from '../components/VacancyCard';
 import FavoriteButton from '../components/FavoriteButton';
 import FormatIcon from '../components/FormatIcon';
 import { SkeletonOrderDetail } from '../components/Skeleton';
+import { useMeta, useJsonLd } from '../useMeta';
+
+// schema.org JobPosting ожидает свои значения employmentType, а не наши внутренние коды.
+const SCHEMA_EMPLOYMENT_TYPE = {
+  full_time: 'FULL_TIME',
+  part_time: 'PART_TIME',
+  shift: 'OTHER',
+  gig: 'OTHER',
+  internship: 'INTERN',
+};
 
 function waLink(phone, title) {
   const digits = phone.replace(/[^\d]/g, '');
@@ -63,6 +73,50 @@ export default function VacancyDetail() {
       setSending(false);
     }
   }
+
+  useMeta(
+    vacancy && `${vacancy.title} — Шабашка`,
+    vacancy &&
+      `${vacancy.category} · ${vacancy.city} · ${formatSalary(vacancy.salary_min, vacancy.salary_max)} — ${vacancy.description}`.slice(
+        0,
+        160
+      )
+  );
+
+  useJsonLd(
+    vacancy && {
+      '@context': 'https://schema.org/',
+      '@type': 'JobPosting',
+      title: vacancy.title,
+      description: vacancy.description,
+      datePosted: vacancy.created_at,
+      employmentType: SCHEMA_EMPLOYMENT_TYPE[vacancy.employment_type] || 'OTHER',
+      hiringOrganization: { '@type': 'Organization', name: vacancy.owner_name },
+      jobLocation: {
+        '@type': 'Place',
+        address: {
+          '@type': 'PostalAddress',
+          addressLocality: vacancy.city,
+          addressCountry: 'KG',
+        },
+      },
+      ...(vacancy.work_format === 'online' ? { jobLocationType: 'TELECOMMUTE' } : {}),
+      ...(vacancy.salary_min || vacancy.salary_max
+        ? {
+            baseSalary: {
+              '@type': 'MonetaryAmount',
+              currency: 'KGS',
+              value: {
+                '@type': 'QuantitativeValue',
+                minValue: vacancy.salary_min || vacancy.salary_max,
+                maxValue: vacancy.salary_max || vacancy.salary_min,
+                unitText: 'MONTH',
+              },
+            },
+          }
+        : {}),
+    }
+  );
 
   if (error) return <p className="status-msg error">{error}</p>;
   if (!vacancy) return <SkeletonOrderDetail />;
