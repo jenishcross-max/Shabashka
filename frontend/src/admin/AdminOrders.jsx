@@ -49,6 +49,11 @@ export default function AdminOrders() {
     load();
   }
 
+  async function bump(order) {
+    await api.adminBumpOrder(order.id, token);
+    load();
+  }
+
   if (error) return <p className="status-msg error">{error}</p>;
 
   return (
@@ -96,6 +101,9 @@ export default function AdminOrders() {
                   <span className={`badge status-${o.status}`}>{o.status === 'open' ? 'Открыт' : 'Закрыт'}</span>
                 </span>
                 <span className="admin-row-buttons">
+                  <button className="admin-btn-ghost" onClick={() => bump(o)}>
+                    ⬆ Поднять
+                  </button>
                   <button className="admin-btn-ghost" onClick={() => togglePinned(o)}>
                     {o.pinned ? 'Открепить' : 'Закрепить'}
                   </button>

@@ -11,6 +11,8 @@ export default function MyOrders() {
   const [orders, setOrders] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [bumpError, setBumpError] = useState('');
+  const [togglingId, setTogglingId] = useState(null);
 
   function load() {
     setLoading(true);
@@ -25,14 +27,29 @@ export default function MyOrders() {
 
   async function toggleStatus(order) {
     const nextStatus = order.status === 'open' ? 'closed' : 'open';
-    await api.setOrderStatus(order.id, nextStatus, token);
-    load();
+    setTogglingId(order.id);
+    try {
+      await api.setOrderStatus(order.id, nextStatus, token);
+      load();
+    } finally {
+      setTogglingId(null);
+    }
   }
 
   async function remove(order) {
     if (!confirm('Удалить этот заказ?')) return;
     await api.deleteOrder(order.id, token);
     load();
+  }
+
+  async function bump(order) {
+    setBumpError('');
+    try {
+      await api.bumpOrder(order.id, token);
+      load();
+    } catch (e) {
+      setBumpError(e.message);
+    }
   }
 
   if (error) return <p className="status-msg error">{error}</p>;
@@ -51,6 +68,7 @@ export default function MyOrders() {
           У вас пока нет заказов. <Link to="/orders/new">Разместить первый заказ</Link>
         </p>
       )}
+      {bumpError && <p className="status-msg error">{bumpError}</p>}
       <div className="my-orders-list">
         {loading && (
           <>
@@ -76,8 +94,13 @@ export default function MyOrders() {
             </div>
             <div className="my-order-actions">
               <Link to={`/orders/${order.id}/edit`}>Изменить</Link>
-              <button onClick={() => toggleStatus(order)}>
-                {order.status === 'open' ? 'Закрыть' : 'Открыть снова'}
+              <button onClick={() => bump(order)}>⬆ Поднять</button>
+              <button disabled={togglingId === order.id} onClick={() => toggleStatus(order)}>
+                {togglingId === order.id
+                  ? '…'
+                  : order.status === 'open'
+                  ? 'Закрыть'
+                  : 'Открыть снова'}
               </button>
               <button className="danger" onClick={() => remove(order)}>
                 Удалить

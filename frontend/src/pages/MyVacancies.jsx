@@ -12,6 +12,8 @@ export default function MyVacancies() {
   const [vacancies, setVacancies] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [bumpError, setBumpError] = useState('');
+  const [togglingId, setTogglingId] = useState(null);
 
   function load() {
     setLoading(true);
@@ -26,14 +28,29 @@ export default function MyVacancies() {
 
   async function toggleStatus(vacancy) {
     const nextStatus = vacancy.status === 'open' ? 'closed' : 'open';
-    await api.setVacancyStatus(vacancy.id, nextStatus, token);
-    load();
+    setTogglingId(vacancy.id);
+    try {
+      await api.setVacancyStatus(vacancy.id, nextStatus, token);
+      load();
+    } finally {
+      setTogglingId(null);
+    }
   }
 
   async function remove(vacancy) {
     if (!confirm('Удалить эту вакансию?')) return;
     await api.deleteVacancy(vacancy.id, token);
     load();
+  }
+
+  async function bump(vacancy) {
+    setBumpError('');
+    try {
+      await api.bumpVacancy(vacancy.id, token);
+      load();
+    } catch (e) {
+      setBumpError(e.message);
+    }
   }
 
   if (error) return <p className="status-msg error">{error}</p>;
@@ -52,6 +69,7 @@ export default function MyVacancies() {
           У вас пока нет вакансий. <Link to="/vacancies/new">Разместить первую вакансию</Link>
         </p>
       )}
+      {bumpError && <p className="status-msg error">{bumpError}</p>}
       <div className="my-orders-list">
         {loading && (
           <>
@@ -76,8 +94,13 @@ export default function MyVacancies() {
             </div>
             <div className="my-order-actions">
               <Link to={`/vacancies/${vacancy.id}/edit`}>Изменить</Link>
-              <button onClick={() => toggleStatus(vacancy)}>
-                {vacancy.status === 'open' ? 'Закрыть' : 'Открыть снова'}
+              <button onClick={() => bump(vacancy)}>⬆ Поднять</button>
+              <button disabled={togglingId === vacancy.id} onClick={() => toggleStatus(vacancy)}>
+                {togglingId === vacancy.id
+                  ? '…'
+                  : vacancy.status === 'open'
+                  ? 'Закрыть'
+                  : 'Открыть снова'}
               </button>
               <button className="danger" onClick={() => remove(vacancy)}>
                 Удалить

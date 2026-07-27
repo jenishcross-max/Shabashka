@@ -186,12 +186,12 @@ router.get(
 
     const { rows } = await db.query(
       `SELECT orders.id, orders.title, orders.category, orders.city, orders.budget, orders.status,
-              orders.views, orders.pinned, orders.created_at,
+              orders.views, orders.pinned, orders.bumped_at, orders.created_at,
               users.name AS owner_name, users.email AS owner_email
        FROM orders
        JOIN users ON users.id = orders.user_id
        ${where}
-       ORDER BY orders.pinned DESC, orders.created_at DESC
+       ORDER BY orders.pinned DESC, COALESCE(orders.bumped_at, orders.created_at) DESC
        LIMIT ${addParam(limit)} OFFSET ${addParam(offset)}`,
       params
     );
@@ -240,6 +240,16 @@ router.delete(
   })
 );
 
+// Поднять заказ в списке — из админки можно в любой момент, без ограничения раз в сутки
+router.post(
+  '/orders/:id/bump',
+  asyncHandler(async (req, res) => {
+    const { rowCount } = await db.query('UPDATE orders SET bumped_at = NOW() WHERE id = $1', [req.params.id]);
+    if (!rowCount) return res.status(404).json({ error: 'Заказ не найден' });
+    res.json({ ok: true });
+  })
+);
+
 router.get(
   '/vacancies',
   asyncHandler(async (req, res) => {
@@ -273,12 +283,12 @@ router.get(
     const { rows } = await db.query(
       `SELECT vacancies.id, vacancies.title, vacancies.category, vacancies.employment_type,
               vacancies.city, vacancies.salary_min, vacancies.salary_max, vacancies.status,
-              vacancies.views, vacancies.pinned, vacancies.created_at,
+              vacancies.views, vacancies.pinned, vacancies.bumped_at, vacancies.created_at,
               users.name AS owner_name, users.email AS owner_email
        FROM vacancies
        JOIN users ON users.id = vacancies.user_id
        ${where}
-       ORDER BY vacancies.pinned DESC, vacancies.created_at DESC
+       ORDER BY vacancies.pinned DESC, COALESCE(vacancies.bumped_at, vacancies.created_at) DESC
        LIMIT ${addParam(limit)} OFFSET ${addParam(offset)}`,
       params
     );
@@ -324,6 +334,16 @@ router.delete(
     const { rowCount } = await db.query('DELETE FROM vacancies WHERE id = $1', [req.params.id]);
     if (!rowCount) return res.status(404).json({ error: 'Вакансия не найдена' });
     res.status(204).end();
+  })
+);
+
+// Поднять вакансию в списке — из админки можно в любой момент, без ограничения раз в сутки
+router.post(
+  '/vacancies/:id/bump',
+  asyncHandler(async (req, res) => {
+    const { rowCount } = await db.query('UPDATE vacancies SET bumped_at = NOW() WHERE id = $1', [req.params.id]);
+    if (!rowCount) return res.status(404).json({ error: 'Вакансия не найдена' });
+    res.json({ ok: true });
   })
 );
 

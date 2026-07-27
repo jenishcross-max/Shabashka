@@ -22,6 +22,38 @@
   box-sizing: border-box;
 }
 
+.email-verify-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--red-tint);
+  border-bottom: 1px solid var(--red-border);
+  font-size: 14px;
+  color: var(--text);
+}
+
+.email-verify-banner button {
+  border: 1px solid var(--red-border);
+  background: #fff;
+  color: var(--red-dark);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.email-verify-banner button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.email-verify-banner .error {
+  color: var(--red-status-text);
+}
+
 body {
   margin: 0;
   font-family: 'Golos Text', system-ui, sans-serif;

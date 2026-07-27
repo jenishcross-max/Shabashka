@@ -50,6 +50,11 @@ export default function AdminVacancies() {
     load();
   }
 
+  async function bump(v) {
+    await api.adminBumpVacancy(v.id, token);
+    load();
+  }
+
   if (error) return <p className="status-msg error">{error}</p>;
 
   return (
@@ -99,6 +104,9 @@ export default function AdminVacancies() {
                     </span>
                   </span>
                   <span className="admin-row-buttons">
+                    <button className="admin-btn-ghost" onClick={() => bump(v)}>
+                      ⬆ Поднять
+                    </button>
                     <button className="admin-btn-ghost" onClick={() => togglePinned(v)}>
                       {v.pinned ? 'Открепить' : 'Закрепить'}
                     </button>

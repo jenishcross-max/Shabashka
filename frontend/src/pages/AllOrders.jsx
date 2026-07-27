@@ -97,6 +97,12 @@ export default function AllOrders() {
     setSelectedCategories((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
   }
 
+  function goToPage(p) {
+    document.activeElement?.blur();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setPage(p);
+  }
+
   return (
     <div>
       <section className="orders-search-strip">
@@ -242,7 +248,7 @@ export default function AllOrders() {
 
           {meta.pages > 1 && (
             <div className="pagination">
-              <button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+              <button disabled={page <= 1} onClick={() => goToPage(Math.max(1, page - 1))}>
                 ←
               </button>
               {pageList(page, meta.pages).map((p, i) =>
@@ -254,13 +260,13 @@ export default function AllOrders() {
                   <button
                     key={p}
                     className={p === page ? 'active' : ''}
-                    onClick={() => setPage(p)}
+                    onClick={() => goToPage(p)}
                   >
                     {p}
                   </button>
                 )
               )}
-              <button disabled={page >= meta.pages} onClick={() => setPage((p) => Math.min(meta.pages, p + 1))}>
+              <button disabled={page >= meta.pages} onClick={() => goToPage(Math.min(meta.pages, page + 1))}>
                 →
               </button>
             </div>
