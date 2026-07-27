@@ -18,6 +18,10 @@ const { apiLimiter } = require('./rateLimit');
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// На Render (и других PaaS) приложение стоит за прокси, который добавляет
+// X-Forwarded-For — без этого express-rate-limit падает с ERR_ERL_UNEXPECTED_X_FORWARDED_FOR.
+app.set('trust proxy', 1);
+
 // CSP выключен: это Vite SPA, тонкая настройка политики под её бандл
 // потребовала бы отдельной проверки прод-сборки — остальные защиты helmet включены.
 app.use(helmet({ contentSecurityPolicy: false }));
