@@ -9,6 +9,9 @@ const transporter =
         port: Number(SMTP_PORT) || 587,
         secure: Number(SMTP_PORT) === 465,
         auth: { user: SMTP_USER, pass: SMTP_PASS },
+        // Render не поддерживает исходящий IPv6 на бесплатном плане, а
+        // smtp.gmail.com и подобные резолвятся в IPv6 — форсируем IPv4.
+        family: 4,
       })
     : null;
 
