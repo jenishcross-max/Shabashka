@@ -27,3 +27,5 @@ services:
         sync: false
       - key: TELEGRAM_WEBHOOK_SECRET
         generateValue: true
+      - key: TELEGRAM_CHANNEL_ID
+        sync: false

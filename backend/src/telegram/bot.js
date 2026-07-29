@@ -17,6 +17,9 @@ const ADMIN_IDS = new Set(
 );
 
 const SITE_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+// Публичный канал, куда бот сам постит опубликованные объявления. Не задан —
+// просто пропускаем этот шаг, остальная публикация работает как раньше.
+const CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID || '';
 
 // Кто из администраторов сейчас правит какое объявление. В памяти процесса:
 // перезапуск сбрасывает режим правки, и это ровно то, чего от него ждёшь —
@@ -48,6 +51,32 @@ function card(parsed, extra) {
   if (parsed.description) lines.push('', tg.esc(parsed.description));
   if (parsed.note) lines.push('', `⚠️ ${tg.esc(parsed.note)}`);
   if (extra) lines.push('', extra);
+
+  return lines.join('\n');
+}
+
+// Публичная версия карточки — без внутренних пометок вроде ⚠️ note, которые
+// имеют смысл только для админа при модерации. Возвращает обычный текст без
+// HTML-разметки: caller сам решает, экранировать его для Telegram или взять
+// как есть для wa.me-ссылки.
+function publicText(parsed, listingType, siteLink) {
+  const isVacancy = listingType === 'vacancy';
+  const lines = [`${isVacancy ? '💼 Вакансия' : '🧰 Заказ'}: ${parsed.title || 'Без заголовка'}`, ''];
+
+  const meta = [parsed.category, parsed.city].filter(Boolean).join(' · ');
+  if (meta) lines.push(meta);
+  if (isVacancy) {
+    const empExp = [EMPLOYMENT_LABELS[parsed.employment_type], EXPERIENCE_LABELS[parsed.experience]]
+      .filter(Boolean)
+      .join(' · ');
+    if (empExp) lines.push(empExp);
+  }
+  if (parsed.address) lines.push(`📍 ${parsed.address}`);
+  if (parsed.budget) lines.push(`💰 ${parsed.budget} сом${isVacancy ? ' (от)' : ''}`);
+  if (parsed.phone) lines.push(`📞 ${parsed.phone}`);
+  if (parsed.work_format === 'online') lines.push('💻 Удалённо');
+  if (parsed.description) lines.push('', parsed.description);
+  if (siteLink) lines.push('', siteLink);
 
   return lines.join('\n');
 }
@@ -226,12 +255,30 @@ async function onCallback(query) {
     try {
       const result = await imports.publish(id);
       const path = result.type === 'vacancy' ? 'vacancies' : 'orders';
-      const link = SITE_URL ? `\n${SITE_URL}/${path}/${result.id}` : '';
+      const siteLink = SITE_URL ? `${SITE_URL}/${path}/${result.id}` : '';
+      const publicMsg = publicText(row.parsed, result.type, siteLink);
+
+      // Канал — необязательный шаг: если пост туда не ушёл (бот не админ,
+      // канал не задан), публикация на сайте всё равно должна засчитаться.
+      let channelNote = '';
+      if (CHANNEL_ID) {
+        try {
+          await tg.sendMessage(CHANNEL_ID, tg.esc(publicMsg));
+        } catch (err) {
+          channelNote = `\n⚠️ В канал не ушло: ${tg.esc(err.message)}`;
+        }
+      }
+
+      // wa.me/?text= открывает у админа выбор чата в WhatsApp с готовым
+      // текстом — свой канал он выбирает и отправляет сам, автопостинга
+      // в WhatsApp-каналы у Meta просто нет.
+      const waLink = `https://wa.me/?text=${encodeURIComponent(publicMsg)}`;
+
       await tg.answerCallbackQuery(query.id, 'Опубликовано');
       await tg.editMessageText(
         chatId,
         messageId,
-        `${card(row.parsed)}\n\n✅ <b>Опубликовано</b>${tg.esc(link)}`
+        `${card(row.parsed)}\n\n✅ <b>Опубликовано</b>${siteLink ? `\n${tg.esc(siteLink)}` : ''}${channelNote}\n\n📱 <a href="${waLink}">Отправить в WhatsApp</a>`
       );
     } catch (err) {
       await tg.answerCallbackQuery(query.id, err.message.slice(0, 190));
