@@ -14,49 +14,27 @@ const KNOWN_CITIES = require('../cities');
 const MODEL = process.env.GROQ_MODEL || 'qwen/qwen3.6-27b';
 const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
-// Обычный JSON Schema (в отличие от Gemini, у Groq тот же диалект, что и везде).
-// strict-режим требует все поля в required и additionalProperties: false —
-// «нет значения» кодируем пустой строкой, а не null.
-function buildSchema(categories) {
-  const str = { type: 'string' };
-  return {
-    type: 'object',
-    properties: {
-      is_listing: {
-        type: 'boolean',
-        description: 'true, если это объявление о работе или заказ услуги, а не обычное сообщение',
-      },
-      listing_type: { type: 'string', enum: ['order', 'vacancy', 'other'] },
-      title: { ...str, description: 'Короткий заголовок, до 70 символов, без слова «требуется» в начале' },
-      description: { ...str, description: 'Суть заказа своими словами, 1–3 предложения' },
-      category: { type: 'string', enum: categories },
-      city: str,
-      address: { ...str, description: 'Район или микрорайон, без номера дома и квартиры' },
-      budget: { ...str, description: 'Только число в сомах, без валюты. Пусто, если цена не указана' },
-      phone: { ...str, description: 'Телефон в формате +996XXXXXXXXX. Пусто, если номера нет' },
-      work_format: { type: 'string', enum: ['online', 'offline'] },
-      note: { ...str, description: 'Одна фраза для администратора: что непонятно или требует проверки' },
-    },
-    required: [
-      'is_listing',
-      'listing_type',
-      'title',
-      'description',
-      'category',
-      'city',
-      'address',
-      'budget',
-      'phone',
-      'work_format',
-      'note',
-    ],
-    additionalProperties: false,
-  };
-}
-
+// Vision-модели Groq не поддерживают строгий response_format: json_schema
+// (он есть только у текстовых gpt-oss) — используем json_object и описываем
+// структуру прямо в системном промпте.
 function buildSystem(categories) {
   return [
     'Ты разбираешь объявления из чатов Кыргызстана (WhatsApp, Telegram) в структуру для доски объявлений «Шабашка».',
+    '',
+    'Верни только JSON-объект (без markdown-разметки и пояснений) строго с этими полями:',
+    '{',
+    '  "is_listing": boolean,',
+    '  "listing_type": "order" | "vacancy" | "other",',
+    '  "title": string,',
+    '  "description": string,',
+    `  "category": string (одно из: ${categories.join(', ')}),`,
+    '  "city": string,',
+    '  "address": string,',
+    '  "budget": string,',
+    '  "phone": string,',
+    '  "work_format": "online" | "offline",',
+    '  "note": string',
+    '}',
     '',
     'Правила:',
     '- Текст может быть на русском, кыргызском или вперемешку, с опечатками и без знаков препинания. Заголовок и описание пиши по-русски, грамотно.',
@@ -124,10 +102,7 @@ async function ask(content, systemSuffix) {
         { role: 'system', content: system },
         { role: 'user', content },
       ],
-      response_format: {
-        type: 'json_schema',
-        json_schema: { name: 'listing', strict: true, schema: buildSchema(categories) },
-      },
+      response_format: { type: 'json_object' },
     }),
   });
 
@@ -140,7 +115,12 @@ async function ask(content, systemSuffix) {
   const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
   if (!text) throw new Error('Пустой ответ модели');
 
-  return normalize(JSON.parse(text));
+  // json_object режим гарантирует валидный JSON, но не запрещает обернуть его
+  // в markdown-разметку — на всякий случай вырезаем блок ```...```.
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('Модель вернула не JSON');
+
+  return normalize(JSON.parse(match[0]));
 }
 
 // Скриншот из чата: на нём видно и текст объявления, и интерфейс мессенджера —
