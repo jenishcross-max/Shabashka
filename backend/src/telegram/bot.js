@@ -1,3 +1,5 @@
+const { domainToUnicode } = require('url');
+
 const tg = require('./api');
 const extract = require('./extract');
 const imports = require('./imports');
@@ -31,6 +33,22 @@ function isAllowed(userId) {
 // которые имеют смысл только админу. Возвращает обычный текст без HTML-разметки:
 // caller сам решает, экранировать его для Telegram или взять как есть
 // для wa.me-ссылки.
+// Домен у сайта кириллический, и в ссылке он лежит в punycode-виде
+// (xn--80aaac0cyed.com) — так его понимают DNS и браузеры. Читать такое человеку
+// невозможно, поэтому во всех текстах показываем развёрнутый адрес без схемы:
+// «шабашка.com/orders/131». Кликабельность от этого не страдает — в Telegram
+// ссылка уходит настоящим тегом со ссылкой на исходный адрес, а WhatsApp и
+// Threads сами делают кликабельным домен без «https://».
+function prettyLink(link) {
+  if (!link) return '';
+  try {
+    const u = new URL(link);
+    return `${domainToUnicode(u.host)}${u.pathname}${u.search}`.replace(/\/$/, '');
+  } catch {
+    return link;
+  }
+}
+
 function publicText(parsed, listingType, siteLink) {
   const isVacancy = listingType === 'vacancy';
   const lines = [`${isVacancy ? '💼 Вакансия' : '🧰 Заказ'}: ${parsed.title || 'Без заголовка'}`, ''];
@@ -112,14 +130,19 @@ async function publishOne(chatId, id, parsed) {
   const result = await imports.publish(id);
   const path = result.type === 'vacancy' ? 'vacancies' : 'orders';
   const siteLink = SITE_URL ? `${SITE_URL}/${path}/${result.id}` : '';
-  const publicMsg = publicText(ready, result.type, siteLink);
+  const shown = prettyLink(siteLink);
+  // Текст без ссылки: в сообщения Telegram она добавляется тегом отдельно, а в
+  // WhatsApp уходит обычной строкой — разметку там показывать нечем.
+  const body = publicText(ready, result.type, '');
+  const publicMsg = publicText(ready, result.type, shown);
+  const linkTag = siteLink ? `\n\n<a href="${siteLink}">${tg.esc(shown)}</a>` : '';
 
   // Канал — необязательный шаг: если пост туда не ушёл (бот не админ, канал
   // не задан), публикация на сайте всё равно должна засчитаться.
   let channelLine = '';
   if (CHANNEL_ID) {
     try {
-      await tg.sendMessage(CHANNEL_ID, tg.esc(publicMsg));
+      await tg.sendMessage(CHANNEL_ID, `${tg.esc(body)}${linkTag}`);
       channelLine = '📢 Выложено в Telegram-канал';
     } catch (err) {
       channelLine = `⚠️ В канал не ушло: ${tg.esc(err.message)}`;
@@ -134,8 +157,7 @@ async function publishOne(chatId, id, parsed) {
   // публикацией больше нет, и единственная возможность заметить, что модель
   // разобрала чужую переписку или перепутала телефон, — прочитать текст здесь,
   // рядом с кнопкой удаления.
-  const card = publicText(ready, result.type, siteLink);
-  const lines = ['✅ Опубликовано', '', tg.esc(clamp(card, 3000)), ''];
+  const lines = ['✅ Опубликовано', '', `${tg.esc(clamp(body, 3000))}${linkTag}`, ''];
   if (channelLine) lines.push(channelLine);
   lines.push(`📱 <a href="${waLink}">Отправить в WhatsApp</a>`);
   // Без телефона объявление живое, но откликнуться на него нельзя — это стоит
@@ -150,7 +172,7 @@ async function publishOne(chatId, id, parsed) {
 
   // Намеренно без await: ролик едет своим ходом, следующее объявление из пачки
   // не должно ждать кодирования и загрузки на площадки.
-  shareToSocial(chatId, ready, result.type, siteLink).catch((err) => console.error('Соцсети:', err));
+  shareToSocial(chatId, ready, result.type, shown).catch((err) => console.error('Соцсети:', err));
 }
 
 async function handleParsed(chatId, listings, { source, rawText }) {
