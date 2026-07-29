@@ -298,15 +298,4 @@ function fromText(text) {
   return ask(`Разбери объявления из этого сообщения чата:\n\n${text}`);
 }
 
-// Правки от администратора применяются к уже разобранному JSON одного
-// объявления, а не к исходнику: так «город Ош» меняет только город и не
-// сбрасывает остальные поля.
-async function applyCorrections(parsed, corrections) {
-  const list = await ask(
-    `Разобранное объявление:\n${JSON.stringify(parsed, null, 2)}\n\nПравки:\n${corrections}`,
-    'Сейчас тебе дают одно уже разобранное объявление и правки администратора. Верни объект "listings" ровно с одним элементом — тем же объявлением с внесёнными правками, остальные поля оставь как есть.'
-  );
-  return list[0];
-}
-
-module.exports = { fromImage, fromText, applyCorrections, PACE_MS };
+module.exports = { fromImage, fromText, PACE_MS };

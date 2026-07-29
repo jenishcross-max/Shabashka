@@ -77,6 +77,58 @@ function resolveOwnerId() {
   return ownerIdPromise;
 }
 
+// Город по умолчанию: бот разбирает чаты Бишкека, и объявление без города
+// почти всегда бишкекское. Ошибиться тут дешевле, чем не опубликовать вовсе.
+const FALLBACK_CITY = 'Бишкек';
+const FALLBACK_CATEGORY = 'Другое';
+
+// Первая фраза описания как заголовок — обрезаем по границе слова, чтобы
+// не получить «Нужен сантехник поменять смеси».
+function titleFrom(description) {
+  const first = String(description).split(/[.!?\n]/)[0].trim();
+  if (first.length <= 70) return first;
+  return `${first.slice(0, 70).replace(/\s+\S*$/, '')}…`;
+}
+
+// Достраивает объявление до публикуемого вида. Публикация идёт без подтверждения,
+// спросить недостающее не у кого — поэтому пустые поля не повод остановиться,
+// а повод подставить осмысленное значение. Возвращает { parsed, filled }:
+// filled — список того, что дописали, чтобы это было видно в отчёте, а не молча.
+async function applyDefaults(parsed) {
+  const out = { ...parsed };
+  const filled = [];
+
+  if (!out.city) {
+    out.city = FALLBACK_CITY;
+    filled.push('город');
+  }
+
+  const known = await categoriesRepo.listNames();
+  if (!known.includes(out.category)) {
+    out.category = known.includes(FALLBACK_CATEGORY) ? FALLBACK_CATEGORY : known[0];
+    filled.push('категория');
+  }
+
+  if (!out.title && out.description) {
+    out.title = titleFrom(out.description);
+    filled.push('заголовок');
+  }
+  if (!out.description && out.title) {
+    out.description = out.title;
+    filled.push('описание');
+  }
+
+  // Ни заголовка, ни описания — публиковать нечего, но и это не тупик:
+  // категория с городом уже дают осмысленную строку.
+  if (!out.title) {
+    out.title = `${out.listing_type === 'vacancy' ? 'Вакансия' : 'Заказ'}: ${out.category}`;
+    out.description = `${out.title}. Подробности по телефону.`;
+    filled.push('заголовок', 'описание');
+  }
+
+  return { parsed: out, filled };
+}
+
 // Чего не хватает, чтобы объявление можно было опубликовать.
 async function validate(parsed) {
   const errors = [];
@@ -122,10 +174,10 @@ async function publish(id) {
     );
     const vacancyId = inserted.rows[0].id;
 
-    await db.query("UPDATE imported_listings SET status = 'published', vacancy_id = $1 WHERE id = $2", [
-      vacancyId,
-      id,
-    ]);
+    await db.query(
+      "UPDATE imported_listings SET status = 'published', published_at = NOW(), vacancy_id = $1 WHERE id = $2",
+      [vacancyId, id]
+    );
     invalidate('home:');
 
     return { type: 'vacancy', id: vacancyId };
@@ -148,13 +200,40 @@ async function publish(id) {
   );
   const orderId = inserted.rows[0].id;
 
-  await db.query("UPDATE imported_listings SET status = 'published', order_id = $1 WHERE id = $2", [
-    orderId,
-    id,
-  ]);
+  await db.query(
+    "UPDATE imported_listings SET status = 'published', published_at = NOW(), order_id = $1 WHERE id = $2",
+    [orderId, id]
+  );
   invalidate('home:'); // чтобы объявление сразу попало в ленту на главной
 
   return { type: 'order', id: orderId };
 }
 
-module.exports = { create, get, setParsed, setCard, reject, publish, validate };
+// Сколько объявлений ушло на сайт сегодня. День считаем по Бишкеку, а не по UTC:
+// сервер живёт в UTC, и после полуночи по местному времени счётчик ещё шесть
+// часов показывал бы вчерашний итог.
+async function countToday() {
+  const { rows } = await db.query(
+    `SELECT COUNT(*)::int AS n FROM imported_listings
+      WHERE status = 'published'
+        AND (published_at AT TIME ZONE 'Asia/Bishkek')::date = (NOW() AT TIME ZONE 'Asia/Bishkek')::date`
+  );
+  return rows[0].n;
+}
+
+// Снять уже опубликованное объявление с сайта. Подтверждения перед публикацией
+// больше нет, поэтому убрать лишнее нужно уметь после неё — иначе чужой телефон
+// останется в ленте навсегда.
+async function remove(id) {
+  const row = await get(id);
+  if (!row) throw new Error('Объявление не найдено');
+
+  if (row.vacancy_id) await db.query('DELETE FROM vacancies WHERE id = $1', [row.vacancy_id]);
+  else if (row.order_id) await db.query('DELETE FROM orders WHERE id = $1', [row.order_id]);
+  else throw new Error('Это объявление на сайт не уходило');
+
+  await reject(id);
+  invalidate('home:');
+}
+
+module.exports = { create, get, setParsed, setCard, reject, publish, validate, applyDefaults, countToday, remove };

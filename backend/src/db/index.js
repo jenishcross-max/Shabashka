@@ -84,6 +84,13 @@ function init() {
       // доращиваем колонку на уже развёрнутых базах.
       await pool.query('ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS vacancy_id INTEGER REFERENCES vacancies(id) ON DELETE SET NULL');
 
+      // Счётчик «сколько опубликовано сегодня» считается по времени публикации,
+      // а не создания записи: раньше между ними был человек с кнопкой, и разница
+      // доходила до суток. У старых строк время публикации уже не восстановить —
+      // берём created_at, для них это ближайшая правда.
+      await pool.query('ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ');
+      await pool.query("UPDATE imported_listings SET published_at = created_at WHERE status = 'published' AND published_at IS NULL");
+
       await pool.query('CREATE INDEX IF NOT EXISTS idx_conversations_listing ON conversations(listing_type, listing_id)');
       await pool.query(
         'CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_listing_seeker ON conversations(listing_type, listing_id, seeker_id)'

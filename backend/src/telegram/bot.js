@@ -23,44 +23,14 @@ const SITE_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
 // просто пропускаем этот шаг, остальная публикация работает как раньше.
 const CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID || '';
 
-// Кто из администраторов сейчас правит какое объявление. В памяти процесса:
-// перезапуск сбрасывает режим правки, и это ровно то, чего от него ждёшь —
-// карточка остаётся, кнопки на месте, «Исправить» можно нажать заново.
-const editing = new Map();
-
 function isAllowed(userId) {
   return ADMIN_IDS.has(String(userId));
 }
 
-function card(parsed, extra) {
-  const isVacancy = parsed.listing_type === 'vacancy';
-  const typeLabel = isVacancy ? '💼 Вакансия' : '🧰 Заказ';
-  const lines = [`${typeLabel}: <b>${tg.esc(parsed.title || 'Без заголовка')}</b>`, ''];
-
-  const meta = [parsed.category, parsed.city].filter(Boolean).join(' · ');
-  if (meta) lines.push(tg.esc(meta));
-  if (isVacancy) {
-    const empExp = [EMPLOYMENT_LABELS[parsed.employment_type], EXPERIENCE_LABELS[parsed.experience]]
-      .filter(Boolean)
-      .join(' · ');
-    if (empExp) lines.push(tg.esc(empExp));
-  }
-  if (parsed.address) lines.push(`📍 ${tg.esc(parsed.address)}`);
-  if (parsed.budget) lines.push(`💰 ${parsed.budget} сом${isVacancy ? ' (от)' : ''}`);
-  if (parsed.phone) lines.push(`📞 ${tg.esc(parsed.phone)}`);
-  if (parsed.work_format === 'online') lines.push('💻 Удалённо');
-
-  if (parsed.description) lines.push('', tg.esc(parsed.description));
-  if (parsed.note) lines.push('', `⚠️ ${tg.esc(parsed.note)}`);
-  if (extra) lines.push('', extra);
-
-  return lines.join('\n');
-}
-
-// Публичная версия карточки — без внутренних пометок вроде ⚠️ note, которые
-// имеют смысл только для админа при модерации. Возвращает обычный текст без
-// HTML-разметки: caller сам решает, экранировать его для Telegram или взять
-// как есть для wa.me-ссылки.
+// Текст объявления для публикации — без внутренних пометок вроде ⚠️ note,
+// которые имеют смысл только админу. Возвращает обычный текст без HTML-разметки:
+// caller сам решает, экранировать его для Telegram или взять как есть
+// для wa.me-ссылки.
 function publicText(parsed, listingType, siteLink) {
   const isVacancy = listingType === 'vacancy';
   const lines = [`${isVacancy ? '💼 Вакансия' : '🧰 Заказ'}: ${parsed.title || 'Без заголовка'}`, ''];
@@ -102,29 +72,59 @@ async function shareToInstagram(chatId, parsed, listingType) {
   }
 }
 
-function keyboard(id, listingType) {
-  const toggleLabel = listingType === 'vacancy' ? '🔄 Это заказ' : '🔄 Это вакансия';
-  return {
-    inline_keyboard: [
-      [
-        { text: '✅ Опубликовать', callback_data: `pub:${id}` },
-        { text: '✏️ Исправить', callback_data: `edit:${id}` },
-      ],
-      [
-        { text: toggleLabel, callback_data: `type:${id}` },
-        { text: '❌ Мусор', callback_data: `rej:${id}` },
-      ],
-    ],
-  };
+// Итог дня: сколько ушло на сайт и сколько роликов ещё едет в Instagram.
+// Второе число живёт только в памяти процесса — после перезапуска Render оно
+// честно нулевое, потому что вместе с процессом умирают и сами сборки.
+async function statsText() {
+  const today = await imports.countToday();
+  return `📊 Сегодня опубликовано: ${today}\n🎬 Роликов в работе: ${social.pending()}`;
 }
 
-async function showCard(chatId, id, parsed) {
-  const problems = await imports.validate(parsed);
-  const warning = problems.length ? `❗ Не хватает: ${tg.esc(problems.join(', '))}` : '';
-  const sent = await tg.sendMessage(chatId, card(parsed, warning), {
-    reply_markup: keyboard(id, parsed.listing_type),
+// Публикует объявление сразу, ничего не переспрашивая. Недостающие поля
+// достраивает imports.applyDefaults — что именно дописали, показываем в ответе,
+// чтобы подмена города или категории не прошла незамеченной.
+async function publishOne(chatId, id, parsed) {
+  const { parsed: ready, filled } = await imports.applyDefaults(parsed);
+  if (filled.length) await imports.setParsed(id, ready);
+
+  const result = await imports.publish(id);
+  const path = result.type === 'vacancy' ? 'vacancies' : 'orders';
+  const siteLink = SITE_URL ? `${SITE_URL}/${path}/${result.id}` : '';
+  const publicMsg = publicText(ready, result.type, siteLink);
+
+  // Канал — необязательный шаг: если пост туда не ушёл (бот не админ, канал
+  // не задан), публикация на сайте всё равно должна засчитаться.
+  let channelLine = '';
+  if (CHANNEL_ID) {
+    try {
+      await tg.sendMessage(CHANNEL_ID, tg.esc(publicMsg));
+      channelLine = '📢 Выложено в Telegram-канал';
+    } catch (err) {
+      channelLine = `⚠️ В канал не ушло: ${tg.esc(err.message)}`;
+    }
+  }
+
+  // wa.me/?text= открывает выбор чата в WhatsApp с готовым текстом — куда
+  // отправить, решает админ: автопостинга в каналы WhatsApp у Meta нет.
+  const waLink = `https://wa.me/?text=${encodeURIComponent(publicMsg)}`;
+
+  const lines = [`✅ <b>${tg.esc(ready.title)}</b>`];
+  if (siteLink) lines.push(tg.esc(siteLink));
+  if (channelLine) lines.push(channelLine);
+  lines.push(`📱 <a href="${waLink}">Отправить в WhatsApp</a>`);
+  // Без телефона объявление живое, но откликнуться на него нельзя — это стоит
+  // увидеть сразу, пока кнопка удаления рядом.
+  if (!ready.phone) lines.push('⚠️ Телефона нет — откликнуться будет некуда');
+  if (filled.length) lines.push(`✍️ Дописал сам: ${tg.esc(filled.join(', '))}`);
+
+  const sent = await tg.sendMessage(chatId, lines.join('\n'), {
+    reply_markup: { inline_keyboard: [[{ text: '🗑 Удалить с сайта', callback_data: `del:${id}` }]] },
   });
   await imports.setCard(id, chatId, sent.message_id);
+
+  // Намеренно без await: ролик едет своим ходом, следующее объявление из пачки
+  // не должно ждать кодирования и загрузки в Instagram.
+  shareToInstagram(chatId, ready, result.type).catch((err) => console.error('Instagram:', err));
 }
 
 async function handleParsed(chatId, listings, { source, rawText }) {
@@ -146,14 +146,26 @@ async function handleParsed(chatId, listings, { source, rawText }) {
     );
   }
 
+  let published = 0;
   for (const parsed of real) {
     const id = await imports.create({ source, rawText, parsed, chatId });
     if (id === null) {
       await tg.sendMessage(chatId, `♻️ «${tg.esc(parsed.title || 'без названия')}» уже приходило раньше — пропускаю.`);
       continue;
     }
-    await showCard(chatId, id, parsed);
+    try {
+      await publishOne(chatId, id, parsed);
+      published += 1;
+    } catch (err) {
+      // Одно неудачное объявление не должно ронять всю пачку со скриншота.
+      await tg.sendMessage(
+        chatId,
+        `⚠️ «${tg.esc(parsed.title || 'без названия')}» не опубликовалось: ${tg.esc(err.message)}`
+      );
+    }
   }
+
+  if (published) await tg.sendMessage(chatId, await statsText());
 }
 
 // «через 40 секунд» / «через 3 минуты» — прикидка, а не обещание: сколько
@@ -211,40 +223,30 @@ async function onMessage(message) {
       chatId,
       [
         '👋 Присылай скриншот объявления из WhatsApp или пересылай сообщение из чата.',
-        'Если объявлений несколько сразу — разберу каждое отдельной карточкой.',
+        'Публикую сразу, ничего не переспрашивая: объявление уходит на сайт,',
+        'в Telegram-канал и роликом в Instagram. Если объявлений на скриншоте',
+        'несколько — опубликую каждое.',
+        '',
+        'Чего не хватает — дописываю сам (город → Бишкек, категория → Другое)',
+        'и пишу об этом в ответе. Под каждым объявлением кнопка 🗑 «Удалить',
+        'с сайта» — на случай, если в разбор попало лишнее.',
+        '',
         'Пачку скриншотов можно кинуть разом: поставлю в очередь и разберу по одному',
         '(бесплатный Groq за минуту успевает примерно полтора скриншота).',
         '',
-        'На карточке кнопки:',
-        '✅ Опубликовать — уходит на сайт (заказ или вакансия)',
-        '✏️ Исправить — напиши, что поменять («город Ош», «убери телефон»)',
-        '🔄 Это вакансия / Это заказ — если тип определили неправильно',
-        '❌ Мусор — просто выбросить',
+        '/stats — сколько опубликовано сегодня и сколько роликов ещё в работе',
       ].join('\n')
     );
     return;
   }
 
-  // Режим правки: следующее текстовое сообщение — это правки к карточке
-  const editingId = editing.get(userId);
-  if (editingId && text && !photoFileId(message)) {
-    editing.delete(userId);
-    const row = await imports.get(editingId);
-    if (!row) {
-      await tg.sendMessage(chatId, 'Это объявление уже не найти.');
-      return;
-    }
-    const parsed = await extract.applyCorrections(row.parsed, text);
-    await imports.setParsed(editingId, parsed);
-    await showCard(chatId, editingId, parsed);
+  if (text === '/stats') {
+    await tg.sendMessage(chatId, await statsText());
     return;
   }
 
   const fileId = photoFileId(message);
   if (fileId) {
-    // Прислали новый скриншот вместо правок — значит, правки отменились. Иначе
-    // флаг остался бы висеть и следующий текст ушёл бы в правки старой карточки.
-    editing.delete(userId);
     const mediaType =
       message.document && message.document.mime_type ? message.document.mime_type : 'image/jpeg';
 
@@ -298,70 +300,14 @@ async function onCallback(query) {
     return;
   }
 
-  if (action === 'edit') {
-    editing.set(userId, id);
-    await tg.answerCallbackQuery(query.id, 'Жду правки');
-    await tg.sendMessage(
-      chatId,
-      '✏️ Напиши, что поменять. Например: «город Ош», «бюджет 3000», «убери телефон».'
-    );
-    return;
-  }
-
-  if (action === 'type') {
-    const newType = row.parsed.listing_type === 'vacancy' ? 'order' : 'vacancy';
-    const parsed = { ...row.parsed, listing_type: newType };
-    await imports.setParsed(id, parsed);
-    const problems = await imports.validate(parsed);
-    const warning = problems.length ? `❗ Не хватает: ${tg.esc(problems.join(', '))}` : '';
-    await tg.answerCallbackQuery(query.id, newType === 'vacancy' ? 'Теперь вакансия' : 'Теперь заказ');
-    await tg.editMessageText(chatId, messageId, card(parsed, warning), {
-      reply_markup: keyboard(id, newType),
-    });
-    return;
-  }
-
-  if (action === 'rej') {
-    await imports.reject(id);
-    await tg.answerCallbackQuery(query.id, 'Выброшено');
-    await tg.editMessageText(chatId, messageId, `${card(row.parsed)}\n\n❌ <b>Выброшено</b>`);
-    return;
-  }
-
-  if (action === 'pub') {
+  if (action === 'del') {
     try {
-      const result = await imports.publish(id);
-      const path = result.type === 'vacancy' ? 'vacancies' : 'orders';
-      const siteLink = SITE_URL ? `${SITE_URL}/${path}/${result.id}` : '';
-      const publicMsg = publicText(row.parsed, result.type, siteLink);
-
-      // Канал — необязательный шаг: если пост туда не ушёл (бот не админ,
-      // канал не задан), публикация на сайте всё равно должна засчитаться.
-      let channelNote = '';
-      if (CHANNEL_ID) {
-        try {
-          await tg.sendMessage(CHANNEL_ID, tg.esc(publicMsg));
-        } catch (err) {
-          channelNote = `\n⚠️ В канал не ушло: ${tg.esc(err.message)}`;
-        }
-      }
-
-      // wa.me/?text= открывает у админа выбор чата в WhatsApp с готовым
-      // текстом — свой канал он выбирает и отправляет сам, автопостинга
-      // в WhatsApp-каналы у Meta просто нет.
-      const waLink = `https://wa.me/?text=${encodeURIComponent(publicMsg)}`;
-
-      await tg.answerCallbackQuery(query.id, 'Опубликовано');
+      await imports.remove(id);
+      await tg.answerCallbackQuery(query.id, 'Удалено с сайта');
       await tg.editMessageText(
         chatId,
         messageId,
-        `${card(row.parsed)}\n\n✅ <b>Опубликовано</b>${siteLink ? `\n${tg.esc(siteLink)}` : ''}${channelNote}\n\n📱 <a href="${waLink}">Отправить в WhatsApp</a>\n🎬 Собираю ролик для Instagram…`
-      );
-
-      // Намеренно без await: ролик едет своим ходом, а обработчик кнопки на нём
-      // не висит — иначе long polling встал бы на всё время кодирования.
-      shareToInstagram(chatId, row.parsed, result.type).catch((err) =>
-        console.error('Instagram:', err)
+        `🗑 <b>${tg.esc(row.parsed.title || 'без названия')}</b>\nУдалено с сайта.\n\n⚠️ В Telegram-канале и в Instagram пост остаётся — их надо убрать вручную.`
       );
     } catch (err) {
       await tg.answerCallbackQuery(query.id, err.message.slice(0, 190));

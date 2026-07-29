@@ -129,7 +129,8 @@ CREATE TABLE IF NOT EXISTS imported_listings (
   vacancy_id    INTEGER REFERENCES vacancies(id) ON DELETE SET NULL,
   tg_chat_id    BIGINT,      -- чат и сообщение с карточкой — чтобы обновить её после решения
   tg_message_id BIGINT,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  published_at  TIMESTAMPTZ  -- когда ушло на сайт; по нему считается счётчик за день
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_imported_dedup

@@ -13,7 +13,22 @@ function backendUrl() {
 // Собирает ролик по объявлению и, если Instagram настроен, выкладывает его сам.
 // Иначе возвращает mp4 — публиковать вручную. Ролик отдаём и при ошибке
 // публикации: работа уже сделана, терять её из-за просроченного токена незачем.
+// Сколько роликов прямо сейчас в работе — от начала сборки до ответа Instagram.
+// Счётчик живёт в памяти процесса: перезапуск обнуляет его вместе с самими
+// сборками, так что расходиться с реальностью ему негде.
+let inFlight = 0;
+const pending = () => inFlight;
+
 async function shareListing(parsed, listingType) {
+  inFlight += 1;
+  try {
+    return await run(parsed, listingType);
+  } finally {
+    inFlight -= 1;
+  }
+}
+
+async function run(parsed, listingType) {
   // Логи по этапам: на бесплатном Render процесс может умереть посередине (сон
   // сервиса или нехватка памяти), и тогда молчание в чате — единственный симптом.
   // По последней строке в логах видно, на чём именно оборвалось.
@@ -42,4 +57,4 @@ async function shareListing(parsed, listingType) {
   }
 }
 
-module.exports = { shareListing, router: hosting.router };
+module.exports = { shareListing, pending, router: hosting.router };
