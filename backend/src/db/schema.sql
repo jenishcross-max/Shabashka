@@ -113,3 +113,24 @@ CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id
 CREATE INDEX IF NOT EXISTS idx_vacancies_category ON vacancies(category);
 CREATE INDEX IF NOT EXISTS idx_vacancies_city ON vacancies(city);
 CREATE INDEX IF NOT EXISTS idx_vacancies_user ON vacancies(user_id);
+
+-- Объявления, вытащенные ботом из скриншотов и пересланных сообщений (WhatsApp,
+-- Telegram). Сюда они попадают в статусе pending и ждут, пока администратор
+-- нажмёт «Опубликовать» — автопубликация чужого текста слишком дорого обходится
+-- по качеству и по чужим персональным данным. parsed — разбор Claude в JSON.
+CREATE TABLE IF NOT EXISTS imported_listings (
+  id            SERIAL PRIMARY KEY,
+  source        TEXT NOT NULL DEFAULT 'telegram', -- откуда пришло: whatsapp | telegram
+  raw_text      TEXT,        -- исходный текст, если пересылали сообщение
+  parsed        JSONB,       -- разбор в поля заказа (см. telegram/extract.js)
+  dedup_hash    TEXT,        -- одно объявление постят в несколько чатов — режем повторы
+  status        TEXT NOT NULL DEFAULT 'pending', -- pending | published | rejected
+  order_id      INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+  tg_chat_id    BIGINT,      -- чат и сообщение с карточкой — чтобы обновить её после решения
+  tg_message_id BIGINT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_imported_dedup
+  ON imported_listings(dedup_hash) WHERE dedup_hash IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_imported_status ON imported_listings(status);

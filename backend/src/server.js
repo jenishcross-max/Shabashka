@@ -12,6 +12,7 @@ const vacancyRoutes = require('./routes/vacancies');
 const homeRoutes = require('./routes/home');
 const conversationRoutes = require('./routes/conversations');
 const adminRoutes = require('./routes/admin');
+const telegram = require('./telegram');
 const metaRoutes = require('./meta');
 const { apiLimiter } = require('./rateLimit');
 
@@ -36,6 +37,11 @@ app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+// Вебхук Telegram — до apiLimiter: пачка апдейтов после простоя иначе упёрлась
+// бы в общий лимит, а Telegram счёл бы это сбоем и начал слать их повторно.
+app.use('/api/telegram', telegram.router);
+
 app.use('/api', apiLimiter);
 app.use('/api/home', homeRoutes);
 app.use('/api/auth', authRoutes);
@@ -65,6 +71,8 @@ async function bootstrap() {
   app.listen(PORT, () => {
     console.log(`Шабашка КГ API запущен на порту ${PORT}`);
   });
+  // Бот не должен ронять сервер: сайт работает и без импорта объявлений
+  telegram.start().catch((err) => console.error('Telegram-бот не запустился:', err));
 }
 
 bootstrap().catch((err) => {
