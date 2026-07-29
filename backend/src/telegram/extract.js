@@ -102,7 +102,6 @@ async function ask(content, systemSuffix) {
         { role: 'system', content: system },
         { role: 'user', content },
       ],
-      response_format: { type: 'json_object' },
     }),
   });
 
@@ -115,8 +114,8 @@ async function ask(content, systemSuffix) {
   const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
   if (!text) throw new Error('Пустой ответ модели');
 
-  // json_object режим гарантирует валидный JSON, но не запрещает обернуть его
-  // в markdown-разметку — на всякий случай вырезаем блок ```...```.
+  // Без response_format модель иногда добавляет пояснение до/после JSON или
+  // оборачивает его в markdown — вырезаем сам объект и уже его парсим.
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('Модель вернула не JSON');
 
