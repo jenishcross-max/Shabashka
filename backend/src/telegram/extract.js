@@ -102,6 +102,36 @@ function normalize(raw) {
   };
 }
 
+// Жадный regex /\{[\s\S]*\}/ иногда захватывает лишний текст после самого
+// JSON (модель добавляет пояснение после закрывающей скобки) — вместо этого
+// ищем первый сбалансированный объект, считая скобки и не сбиваясь на них
+// внутри строк.
+function extractJson(text) {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
 // Единственное место, где мы ходим в Groq. content — тело user-сообщения в
 // формате OpenAI chat completions: строка или массив частей text/image_url.
 // Возвращает массив разобранных объявлений (обычно один элемент).
@@ -143,10 +173,10 @@ async function ask(content, systemSuffix) {
 
   // Без response_format модель иногда добавляет пояснение до/после JSON или
   // оборачивает его в markdown — вырезаем сам объект и уже его парсим.
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error(`Модель вернула не JSON: ${text.slice(0, 200)}`);
+  const json = extractJson(text);
+  if (!json) throw new Error(`Модель вернула не JSON: ${text.slice(0, 200)}`);
 
-  const parsed = JSON.parse(match[0]);
+  const parsed = JSON.parse(json);
   const list = Array.isArray(parsed.listings) ? parsed.listings : [parsed];
   return list.map(normalize);
 }
