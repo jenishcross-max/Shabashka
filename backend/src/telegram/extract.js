@@ -31,7 +31,7 @@ function buildSchema(categories) {
       listing_type: { type: 'STRING', enum: ['order', 'vacancy', 'other'] },
       title: { ...str, description: 'Короткий заголовок, до 70 символов, без слова «требуется» в начале' },
       description: { ...str, description: 'Суть заказа своими словами, 1–3 предложения' },
-      category: { type: 'STRING', enum: [...categories, ''] },
+      category: { type: 'STRING', enum: categories },
       city: str,
       address: { ...str, description: 'Район или микрорайон, без номера дома и квартиры' },
       budget: { ...str, description: 'Только число в сомах, без валюты. Пусто, если цена не указана' },
