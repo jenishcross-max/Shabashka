@@ -11,7 +11,7 @@ const KNOWN_CITIES = require('../cities');
 // Groq (Llama 4 Scout) — бесплатный тариф без карты и без региональных
 // ограничений (в отличие от Gemini, который в Кыргызстане выдаёт квоту 0).
 // Ключ берётся на https://console.groq.com/keys.
-const MODEL = process.env.GROQ_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
+const MODEL = process.env.GROQ_MODEL || 'qwen/qwen3.6-27b';
 const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 // Обычный JSON Schema (в отличие от Gemini, у Groq тот же диалект, что и везде).

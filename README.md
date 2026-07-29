@@ -88,7 +88,7 @@ npm run create-admin -- email пароль "Имя"
 | `TELEGRAM_WEBHOOK_URL` | адрес бэкенда, например `https://shabashka-backend.onrender.com` |
 | `TELEGRAM_WEBHOOK_SECRET` | подпись вебхука, генерируется Render автоматически |
 | `BOT_OWNER_EMAIL` | необязательно: от чьего имени публиковать (по умолчанию — первый админ) |
-| `GROQ_MODEL` | необязательно: модель, по умолчанию `meta-llama/llama-4-scout-17b-16e-instruct` |
+| `GROQ_MODEL` | необязательно: модель, по умолчанию `qwen/qwen3.6-27b` |
 
 У Groq бесплатный тариф без карты и без региональных ограничений (в отличие
 от Gemini, который в Кыргызстане выдаёт нулевую квоту): 1000 запросов в сутки —
