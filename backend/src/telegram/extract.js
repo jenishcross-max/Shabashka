@@ -8,35 +8,33 @@ const KNOWN_CITIES = require('../cities');
 // а половина сообщений вообще не объявления. Поэтому здесь vision-модель, а не
 // парсер: она же отсеивает болтовню флагом is_listing.
 //
-// Gemini Flash — у неё есть постоянный бесплатный тариф (порядка 1500 запросов
-// в сутки), чего для одного бота с ручной модерацией хватает с запасом. Ключ
-// берётся на https://aistudio.google.com/apikey.
-const MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
-const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+// Groq (Llama 4 Scout) — бесплатный тариф без карты и без региональных
+// ограничений (в отличие от Gemini, который в Кыргызстане выдаёт квоту 0).
+// Ключ берётся на https://console.groq.com/keys.
+const MODEL = process.env.GROQ_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
+const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
-// Схема в формате OpenAPI, а не JSON Schema: Gemini понимает только этот
-// диалект — типы заглавными буквами, без additionalProperties.
-//
-// Все поля — строки, пустая строка означает «не указано». Числа и null
-// потребовали бы отдельной обработки в схеме, а приводить типы всё равно нам.
+// Обычный JSON Schema (в отличие от Gemini, у Groq тот же диалект, что и везде).
+// strict-режим требует все поля в required и additionalProperties: false —
+// «нет значения» кодируем пустой строкой, а не null.
 function buildSchema(categories) {
-  const str = { type: 'STRING' };
+  const str = { type: 'string' };
   return {
-    type: 'OBJECT',
+    type: 'object',
     properties: {
       is_listing: {
-        type: 'BOOLEAN',
+        type: 'boolean',
         description: 'true, если это объявление о работе или заказ услуги, а не обычное сообщение',
       },
-      listing_type: { type: 'STRING', enum: ['order', 'vacancy', 'other'] },
+      listing_type: { type: 'string', enum: ['order', 'vacancy', 'other'] },
       title: { ...str, description: 'Короткий заголовок, до 70 символов, без слова «требуется» в начале' },
       description: { ...str, description: 'Суть заказа своими словами, 1–3 предложения' },
-      category: { type: 'STRING', enum: categories },
+      category: { type: 'string', enum: categories },
       city: str,
       address: { ...str, description: 'Район или микрорайон, без номера дома и квартиры' },
       budget: { ...str, description: 'Только число в сомах, без валюты. Пусто, если цена не указана' },
       phone: { ...str, description: 'Телефон в формате +996XXXXXXXXX. Пусто, если номера нет' },
-      work_format: { type: 'STRING', enum: ['online', 'offline'] },
+      work_format: { type: 'string', enum: ['online', 'offline'] },
       note: { ...str, description: 'Одна фраза для администратора: что непонятно или требует проверки' },
     },
     required: [
@@ -52,21 +50,7 @@ function buildSchema(categories) {
       'work_format',
       'note',
     ],
-    // Порядок полей в ответе. Модель заполняет их подряд, поэтому заголовок и
-    // описание идут раньше категории — так у неё уже есть, на что опереться.
-    propertyOrdering: [
-      'is_listing',
-      'listing_type',
-      'title',
-      'description',
-      'category',
-      'city',
-      'address',
-      'budget',
-      'phone',
-      'work_format',
-      'note',
-    ],
+    additionalProperties: false,
   };
 }
 
@@ -89,8 +73,8 @@ function buildSystem(categories) {
 }
 
 // Кыргызские номера пишут как придётся: «0700 123 456», «996700123456»,
-// «+996 (700) 12-34-56». Модель просят привести их к +996XXXXXXXXX, но Flash
-// иногда переписывает номер как есть, а кнопка WhatsApp на сайте с таким
+// «+996 (700) 12-34-56». Модель просят привести их к +996XXXXXXXXX, но
+// иногда она переписывает номер как есть, а кнопка WhatsApp на сайте с таким
 // номером не откроется — поэтому приводим сами, не полагаясь на модель.
 function normalizePhone(value) {
   let digits = String(value ?? '').replace(/\D/g, '');
@@ -118,28 +102,31 @@ function normalize(raw) {
   };
 }
 
-// Единственное место, где мы ходим в Gemini. parts — куски запроса: текст,
-// картинка или и то и другое.
-async function ask(parts, systemSuffix) {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error('Не задан GEMINI_API_KEY');
+// Единственное место, где мы ходим в Groq. content — тело user-сообщения в
+// формате OpenAI chat completions: строка или массив частей text/image_url.
+async function ask(content, systemSuffix) {
+  const key = process.env.GROQ_API_KEY;
+  if (!key) throw new Error('Не задан GROQ_API_KEY');
 
   const categories = await categoriesRepo.listNames();
   const system = systemSuffix
     ? `${buildSystem(categories)}\n\n${systemSuffix}`
     : buildSystem(categories);
 
-  const res = await fetch(`${API_BASE}/${MODEL}:generateContent`, {
+  const res = await fetch(API_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: system }] },
-      contents: [{ role: 'user', parts }],
-      generationConfig: {
-        temperature: 0,
-        maxOutputTokens: 2000,
-        responseMimeType: 'application/json',
-        responseSchema: buildSchema(categories),
+      model: MODEL,
+      temperature: 0,
+      max_completion_tokens: 2000,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content },
+      ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'listing', strict: true, schema: buildSchema(categories) },
       },
     }),
   });
@@ -147,20 +134,10 @@ async function ask(parts, systemSuffix) {
   const data = await res.json();
   if (!res.ok) {
     const detail = data && data.error ? data.error.message : res.status;
-    throw new Error(`Gemini: ${detail}`);
+    throw new Error(`Groq: ${detail}`);
   }
 
-  // Фильтры безопасности срабатывают на чужой текст без предупреждения —
-  // отвечаем понятной фразой, чтобы в чате не было голого стектрейса.
-  const blocked = data.promptFeedback && data.promptFeedback.blockReason;
-  if (blocked) throw new Error(`Модель отказалась разбирать это сообщение (${blocked})`);
-
-  const candidate = data.candidates && data.candidates[0];
-  const text =
-    candidate &&
-    candidate.content &&
-    candidate.content.parts &&
-    candidate.content.parts.map((p) => p.text || '').join('');
+  const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
   if (!text) throw new Error('Пустой ответ модели');
 
   return normalize(JSON.parse(text));
@@ -170,20 +147,20 @@ async function ask(parts, systemSuffix) {
 // модели это не мешает, а вот кропать заранее пришлось бы вручную.
 function fromImage(buffer, mediaType = 'image/jpeg') {
   return ask([
-    { inline_data: { mime_type: mediaType, data: buffer.toString('base64') } },
-    { text: 'Разбери объявление с этого скриншота.' },
+    { type: 'text', text: 'Разбери объявление с этого скриншота.' },
+    { type: 'image_url', image_url: { url: `data:${mediaType};base64,${buffer.toString('base64')}` } },
   ]);
 }
 
 function fromText(text) {
-  return ask([{ text: `Разбери это сообщение из чата:\n\n${text}` }]);
+  return ask(`Разбери это сообщение из чата:\n\n${text}`);
 }
 
 // Правки от администратора применяются к уже разобранному JSON, а не к
 // исходнику: так «город Ош» меняет только город и не сбрасывает остальные поля.
 function applyCorrections(parsed, corrections) {
   return ask(
-    [{ text: `Разобранное объявление:\n${JSON.stringify(parsed, null, 2)}\n\nПравки:\n${corrections}` }],
+    `Разобранное объявление:\n${JSON.stringify(parsed, null, 2)}\n\nПравки:\n${corrections}`,
     'Сейчас тебе дают уже разобранное объявление и правки администратора. Верни тот же объект с внесёнными правками, остальные поля оставь как есть.'
   );
 }

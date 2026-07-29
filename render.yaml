@@ -17,7 +17,7 @@ services:
         sync: false
       # Импорт объявлений через Telegram-бота (см. README). Без этих переменных
       # бот просто не запускается, остальной сайт работает как раньше.
-      - key: GEMINI_API_KEY
+      - key: GROQ_API_KEY
         sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
