@@ -43,6 +43,33 @@ const COLORS = {
   white: '#ffffff',
 };
 
+// Каждой категории — свой акцент. Красный остаётся фирменным и держит концовку
+// и логотип, но если все ролики подряд красно-кремовые, лента выглядит как один
+// зависший кадр. Цвет выбирается по имени категории, а не по её номеру в базе:
+// категории администратор добавляет и удаляет, и от сдвига списка у «Ремонта»
+// не должен меняться цвет.
+const ACCENTS = [
+  '#f0433e', '#f97316', '#d97706', '#16a34a',
+  '#0d9488', '#2563eb', '#4f46e5', '#7c3aed', '#db2777',
+];
+
+function accentFor(category) {
+  const key = String(category || '');
+  if (!key) return ACCENTS[0];
+  // Множитель 37 подобран перебором по девяти категориям из defaultCategories:
+  // на нём восемь из них получают разные цвета, на привычном 31 — только пять.
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = (hash * 37 + key.charCodeAt(i)) % 100000;
+  return ACCENTS[hash % ACCENTS.length];
+}
+
+// Полупрозрачные заливки задаём через rgba: холст не умеет складывать hex с
+// альфой в градиентах, а globalAlpha пришлось бы возвращать после каждой фигуры.
+function rgba(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
 const PAD = 96;
 const MAXW = DW - PAD * 2;
 
@@ -165,6 +192,14 @@ function layout(ctx, parsed, listingType) {
   // Цена — самое заметное на кадре: по ней в ленте решают, читать ли дальше.
   // У вакансии в этом поле нижняя граница зарплаты, поэтому и подпись другая.
   const amount = Number(String(parsed.budget || '').replace(/[^\d]/g, '')) || 0;
+  const pricePrefix = isVacancy ? 'от ' : '';
+  const priceFallback = isVacancy ? 'Зарплата договорная' : 'Цена договорная';
+
+  // Плашку под ценой меряем по конечной сумме и держим неподвижной: цифры на
+  // кадре досчитываются, и плашка по ширине текста дёргалась бы все полсекунды.
+  ctx.font = `92px ${BOLD}`;
+  const priceFinal = amount ? `${pricePrefix}${money(amount)} сом` : priceFallback;
+  const priceWidth = Math.min(MAXW, ctx.measureText(priceFinal).width + 64);
 
   // В сетке профиля Instagram показывает не весь кадр, а 4:5 из его середины —
   // сверху и снизу срезается по 285 точек. Поэтому блок начинаем ниже: при
@@ -177,39 +212,73 @@ function layout(ctx, parsed, listingType) {
   const metaY = y;
   if (meta) y += 76;
   const priceY = y;
-  y += 132;
+  y += 156;
   const dividerY = y;
   y += 56;
   const descriptionY = y;
 
   return {
+    accent: accentFor(parsed.category),
     badge, badgeWidth, badgeY,
     title, titleY,
     meta, metaY,
-    amount,
-    pricePrefix: isVacancy ? 'от ' : '',
-    priceFallback: isVacancy ? 'Зарплата договорная' : 'Цена договорная',
+    amount, pricePrefix, priceFallback, priceWidth,
     priceY,
     dividerY,
     description, descriptionY,
   };
 }
 
+// Мягкое пятно света: радиальный градиент вместо плоского круга. Круг с
+// globalAlpha давал заметную границу — на кремовом фоне она читалась как
+// дефект сжатия, а не как задумка.
+function glow(ctx, x, y, r, color, alpha) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, rgba(color, alpha));
+  g.addColorStop(1, rgba(color, 0));
+  ctx.fillStyle = g;
+  ctx.fillRect(x - r, y - r, r * 2, r * 2);
+}
+
 function drawListing(ctx, l, t) {
   ctx.fillStyle = COLORS.bg;
   ctx.fillRect(0, 0, DW, DH);
 
-  // Два еле заметных красных пятна медленно плывут по фону. Без них девять
-  // секунд неподвижного кремового поля в ленте читаются как зависшая картинка.
-  ctx.globalAlpha = 0.05;
-  ctx.fillStyle = COLORS.red;
+  // Фон уводим по диагонали в цвет категории — сверху почти белый, внизу
+  // подкрашенный. Кадр перестаёт быть плоским, а текст поверх не страдает:
+  // максимум насыщенности здесь 12%.
+  const wash = ctx.createLinearGradient(DW, 0, 0, DH);
+  wash.addColorStop(0, rgba(COLORS.white, 0.7));
+  wash.addColorStop(0.5, rgba(l.accent, 0.03));
+  wash.addColorStop(1, rgba(l.accent, 0.12));
+  ctx.fillStyle = wash;
+  ctx.fillRect(0, 0, DW, DH);
+
+  // Три пятна медленно плывут по фону. Без них девять секунд неподвижного
+  // поля в ленте читаются как зависшая картинка.
+  glow(ctx, 180 + Math.sin(t * 0.5) * 60, 300 + Math.cos(t * 0.4) * 50, 420, l.accent, 0.16);
+  glow(ctx, 920 + Math.cos(t * 0.45) * 70, 1180 + Math.sin(t * 0.55) * 60, 380, l.accent, 0.13);
+  glow(ctx, 620 + Math.sin(t * 0.3 + 2) * 90, 1750 + Math.cos(t * 0.35) * 40, 340, COLORS.red, 0.08);
+
+  // Два тонких кольца крутятся вокруг кадра — движение, которое видно боковым
+  // зрением и не мешает читать.
+  ctx.save();
+  ctx.strokeStyle = rgba(l.accent, 0.14);
+  ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.arc(180 + Math.sin(t * 0.5) * 60, 320 + Math.cos(t * 0.4) * 50, 300, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.arc(940 + Math.cos(t * 0.6) * 40, 620 + Math.sin(t * 0.6) * 40, 300, 0, Math.PI * 2);
+  ctx.stroke();
   ctx.beginPath();
-  ctx.arc(920 + Math.cos(t * 0.45) * 70, 1180 + Math.sin(t * 0.55) * 60, 260, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
+  ctx.arc(120 + Math.sin(t * 0.5) * 50, 1480 + Math.cos(t * 0.5) * 50, 240, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  // Полоска прогресса вверху: в ленте она подсказывает, что ролик короткий и
+  // досмотреть его — секунды.
+  ctx.fillStyle = rgba(l.accent, 0.15);
+  ctx.fillRect(0, 0, DW, 10);
+  ctx.fillStyle = l.accent;
+  ctx.fillRect(0, 0, DW * Math.min(1, t / TOTAL_SECONDS), 10);
 
   // Медленный наезд на весь кадр: движение есть, а читать не мешает.
   ctx.save();
@@ -226,7 +295,7 @@ function drawListing(ctx, l, t) {
   if (bp > 0) {
     const e = easeOut(bp);
     ctx.globalAlpha = e;
-    ctx.fillStyle = COLORS.red;
+    ctx.fillStyle = l.accent;
     roundRect(ctx, PAD - (1 - e) * (PAD + l.badgeWidth), l.badgeY, l.badgeWidth, 84, 42);
     ctx.fillStyle = COLORS.white;
     ctx.font = `40px ${BOLD}`;
@@ -246,7 +315,8 @@ function drawListing(ctx, l, t) {
   }
 
   // Цена выскакивает и досчитывается до своей суммы — на этом кадре взгляд
-  // и должен остановиться.
+  // и должен остановиться. Поэтому она лежит на плашке цвета категории:
+  // белым по цветному она заметна даже в превью размером с ноготь.
   const pp = at(t, 1.15, 0.6);
   if (pp > 0) {
     const count = easeOut(at(t, 1.15, 0.9));
@@ -254,21 +324,31 @@ function drawListing(ctx, l, t) {
       ? `${l.pricePrefix}${money(Math.round((l.amount * count) / 10) * 10)} сом`
       : l.priceFallback;
     ctx.save();
-    ctx.font = `92px ${BOLD}`;
-    ctx.fillStyle = COLORS.red;
     ctx.globalAlpha = Math.min(1, pp * 2);
-    ctx.translate(PAD, l.priceY + 46);
+    // Масштабируем от левого края плашки, а не от её середины: иначе на выезде
+    // текст уезжал бы за отступ кадра.
+    ctx.translate(PAD, l.priceY + 62);
     const s = 0.75 + easeBack(pp) * 0.25;
     ctx.scale(s, s);
-    ctx.fillText(price, 0, -46);
+    // «Цена договорная» — не сумма, и заливать её тем же плотным цветом нельзя:
+    // она кричала бы громче заголовка. Ей достаётся бледная плашка с цветным
+    // текстом, настоящей цене — сплошная с белым.
+    ctx.fillStyle = l.amount ? l.accent : rgba(l.accent, 0.12);
+    roundRect(ctx, 0, -62, l.priceWidth, 124, 30);
+    ctx.font = `92px ${BOLD}`;
+    ctx.fillStyle = l.amount ? COLORS.white : l.accent;
+    ctx.fillText(price, 32, -46);
     ctx.restore();
   }
 
-  // Линейка прочерчивается слева направо
+  // Линейка прочерчивается слева направо и гаснет к правому краю
   const dp = at(t, 1.5, 0.5);
   if (dp > 0) {
-    ctx.fillStyle = COLORS.border;
-    ctx.fillRect(PAD, l.dividerY, MAXW * easeOut(dp), 3);
+    const line = ctx.createLinearGradient(PAD, 0, PAD + MAXW, 0);
+    line.addColorStop(0, rgba(l.accent, 0.55));
+    line.addColorStop(1, rgba(l.accent, 0));
+    ctx.fillStyle = line;
+    ctx.fillRect(PAD, l.dividerY, MAXW * easeOut(dp), 4);
   }
 
   ctx.font = `48px ${REGULAR}`;
@@ -286,6 +366,10 @@ function drawListing(ctx, l, t) {
     ctx.translate(0, (1 - e) * 260);
     ctx.fillStyle = COLORS.text;
     ctx.fillRect(0, DH - 260, DW, 260);
+    // Кант цвета категории по верхней кромке подвала — он связывает тёмную
+    // плашку с остальным кадром, иначе она выглядит приклеенной из другого макета.
+    ctx.fillStyle = l.accent;
+    ctx.fillRect(0, DH - 260, DW, 6);
 
     const lp = at(t, 2.6, 0.6);
     if (lp > 0) {
@@ -315,8 +399,30 @@ function drawListing(ctx, l, t) {
 // Концовка одинаковая для всех роликов: её задача не рассказать про заказ,
 // а оставить в голове адрес сайта. t здесь — время от начала перехода.
 function drawOutro(ctx, t) {
-  ctx.fillStyle = COLORS.red;
+  // Красный с подсветкой за логотипом вместо ровной заливки: центр кадра
+  // становится светлее краёв, и взгляд сам идёт туда, где название сайта.
+  ctx.fillStyle = '#d9312c';
   ctx.fillRect(0, 0, DW, DH);
+  const bg = ctx.createRadialGradient(DW / 2, DH / 2 - 260, 0, DW / 2, DH / 2 - 260, DH * 0.72);
+  bg.addColorStop(0, '#ff6a5c');
+  bg.addColorStop(0.55, rgba(COLORS.red, 0.55));
+  bg.addColorStop(1, rgba(COLORS.red, 0));
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, DW, DH);
+
+  // Светлые точки всплывают снизу вверх и по кругу уходят обратно. Считаются
+  // формулой, а не хранятся массивом: восемнадцать чисел на кадр дешевле, чем
+  // состояние, которое надо тащить между кадрами.
+  for (let i = 0; i < 18; i += 1) {
+    const seed = i * 137.5;
+    const x = (Math.sin(seed) * 0.5 + 0.5) * DW;
+    const y = (DH * 1.05 - ((t * 90 + i * 210) % (DH * 1.2))) + Math.sin(t + i) * 20;
+    const r = 5 + (i % 4) * 5;
+    ctx.fillStyle = rgba(COLORS.white, 0.06 + (i % 3) * 0.05);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
