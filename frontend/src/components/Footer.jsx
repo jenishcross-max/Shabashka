@@ -81,7 +81,7 @@ export default function Footer() {
             </li>
             <li>
               <a
-                href="https://t.me/+Dx1wWHAS3Fs2MGNi"
+                href="https://t.me/Shabashkacom"
                 target="_blank"
                 rel="noopener noreferrer me"
               >
