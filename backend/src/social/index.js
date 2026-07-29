@@ -48,7 +48,11 @@ async function run(parsed, listingType) {
   const name = hosting.put(video.fileName(), buffer);
   try {
     console.log(`[insta] отдаю Instagram ссылку ${base}/api/social/video/${name}`);
-    const mediaId = await instagram.publishReel(`${base}/api/social/video/${name}`, caption);
+    const mediaId = await instagram.publishReel(
+      `${base}/api/social/video/${name}`,
+      caption,
+      video.COVER_MS
+    );
     console.log(`[insta] опубликовано: ${mediaId}`);
     return { posted: true, buffer, caption };
   } catch (err) {

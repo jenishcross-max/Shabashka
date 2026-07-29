@@ -21,6 +21,10 @@ const TOTAL_SECONDS = 9;
 // заметный, но дешёвый: одна дуга в клипе вместо второго слоя кадров.
 const WIPE_AT = 6.2;
 const WIPE_SECONDS = 0.55;
+// С какой секунды Instagram берёт картинку для сетки профиля. По умолчанию он
+// взял бы первый кадр, а там объявление ещё не выехало — в профиле висел бы
+// пустой кремовый прямоугольник. К 3.6 с нарисовано уже всё, включая подвал.
+const COVER_AT = 3.6;
 
 // @fontsource режет Roboto на subset-файлы, и в одну строку объявления попадают
 // сразу три: латиница («Шабашка.com»), базовая кириллица и cyrillic-ext, где
@@ -156,13 +160,16 @@ function layout(ctx, parsed, listingType) {
   const meta = metaText ? wrap(ctx, metaText, MAXW, 1)[0] : '';
 
   ctx.font = `48px ${REGULAR}`;
-  const description = parsed.description ? wrap(ctx, parsed.description, MAXW, 7) : [];
+  const description = parsed.description ? wrap(ctx, parsed.description, MAXW, 6) : [];
 
   // Цена — самое заметное на кадре: по ней в ленте решают, читать ли дальше.
   // У вакансии в этом поле нижняя граница зарплаты, поэтому и подпись другая.
   const amount = Number(String(parsed.budget || '').replace(/[^\d]/g, '')) || 0;
 
-  let y = 190;
+  // В сетке профиля Instagram показывает не весь кадр, а 4:5 из его середины —
+  // сверху и снизу срезается по 285 точек. Поэтому блок начинаем ниже: при
+  // старте с 190 плашка «ЗАКАЗ» в сетку уже не попадала.
+  let y = 300;
   const badgeY = y;
   y += 84 + 64;
   const titleY = y;
@@ -382,4 +389,4 @@ function createRenderer(parsed, listingType) {
   };
 }
 
-module.exports = { createRenderer, W, H, FPS, TOTAL_SECONDS };
+module.exports = { createRenderer, W, H, FPS, TOTAL_SECONDS, COVER_AT };

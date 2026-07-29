@@ -48,11 +48,14 @@ async function waitReady(creationId) {
 
 // videoUrl должен быть публично доступен — Instagram ходит за ним со своих
 // серверов, локальный адрес или закрытый бэкенд он не откроет.
-async function publishReel(videoUrl, caption) {
+// thumbOffsetMs — с какой миллисекунды взять картинку для сетки профиля. Без
+// него Instagram берёт первый кадр, а объявление к тому моменту ещё не выехало.
+async function publishReel(videoUrl, caption, thumbOffsetMs) {
   const { id } = await call('POST', `${USER_ID}/media`, {
     media_type: 'REELS',
     video_url: videoUrl,
     caption,
+    ...(thumbOffsetMs ? { thumb_offset: String(thumbOffsetMs) } : {}),
   });
   await waitReady(id);
   const published = await call('POST', `${USER_ID}/media_publish`, { creation_id: id });

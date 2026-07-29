@@ -138,4 +138,4 @@ function fileName() {
   return `${crypto.randomBytes(12).toString('hex')}.mp4`;
 }
 
-module.exports = { build, caption, fileName };
+module.exports = { build, caption, fileName, COVER_MS: Math.round(card.COVER_AT * 1000) };
