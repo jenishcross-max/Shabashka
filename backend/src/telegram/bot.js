@@ -61,26 +61,40 @@ function clamp(text, max) {
   return `${text.slice(0, max).replace(/\s+\S*$/, '')}…`;
 }
 
-// Ролик для Instagram делается уже после того, как объявление ушло на сайт:
-// кодирование и обработка на стороне Instagram занимают до пары минут, и держать
-// ради них подтверждение публикации было бы странно. Поэтому шаг отдельный и
-// отвечает своим сообщением, а его провал публикацию на сайте не отменяет.
-async function shareToInstagram(chatId, parsed, listingType) {
+// Ролик для Instagram и Threads делается уже после того, как объявление ушло на
+// сайт: кодирование и обработка на стороне площадок занимают до пары минут, и
+// держать ради них подтверждение публикации было бы странно. Поэтому шаг
+// отдельный и отвечает своим сообщением, а его провал публикацию не отменяет.
+async function shareToSocial(chatId, parsed, listingType, siteLink) {
   try {
-    const result = await social.shareListing(parsed, listingType);
-    if (result.posted) {
-      await tg.sendMessage(chatId, '📸 Ролик опубликован в Instagram');
+    const result = await social.shareListing(parsed, listingType, siteLink);
+    // Площадка попадает в отчёт, только если она настроена: строка «Threads: не
+    // настроен» под каждым объявлением была бы шумом, а не новостью.
+    const sites = [
+      ['📸 Instagram', result.instagram],
+      ['🧵 Threads', result.threads],
+    ].filter(([, r]) => r);
+    const failed = sites.filter(([, r]) => !r.posted);
+
+    if (sites.length && !failed.length) {
+      await tg.sendMessage(chatId, `${sites.map(([name]) => name).join(' и ')} — ролик опубликован`);
       return;
     }
-    // Не выложилось — отдаём готовый mp4 с подписью, чтобы можно было запостить руками
+
+    // Хоть где-то не вышло — отдаём готовый mp4 с подписью, чтобы можно было
+    // выложить руками, и говорим, где именно не сработало.
     await tg.sendVideo(chatId, result.buffer, result.caption);
-    await tg.sendMessage(chatId, `📸 В Instagram сам не выложил: ${tg.esc(result.reason)}\nРолик выше — можно опубликовать вручную.`);
+    const lines = sites.filter(([, r]) => r.posted).map(([name]) => `${name}: опубликовано`);
+    if (!sites.length) lines.push(`🎬 Автопостинг не сработал: ${tg.esc(result.reason)}`);
+    for (const [name, r] of failed) lines.push(`${name}: ${tg.esc(r.reason)}`);
+    lines.push('Ролик выше — можно опубликовать вручную.');
+    await tg.sendMessage(chatId, lines.join('\n'));
   } catch (err) {
     await tg.sendMessage(chatId, `⚠️ Ролик не собрался: ${tg.esc(err.message)}`);
   }
 }
 
-// Итог дня: сколько ушло на сайт и сколько роликов ещё едет в Instagram.
+// Итог дня: сколько ушло на сайт и сколько роликов ещё едет на площадки.
 // Второе число живёт только в памяти процесса — после перезапуска Render оно
 // честно нулевое, потому что вместе с процессом умирают и сами сборки.
 async function statsText() {
@@ -135,8 +149,8 @@ async function publishOne(chatId, id, parsed) {
   await imports.setCard(id, chatId, sent.message_id);
 
   // Намеренно без await: ролик едет своим ходом, следующее объявление из пачки
-  // не должно ждать кодирования и загрузки в Instagram.
-  shareToInstagram(chatId, ready, result.type).catch((err) => console.error('Instagram:', err));
+  // не должно ждать кодирования и загрузки на площадки.
+  shareToSocial(chatId, ready, result.type, siteLink).catch((err) => console.error('Соцсети:', err));
 }
 
 async function handleParsed(chatId, listings, { source, rawText }) {
@@ -244,7 +258,7 @@ async function onMessage(message) {
       [
         '👋 Присылай скриншот объявления из WhatsApp или пересылай сообщение из чата.',
         'Публикую сразу, ничего не переспрашивая: объявление уходит на сайт,',
-        'в Telegram-канал и роликом в Instagram. Если объявлений на скриншоте',
+        'в Telegram-канал и роликом в Instagram и Threads. Если объявлений на скриншоте',
         'несколько — опубликую каждое.',
         '',
         'Чего не хватает — дописываю сам (город → Бишкек, категория → Другое)',
@@ -328,7 +342,7 @@ async function onCallback(query) {
       await tg.editMessageText(
         chatId,
         messageId,
-        `🗑 <b>${tg.esc(row.parsed.title || 'без названия')}</b>\nУдалено с сайта.\n\n⚠️ В Telegram-канале и в Instagram пост остаётся — их надо убрать вручную.`
+        `🗑 <b>${tg.esc(row.parsed.title || 'без названия')}</b>\nУдалено с сайта.\n\n⚠️ В Telegram-канале, Instagram и Threads пост остаётся — их надо убрать вручную.`
       );
     } catch (err) {
       await tg.answerCallbackQuery(query.id, err.message.slice(0, 190));

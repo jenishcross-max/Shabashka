@@ -134,8 +134,63 @@ function caption(parsed, listingType, credit) {
   return lines.join('\n');
 }
 
+// В Threads пост не длиннее 500 знаков, причём эмодзи считаются байтами UTF-8,
+// то есть за четыре. Кириллица идёт за символ, поэтому меряем именно так, а не
+// по длине строки и не по всей длине в байтах.
+function weight(text) {
+  let n = 0;
+  for (const ch of text) n += ch.codePointAt(0) > 0xffff ? Buffer.byteLength(ch) : 1;
+  return n;
+}
+
+const THREADS_LIMIT = 500;
+
+// Текст поста в Threads. От инстаграмной подписи отличается двумя вещами:
+// он короче и в нём есть прямая ссылка на объявление — Threads делает ссылки
+// кликабельными, поэтому звать в шапку профиля здесь незачем.
+function threadsText(parsed, listingType, siteLink, credit) {
+  const isVacancy = listingType === 'vacancy';
+  const head = [`${isVacancy ? '💼 Вакансия' : '🧰 Заказ'}: ${parsed.title || ''}`.trim()];
+
+  const meta = [parsed.category, parsed.city].filter(Boolean).join(' · ');
+  if (meta) head.push(meta);
+  if (parsed.budget) head.push(`💰 ${parsed.budget} сом${isVacancy ? ' (от)' : ''}`);
+
+  // Хвост собираем раньше описания: ссылка и указание автора трека обязательны
+  // (второе — условие лицензии на музыку), а описание ужимается под остаток.
+  const tail = [];
+  if (siteLink) tail.push(siteLink);
+  if (credit) tail.push(credit);
+  tail.push(isVacancy ? '#шабашка #вакансиибишкек #жумуш' : '#шабашка #подработкабишкек #жумуш');
+
+  const fixed = weight([...head, '', ...tail].join('\n'));
+  // Блок описания добавляет к посту сам текст и два перевода строки — пустую
+  // строку перед ним и ту, что отделит его от хвоста.
+  const room = THREADS_LIMIT - fixed - 2;
+
+  const body = [];
+  if (parsed.description && room > 40) {
+    let text = parsed.description;
+    if (weight(text) > room) {
+      // Режем по словам и добавляем многоточие — обрубок на середине слова
+      // выглядит как сбой, а не как «дальше на сайте».
+      while (text && weight(`${text}…`) > room) text = text.slice(0, -1).replace(/\s+\S*$/, '');
+      text = text ? `${text}…` : '';
+    }
+    if (text) body.push('', text);
+  }
+
+  return [...head, ...body, '', ...tail].join('\n');
+}
+
 function fileName() {
   return `${crypto.randomBytes(12).toString('hex')}.mp4`;
 }
 
-module.exports = { build, caption, fileName, COVER_MS: Math.round(card.COVER_AT * 1000) };
+module.exports = {
+  build,
+  caption,
+  threadsText,
+  fileName,
+  COVER_MS: Math.round(card.COVER_AT * 1000),
+};

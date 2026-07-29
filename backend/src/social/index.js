@@ -1,8 +1,9 @@
 const video = require('./video');
 const hosting = require('./hosting');
 const instagram = require('./instagram');
+const threads = require('./threads');
 
-// Публичный адрес самого бэкенда — по нему Instagram придёт за роликом. Отдельной
+// Публичный адрес самого бэкенда — по нему площадки придут за роликом. Отдельной
 // переменной не заводим: адрес уже известен из настроек вебхука, а на Render его
 // в любом случае подставляет RENDER_EXTERNAL_URL.
 function backendUrl() {
@@ -10,55 +11,75 @@ function backendUrl() {
   return url.replace(/\/$/, '');
 }
 
-// Собирает ролик по объявлению и, если Instagram настроен, выкладывает его сам.
-// Иначе возвращает mp4 — публиковать вручную. Ролик отдаём и при ошибке
-// публикации: работа уже сделана, терять её из-за просроченного токена незачем.
-// Сколько роликов прямо сейчас в работе — от начала сборки до ответа Instagram.
+// Собирает ролик по объявлению и раскладывает его по настроенным площадкам.
+// Ролик отдаём и при ошибке публикации: работа уже сделана, терять её из-за
+// просроченного токена незачем.
+// Сколько роликов прямо сейчас в работе — от начала сборки до ответа площадок.
 // Счётчик живёт в памяти процесса: перезапуск обнуляет его вместе с самими
 // сборками, так что расходиться с реальностью ему негде.
 let inFlight = 0;
 const pending = () => inFlight;
 
-async function shareListing(parsed, listingType) {
+async function shareListing(parsed, listingType, siteLink) {
   inFlight += 1;
   try {
-    return await run(parsed, listingType);
+    return await run(parsed, listingType, siteLink);
   } finally {
     inFlight -= 1;
   }
 }
 
-async function run(parsed, listingType) {
+// Одна площадка не должна ронять другую: в Threads ролик уходит, даже если у
+// Instagram протух токен, и наоборот. Поэтому ошибку ловим здесь, а наверх
+// отдаём результат в одинаковой форме.
+async function post(label, fn) {
+  try {
+    const id = await fn();
+    console.log(`[${label}] опубликовано: ${id}`);
+    return { posted: true };
+  } catch (err) {
+    console.log(`[${label}] не вышло: ${err.message}`);
+    return { posted: false, reason: err.message };
+  }
+}
+
+async function run(parsed, listingType, siteLink) {
   // Логи по этапам: на бесплатном Render процесс может умереть посередине (сон
   // сервиса или нехватка памяти), и тогда молчание в чате — единственный симптом.
   // По последней строке в логах видно, на чём именно оборвалось.
-  console.log('[insta] сборка ролика');
+  console.log('[видео] сборка ролика');
   const { buffer, credit } = await video.build(parsed, listingType);
   const caption = video.caption(parsed, listingType, credit);
   const base = backendUrl();
-  console.log(`[insta] ролик собран: ${buffer.length} байт`);
+  console.log(`[видео] ролик собран: ${buffer.length} байт`);
 
-  if (!instagram.isConfigured()) {
-    return { posted: false, reason: 'Instagram не настроен', buffer, caption };
+  const wantInsta = instagram.isConfigured();
+  const wantThreads = threads.isConfigured();
+
+  if (!wantInsta && !wantThreads) {
+    return { buffer, caption, reason: 'Ни Instagram, ни Threads не настроены' };
   }
   if (!base) {
-    return { posted: false, reason: 'Не задан адрес бэкенда', buffer, caption };
+    return { buffer, caption, reason: 'Не задан адрес бэкенда' };
   }
 
-  const name = hosting.put(video.fileName(), buffer);
-  try {
-    console.log(`[insta] отдаю Instagram ссылку ${base}/api/social/video/${name}`);
-    const mediaId = await instagram.publishReel(
-      `${base}/api/social/video/${name}`,
-      caption,
-      video.COVER_MS
-    );
-    console.log(`[insta] опубликовано: ${mediaId}`);
-    return { posted: true, buffer, caption };
-  } catch (err) {
-    console.log(`[insta] не вышло: ${err.message}`);
-    return { posted: false, reason: err.message, buffer, caption };
-  }
+  // Ролик и ссылка на него общие: обе площадки скачивают файл сами, каждая со
+  // своих серверов, и второй раз кодировать то же самое незачем.
+  const url = `${base}/api/social/video/${hosting.put(video.fileName(), buffer)}`;
+  console.log(`[видео] отдаю ссылку ${url}`);
+
+  // Параллельно, а не по очереди: каждая площадка обрабатывает ролик у себя
+  // минуту-другую, и последовательное ожидание удвоило бы время до ответа в чат.
+  const [ig, th] = await Promise.all([
+    wantInsta ? post('insta', () => instagram.publishReel(url, caption, video.COVER_MS)) : null,
+    wantThreads
+      ? post('threads', () =>
+          threads.publishReel(url, video.threadsText(parsed, listingType, siteLink, credit))
+        )
+      : null,
+  ]);
+
+  return { buffer, caption, instagram: ig, threads: th };
 }
 
 module.exports = { shareListing, pending, router: hosting.router };

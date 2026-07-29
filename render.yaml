@@ -35,3 +35,8 @@ services:
         sync: false
       - key: INSTAGRAM_ACCESS_TOKEN
         sync: false
+      # Тот же ролик в Threads. Доступ отдельный от инстаграмного.
+      - key: THREADS_USER_ID
+        sync: false
+      - key: THREADS_ACCESS_TOKEN
+        sync: false
