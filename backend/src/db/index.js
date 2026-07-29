@@ -80,6 +80,10 @@ function init() {
           await pool.query('ALTER TABLE conversations ALTER COLUMN listing_id SET NOT NULL');
         }
       }
+      // Импорт вакансий через Telegram-бота добавили позже импорта заказов —
+      // доращиваем колонку на уже развёрнутых базах.
+      await pool.query('ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS vacancy_id INTEGER REFERENCES vacancies(id) ON DELETE SET NULL');
+
       await pool.query('CREATE INDEX IF NOT EXISTS idx_conversations_listing ON conversations(listing_type, listing_id)');
       await pool.query(
         'CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_listing_seeker ON conversations(listing_type, listing_id, seeker_id)'

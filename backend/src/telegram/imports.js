@@ -100,6 +100,37 @@ async function publish(id) {
   if (errors.length) throw new Error(`Не хватает данных: ${errors.join(', ')}`);
 
   const userId = await resolveOwnerId();
+
+  if (parsed.listing_type === 'vacancy') {
+    const inserted = await db.query(
+      `INSERT INTO vacancies
+        (user_id, title, description, category, employment_type, city, address, work_format, experience, salary_min, whatsapp_phone)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+      [
+        userId,
+        parsed.title,
+        parsed.description,
+        parsed.category,
+        parsed.employment_type,
+        parsed.city,
+        parsed.address,
+        parsed.work_format,
+        parsed.experience,
+        parsed.budget,
+        parsed.phone,
+      ]
+    );
+    const vacancyId = inserted.rows[0].id;
+
+    await db.query("UPDATE imported_listings SET status = 'published', vacancy_id = $1 WHERE id = $2", [
+      vacancyId,
+      id,
+    ]);
+    invalidate('home:');
+
+    return { type: 'vacancy', id: vacancyId };
+  }
+
   const inserted = await db.query(
     `INSERT INTO orders (user_id, title, description, category, city, address, work_format, budget, whatsapp_phone)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
@@ -123,7 +154,7 @@ async function publish(id) {
   ]);
   invalidate('home:'); // чтобы объявление сразу попало в ленту на главной
 
-  return orderId;
+  return { type: 'order', id: orderId };
 }
 
 module.exports = { create, get, setParsed, setCard, reject, publish, validate };

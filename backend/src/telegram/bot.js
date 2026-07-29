@@ -1,6 +1,11 @@
 const tg = require('./api');
 const extract = require('./extract');
 const imports = require('./imports');
+const EMPLOYMENT_TYPES = require('../employmentTypes');
+const EXPERIENCE_LEVELS = require('../experienceLevels');
+
+const EMPLOYMENT_LABELS = Object.fromEntries(EMPLOYMENT_TYPES.map((t) => [t.value, t.label]));
+const EXPERIENCE_LABELS = Object.fromEntries(EXPERIENCE_LEVELS.map((t) => [t.value, t.label]));
 
 // Кто имеет право публиковать через бота. Без этого списка любой, кто нашёл
 // бота в поиске, смог бы залить на сайт что угодно.
@@ -23,12 +28,20 @@ function isAllowed(userId) {
 }
 
 function card(parsed, extra) {
-  const lines = [`📋 <b>${tg.esc(parsed.title || 'Без заголовка')}</b>`, ''];
+  const isVacancy = parsed.listing_type === 'vacancy';
+  const typeLabel = isVacancy ? '💼 Вакансия' : '🧰 Заказ';
+  const lines = [`${typeLabel}: <b>${tg.esc(parsed.title || 'Без заголовка')}</b>`, ''];
 
   const meta = [parsed.category, parsed.city].filter(Boolean).join(' · ');
   if (meta) lines.push(tg.esc(meta));
+  if (isVacancy) {
+    const empExp = [EMPLOYMENT_LABELS[parsed.employment_type], EXPERIENCE_LABELS[parsed.experience]]
+      .filter(Boolean)
+      .join(' · ');
+    if (empExp) lines.push(tg.esc(empExp));
+  }
   if (parsed.address) lines.push(`📍 ${tg.esc(parsed.address)}`);
-  if (parsed.budget) lines.push(`💰 ${parsed.budget} сом`);
+  if (parsed.budget) lines.push(`💰 ${parsed.budget} сом${isVacancy ? ' (от)' : ''}`);
   if (parsed.phone) lines.push(`📞 ${tg.esc(parsed.phone)}`);
   if (parsed.work_format === 'online') lines.push('💻 Удалённо');
 
@@ -39,14 +52,18 @@ function card(parsed, extra) {
   return lines.join('\n');
 }
 
-function keyboard(id) {
+function keyboard(id, listingType) {
+  const toggleLabel = listingType === 'vacancy' ? '🔄 Это заказ' : '🔄 Это вакансия';
   return {
     inline_keyboard: [
       [
         { text: '✅ Опубликовать', callback_data: `pub:${id}` },
         { text: '✏️ Исправить', callback_data: `edit:${id}` },
       ],
-      [{ text: '❌ Мусор', callback_data: `rej:${id}` }],
+      [
+        { text: toggleLabel, callback_data: `type:${id}` },
+        { text: '❌ Мусор', callback_data: `rej:${id}` },
+      ],
     ],
   };
 }
@@ -55,32 +72,27 @@ async function showCard(chatId, id, parsed) {
   const problems = await imports.validate(parsed);
   const warning = problems.length ? `❗ Не хватает: ${tg.esc(problems.join(', '))}` : '';
   const sent = await tg.sendMessage(chatId, card(parsed, warning), {
-    reply_markup: keyboard(id),
+    reply_markup: keyboard(id, parsed.listing_type),
   });
   await imports.setCard(id, chatId, sent.message_id);
 }
 
-async function handleParsed(chatId, parsed, { source, rawText }) {
-  if (!parsed.is_listing || parsed.listing_type === 'other') {
-    await tg.sendMessage(
-      chatId,
-      `🚫 Это не похоже на заказ.${parsed.note ? `\n${tg.esc(parsed.note)}` : ''}`
-    );
-    return;
-  }
-  if (parsed.listing_type === 'vacancy') {
-    // Вакансии живут в отдельной таблице со своим набором полей (график, опыт,
-    // вилка зарплаты) — их импорт будет отдельным шагом, а пока честно говорим.
-    await tg.sendMessage(chatId, '💼 Это вакансия, а не заказ. Импорт вакансий пока не сделан.');
+async function handleParsed(chatId, listings, { source, rawText }) {
+  const real = listings.filter((p) => p.is_listing && p.listing_type !== 'other');
+  if (real.length === 0) {
+    const note = listings[0] && listings[0].note;
+    await tg.sendMessage(chatId, `🚫 Не похоже на заказ или вакансию.${note ? `\n${tg.esc(note)}` : ''}`);
     return;
   }
 
-  const id = await imports.create({ source, rawText, parsed, chatId });
-  if (id === null) {
-    await tg.sendMessage(chatId, '♻️ Это объявление уже приходило раньше — пропускаю.');
-    return;
+  for (const parsed of real) {
+    const id = await imports.create({ source, rawText, parsed, chatId });
+    if (id === null) {
+      await tg.sendMessage(chatId, `♻️ «${tg.esc(parsed.title || 'без названия')}» уже приходило раньше — пропускаю.`);
+      continue;
+    }
+    await showCard(chatId, id, parsed);
   }
-  await showCard(chatId, id, parsed);
 }
 
 // Из скриншота берём самый крупный размер: Telegram отдаёт лесенку превью,
@@ -112,10 +124,12 @@ async function onMessage(message) {
       chatId,
       [
         '👋 Присылай скриншот объявления из WhatsApp или пересылай сообщение из чата.',
+        'Если объявлений несколько сразу — разберу каждое отдельной карточкой.',
         '',
-        'Я разберу его на поля и покажу карточку с кнопками:',
-        '✅ Опубликовать — заказ уходит на сайт',
+        'На карточке кнопки:',
+        '✅ Опубликовать — уходит на сайт (заказ или вакансия)',
         '✏️ Исправить — напиши, что поменять («город Ош», «убери телефон»)',
+        '🔄 Это вакансия / Это заказ — если тип определили неправильно',
         '❌ Мусор — просто выбросить',
       ].join('\n')
     );
@@ -188,6 +202,19 @@ async function onCallback(query) {
     return;
   }
 
+  if (action === 'type') {
+    const newType = row.parsed.listing_type === 'vacancy' ? 'order' : 'vacancy';
+    const parsed = { ...row.parsed, listing_type: newType };
+    await imports.setParsed(id, parsed);
+    const problems = await imports.validate(parsed);
+    const warning = problems.length ? `❗ Не хватает: ${tg.esc(problems.join(', '))}` : '';
+    await tg.answerCallbackQuery(query.id, newType === 'vacancy' ? 'Теперь вакансия' : 'Теперь заказ');
+    await tg.editMessageText(chatId, messageId, card(parsed, warning), {
+      reply_markup: keyboard(id, newType),
+    });
+    return;
+  }
+
   if (action === 'rej') {
     await imports.reject(id);
     await tg.answerCallbackQuery(query.id, 'Выброшено');
@@ -197,8 +224,9 @@ async function onCallback(query) {
 
   if (action === 'pub') {
     try {
-      const orderId = await imports.publish(id);
-      const link = SITE_URL ? `\n${SITE_URL}/orders/${orderId}` : '';
+      const result = await imports.publish(id);
+      const path = result.type === 'vacancy' ? 'vacancies' : 'orders';
+      const link = SITE_URL ? `\n${SITE_URL}/${path}/${result.id}` : '';
       await tg.answerCallbackQuery(query.id, 'Опубликовано');
       await tg.editMessageText(
         chatId,

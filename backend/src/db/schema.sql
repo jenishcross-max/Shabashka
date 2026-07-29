@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS imported_listings (
   dedup_hash    TEXT,        -- одно объявление постят в несколько чатов — режем повторы
   status        TEXT NOT NULL DEFAULT 'pending', -- pending | published | rejected
   order_id      INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+  vacancy_id    INTEGER REFERENCES vacancies(id) ON DELETE SET NULL,
   tg_chat_id    BIGINT,      -- чат и сообщение с карточкой — чтобы обновить её после решения
   tg_message_id BIGINT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
