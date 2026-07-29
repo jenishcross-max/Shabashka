@@ -98,6 +98,10 @@ async function ask(content, systemSuffix) {
       model: MODEL,
       temperature: 0,
       max_completion_tokens: 2000,
+      // Qwen3.6 — reasoning-модель: без этого она сначала пишет блок
+      // размышлений и может не успеть добраться до самого JSON в пределах
+      // max_completion_tokens. Задача чисто формальная, размышления не нужны.
+      reasoning_effort: 'none',
       messages: [
         { role: 'system', content: system },
         { role: 'user', content },
@@ -117,7 +121,7 @@ async function ask(content, systemSuffix) {
   // Без response_format модель иногда добавляет пояснение до/после JSON или
   // оборачивает его в markdown — вырезаем сам объект и уже его парсим.
   const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('Модель вернула не JSON');
+  if (!match) throw new Error(`Модель вернула не JSON: ${text.slice(0, 200)}`);
 
   return normalize(JSON.parse(match[0]));
 }
