@@ -57,8 +57,9 @@ function build(parsed, listingType) {
   return next;
 }
 
-// Возвращает Buffer с mp4. Файл кладём во временную папку и убираем за собой:
-// на Render диск эфемерный, но за время жизни процесса мусор бы копился.
+// Возвращает { buffer, credit } — mp4 и строку об авторе трека для подписи к
+// посту. Файл кладём во временную папку и убираем за собой: на Render диск
+// эфемерный, но за время жизни процесса мусор бы копился.
 async function encode(parsed, listingType) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'shabashka-reel-'));
   try {
@@ -75,7 +76,7 @@ async function encode(parsed, listingType) {
 
     if (track) {
       // Трек может быть короче ролика — зацикливаем и обрезаем по видео.
-      args.push('-stream_loop', '-1', '-i', track);
+      args.push('-stream_loop', '-1', '-i', track.file);
     } else {
       // Instagram отклоняет ролики без звуковой дорожки, поэтому подкладываем тишину
       args.push('-f', 'lavfi', '-t', String(card.TOTAL_SECONDS),
@@ -95,14 +96,16 @@ async function encode(parsed, listingType) {
     );
 
     if (track) {
-      // Музыка — фон, а не номер: приглушаем и уводим в тишину к концовке.
-      args.push('-af', `volume=0.45,afade=t=in:st=0:d=0.8,afade=t=out:st=${card.TOTAL_SECONDS - 1.2}:d=1.2`);
+      // Голоса в ролике нет, перекрывать музыке нечего — стоит она заметно
+      // громче типичного фона. Треки в фонотеке уже выровнены по громкости при
+      // нарезке, поэтому одного общего множителя хватает на всю папку.
+      args.push('-af', `volume=0.8,afade=t=in:st=0:d=0.8,afade=t=out:st=${card.TOTAL_SECONDS - 1.2}:d=1.2`);
     }
 
     args.push(out);
 
     await render(args, renderer);
-    return await fs.readFile(out);
+    return { buffer: await fs.readFile(out), credit: track ? track.credit : null };
   } finally {
     await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
   }
@@ -110,7 +113,7 @@ async function encode(parsed, listingType) {
 
 // Подпись под постом. Ссылку Instagram кликабельной не делает ни в подписи, ни
 // в комментариях — поэтому зовём в шапку профиля, а не даём голый URL.
-function caption(parsed, listingType) {
+function caption(parsed, listingType, credit) {
   const isVacancy = listingType === 'vacancy';
   const lines = [`${isVacancy ? '💼 Вакансия' : '🧰 Заказ'}: ${parsed.title || ''}`.trim()];
 
@@ -120,6 +123,9 @@ function caption(parsed, listingType) {
   if (parsed.description) lines.push('', parsed.description);
 
   lines.push('', 'Откликнуться — на Шабашка.com, ссылка в шапке профиля.');
+  // Автора трека называем обязательно: музыка в фонотеке под Creative Commons,
+  // и указание автора — условие, на котором её вообще можно использовать.
+  if (credit) lines.push('', credit);
   lines.push(
     '',
     ['#шабашка', '#работабишкек', '#жумуш', '#подработкабишкек', '#кыргызстан', isVacancy ? '#вакансиибишкек' : '#заказы'].join(' ')

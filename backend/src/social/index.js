@@ -18,8 +18,8 @@ async function shareListing(parsed, listingType) {
   // сервиса или нехватка памяти), и тогда молчание в чате — единственный симптом.
   // По последней строке в логах видно, на чём именно оборвалось.
   console.log('[insta] сборка ролика');
-  const buffer = await video.build(parsed, listingType);
-  const caption = video.caption(parsed, listingType);
+  const { buffer, credit } = await video.build(parsed, listingType);
+  const caption = video.caption(parsed, listingType, credit);
   const base = backendUrl();
   console.log(`[insta] ролик собран: ${buffer.length} байт`);
 
