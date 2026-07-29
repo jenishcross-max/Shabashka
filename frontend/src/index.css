@@ -2095,10 +2095,17 @@ a:hover {
   max-width: 1180px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr 1fr;
+  grid-template-columns: 1.4fr 1fr 1fr 1fr 1fr;
   gap: 32px;
   padding-bottom: 28px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+/* Пять колонок на планшете уже слипаются, но и в одну складывать рано —
+   раскладываем в две. */
+@media (max-width: 900px) {
+  .site-footer-cols {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 @media (max-width: 640px) {
   .site-footer-cols {

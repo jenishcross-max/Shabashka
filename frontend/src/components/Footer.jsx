@@ -56,6 +56,40 @@ export default function Footer() {
             </li>
           </ul>
         </div>
+        <div>
+          <h4>Мы в соцсетях</h4>
+          {/* Ссылки нужны не только людям: поисковик идёт по ним с сайта на профили
+              и обратно и убеждается, что это один и тот же проект. */}
+          <ul>
+            <li>
+              <a
+                href="https://www.instagram.com/shabashka.com_/"
+                target="_blank"
+                rel="noopener noreferrer me"
+              >
+                📸 Instagram
+              </a>
+            </li>
+            <li>
+              <a
+                href="https://www.threads.com/@shabashka.com_"
+                target="_blank"
+                rel="noopener noreferrer me"
+              >
+                🧵 Threads
+              </a>
+            </li>
+            <li>
+              <a
+                href="https://t.me/+Dx1wWHAS3Fs2MGNi"
+                target="_blank"
+                rel="noopener noreferrer me"
+              >
+                ✈️ Telegram-канал
+              </a>
+            </li>
+          </ul>
+        </div>
       </div>
       <p className="copyright">© {new Date().getFullYear()} Шабашка · Tirek IT Studio</p>
     </footer>

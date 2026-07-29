@@ -26,6 +26,25 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Шабашка — заказы и подработка в Кыргызстане" />
     <meta name="twitter:card" content="summary_large_image" />
+    <!-- sameAs связывает сайт с профилями в соцсетях: без него поисковик считает
+         их четырьмя разными «Шабашками» и показывает по запросу что-то одно.
+         Разметка лежит статикой в HTML, а не рисуется React'ом, — так её видят и
+         те роботы, которые не выполняют скрипты. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "Шабашка",
+        "url": "https://xn--80aaac0cyed.com/",
+        "logo": "https://xn--80aaac0cyed.com/logo.svg",
+        "description": "Подработка и вакансии Кыргызстана: заказчики размещают задачи, исполнители откликаются напрямую, без комиссии.",
+        "areaServed": "KG",
+        "sameAs": [
+          "https://www.instagram.com/shabashka.com_/",
+          "https://www.threads.com/@shabashka.com_"
+        ]
+      }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
