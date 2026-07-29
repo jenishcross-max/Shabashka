@@ -142,7 +142,11 @@ async function onMessage(message) {
   const userId = message.from && message.from.id;
 
   if (!isAllowed(userId)) {
-    await tg.sendMessage(chatId, `Этот бот только для администраторов Шабашки.\nВаш ID: ${userId}`);
+    // В группе молчим полностью: если кто-то случайно кинет скриншот, бот не
+    // должен отвечать всей группе. В личке отвечаем — так админ узнаёт свой ID.
+    if (message.chat.type === 'private') {
+      await tg.sendMessage(chatId, `Этот бот только для администраторов Шабашки.\nВаш ID: ${userId}`);
+    }
     return;
   }
 
