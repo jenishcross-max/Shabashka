@@ -37,6 +37,7 @@ async function waitReady(creationId) {
   for (let i = 0; i < POLL_ATTEMPTS; i++) {
     await sleep(POLL_INTERVAL_MS);
     const { status_code: status } = await call('GET', creationId, { fields: 'status_code' });
+    console.log(`[insta] статус ролика ${creationId}: ${status}`);
     if (status === 'FINISHED') return;
     if (status === 'ERROR' || status === 'EXPIRED') {
       throw new Error(`Instagram не смог обработать ролик (${status})`);

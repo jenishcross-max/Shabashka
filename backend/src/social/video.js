@@ -22,12 +22,23 @@ function run(args) {
   });
 }
 
+// Сборки идут строго по одной. Админ публикует объявления пачкой, и два
+// одновременных кодирования вместе с канвасами снова упёрлись бы в 512 МБ —
+// а ждать тут нечего, ролик собирается за секунды.
+let chain = Promise.resolve();
+
+function build(parsed, listingType) {
+  const next = chain.then(() => encode(parsed, listingType));
+  chain = next.catch(() => {}); // провал одной сборки не должен рвать очередь
+  return next;
+}
+
 // Ролик статичный: два кадра-картинки встык. Анимации тут не нужны — объявление
 // читают, а не смотрят, и любое движение только мешает успеть прочитать текст.
 //
 // Возвращает Buffer с mp4. Файлы кладём во временную папку и убираем за собой:
 // на Render диск эфемерный, но за время жизни процесса мусор бы копился.
-async function build(parsed, listingType) {
+async function encode(parsed, listingType) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'shabashka-reel-'));
   try {
     const listingPng = path.join(dir, 'listing.png');
@@ -46,6 +57,11 @@ async function build(parsed, listingType) {
       '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
       '-filter_complex', '[0:v][1:v]concat=n=2:v=1:a=0[v]',
       '-map', '[v]', '-map', '2:a',
+      // Один поток вместо потока на ядро. libx264 держит свой набор буферов кадров
+      // на каждый поток, а кадр 1080×1920 весит 3 МБ — на 512 МБ бесплатного Render
+      // многопоточное кодирование упирается в лимит памяти, и процесс убивают (137).
+      // Ускорять тут нечего: девять секунд неподвижной картинки жмутся и в один поток.
+      '-threads', '1', '-filter_complex_threads', '1',
       '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'stillimage',
       '-pix_fmt', 'yuv420p', '-r', '25', '-g', '50',
       '-c:a', 'aac', '-b:a', '64k', '-shortest',
