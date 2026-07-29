@@ -1,6 +1,8 @@
 const tg = require('./api');
 const extract = require('./extract');
 const imports = require('./imports');
+const queue = require('./queue');
+const social = require('../social');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
 const EXPERIENCE_LEVELS = require('../experienceLevels');
 
@@ -81,6 +83,25 @@ function publicText(parsed, listingType, siteLink) {
   return lines.join('\n');
 }
 
+// Ролик для Instagram делается уже после того, как объявление ушло на сайт:
+// кодирование и обработка на стороне Instagram занимают до пары минут, и держать
+// ради них подтверждение публикации было бы странно. Поэтому шаг отдельный и
+// отвечает своим сообщением, а его провал публикацию на сайте не отменяет.
+async function shareToInstagram(chatId, parsed, listingType) {
+  try {
+    const result = await social.shareListing(parsed, listingType);
+    if (result.posted) {
+      await tg.sendMessage(chatId, '📸 Ролик опубликован в Instagram');
+      return;
+    }
+    // Не выложилось — отдаём готовый mp4 с подписью, чтобы можно было запостить руками
+    await tg.sendVideo(chatId, result.buffer, result.caption);
+    await tg.sendMessage(chatId, `📸 В Instagram сам не выложил: ${tg.esc(result.reason)}\nРолик выше — можно опубликовать вручную.`);
+  } catch (err) {
+    await tg.sendMessage(chatId, `⚠️ Ролик не собрался: ${tg.esc(err.message)}`);
+  }
+}
+
 function keyboard(id, listingType) {
   const toggleLabel = listingType === 'vacancy' ? '🔄 Это заказ' : '🔄 Это вакансия';
   return {
@@ -124,6 +145,28 @@ async function handleParsed(chatId, listings, { source, rawText }) {
   }
 }
 
+// «через 40 секунд» / «через 3 минуты» — прикидка, а не обещание: сколько
+// придётся ждать на самом деле, знает только Groq по остатку лимита.
+function waitText(ms) {
+  const minutes = Math.round(ms / 60000);
+  if (minutes >= 2) return `≈ ${minutes} мин`;
+  return `≈ ${Math.max(1, Math.round(ms / 30000)) * 30} сек`;
+}
+
+// Разбор ставим в очередь и отвечаем сразу: пачка из десятка скриншотов
+// разбирается несколько минут, и держать всё это время обработчик апдейта
+// нельзя — при long polling на нём встали бы и все остальные сообщения.
+function enqueue(chatId, job) {
+  return queue.add(async () => {
+    try {
+      await job();
+    } catch (err) {
+      console.error('Telegram queue:', err);
+      await tg.sendMessage(chatId, `⚠️ Ошибка: ${tg.esc(err.message)}`).catch(() => {});
+    }
+  });
+}
+
 // Из скриншота берём самый крупный размер: Telegram отдаёт лесенку превью,
 // а на мелком тексте объявления не разобрать.
 function photoFileId(message) {
@@ -158,6 +201,8 @@ async function onMessage(message) {
       [
         '👋 Присылай скриншот объявления из WhatsApp или пересылай сообщение из чата.',
         'Если объявлений несколько сразу — разберу каждое отдельной карточкой.',
+        'Пачку скриншотов можно кинуть разом: поставлю в очередь и разберу по одному',
+        '(бесплатный Groq за минуту успевает примерно полтора скриншота).',
         '',
         'На карточке кнопки:',
         '✅ Опубликовать — уходит на сайт (заказ или вакансия)',
@@ -189,18 +234,35 @@ async function onMessage(message) {
     // Прислали новый скриншот вместо правок — значит, правки отменились. Иначе
     // флаг остался бы висеть и следующий текст ушёл бы в правки старой карточки.
     editing.delete(userId);
-    await tg.sendMessage(chatId, '🔍 Читаю скриншот…');
-    const buffer = await tg.downloadFile(fileId);
     const mediaType =
       message.document && message.document.mime_type ? message.document.mime_type : 'image/jpeg';
-    const parsed = await extract.fromImage(buffer, mediaType);
-    await handleParsed(chatId, parsed, { source: 'whatsapp', rawText: text || null });
+
+    const position = enqueue(chatId, async () => {
+      const buffer = await tg.downloadFile(fileId);
+      const parsed = await extract.fromImage(buffer, mediaType);
+      await handleParsed(chatId, parsed, { source: 'whatsapp', rawText: text || null });
+    });
+
+    await tg.sendMessage(
+      chatId,
+      position === 1
+        ? '🔍 Читаю скриншот…'
+        : `📥 В очереди — ${position}-й, дойду ${waitText((position - 1) * extract.PACE_MS)}.`
+    );
     return;
   }
 
   if (text.length > 15) {
-    const parsed = await extract.fromText(text);
-    await handleParsed(chatId, parsed, { source: 'telegram', rawText: text });
+    const position = enqueue(chatId, async () => {
+      const parsed = await extract.fromText(text);
+      await handleParsed(chatId, parsed, { source: 'telegram', rawText: text });
+    });
+    if (position > 1) {
+      await tg.sendMessage(
+        chatId,
+        `📥 В очереди — ${position}-й, дойду ${waitText((position - 1) * extract.PACE_MS)}.`
+      );
+    }
     return;
   }
 
@@ -282,7 +344,13 @@ async function onCallback(query) {
       await tg.editMessageText(
         chatId,
         messageId,
-        `${card(row.parsed)}\n\n✅ <b>Опубликовано</b>${siteLink ? `\n${tg.esc(siteLink)}` : ''}${channelNote}\n\n📱 <a href="${waLink}">Отправить в WhatsApp</a>`
+        `${card(row.parsed)}\n\n✅ <b>Опубликовано</b>${siteLink ? `\n${tg.esc(siteLink)}` : ''}${channelNote}\n\n📱 <a href="${waLink}">Отправить в WhatsApp</a>\n🎬 Собираю ролик для Instagram…`
+      );
+
+      // Намеренно без await: ролик едет своим ходом, а обработчик кнопки на нём
+      // не висит — иначе long polling встал бы на всё время кодирования.
+      shareToInstagram(chatId, row.parsed, result.type).catch((err) =>
+        console.error('Instagram:', err)
       );
     } catch (err) {
       await tg.answerCallbackQuery(query.id, err.message.slice(0, 190));

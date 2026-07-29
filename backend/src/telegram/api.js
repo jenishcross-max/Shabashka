@@ -51,6 +51,19 @@ function answerCallbackQuery(id, text) {
   return call('answerCallbackQuery', { callback_query_id: id, text: text || '' });
 }
 
+// Ролик заливается файлом, а не ссылкой, поэтому здесь multipart вместо JSON.
+async function sendVideo(chatId, buffer, caption) {
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  form.append('caption', caption || '');
+  form.append('video', new Blob([buffer], { type: 'video/mp4' }), 'shabashka.mp4');
+
+  const res = await fetch(`${BASE}/sendVideo`, { method: 'POST', body: form });
+  const data = await res.json();
+  if (!data.ok) throw new Error(`Telegram sendVideo: ${data.description || res.status}`);
+  return data.result;
+}
+
 // Картинка приходит как file_id — реальный файл нужно забрать в два шага.
 async function downloadFile(fileId) {
   const file = await call('getFile', { file_id: fileId });
@@ -65,6 +78,7 @@ module.exports = {
   sendMessage,
   editMessageText,
   answerCallbackQuery,
+  sendVideo,
   downloadFile,
   hasToken: () => Boolean(TOKEN),
 };

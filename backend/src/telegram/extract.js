@@ -132,6 +132,87 @@ function extractJson(text) {
   return null;
 }
 
+const RETRIES = 2;
+const MAX_WAIT_MS = 40000;
+
+// Разбор одного скриншота стоит примерно 4–5 тысяч токенов при лимите 8000
+// в минуту, то есть подряд их проходит только полтора. Отсюда и шаг очереди
+// PACE_MS — по нему бот считает, когда доберётся до пачки; на глаз это ~40 сек
+// на скриншот. Точное ожидание всё равно считается по ответам Groq.
+const PACE_MS = 40000;
+const COST_ESTIMATE = 5000;
+const MAX_CAPACITY_WAIT_MS = 70000;
+
+// Остаток минутного лимита с прошлого ответа: { remaining, resetAt }.
+let budget = null;
+let lastCallAt = 0;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// «7.66s», «2m59.56s», «500ms» — формат заголовков x-ratelimit-reset-*.
+function parseDuration(value) {
+  if (!value) return null;
+  const match = /^(?:(\d+(?:\.\d+)?)m)?(?:(\d+(?:\.\d+)?)s)?$|^(\d+(?:\.\d+)?)ms$/.exec(value.trim());
+  if (!match) return null;
+  if (match[3] !== undefined) return Number(match[3]);
+  const minutes = Number(match[1] || 0);
+  const seconds = Number(match[2] || 0);
+  if (!minutes && !seconds) return null;
+  return (minutes * 60 + seconds) * 1000;
+}
+
+function readBudget(res) {
+  lastCallAt = Date.now();
+  const remaining = Number(res.headers.get('x-ratelimit-remaining-tokens'));
+  const reset = parseDuration(res.headers.get('x-ratelimit-reset-tokens'));
+  budget = Number.isFinite(remaining) && reset !== null
+    ? { remaining, resetAt: Date.now() + reset }
+    : null;
+}
+
+// Ждём перед запросом, если на минуту токенов уже не осталось. Groq присылает
+// остаток лимита в заголовках — по ним пауза выходит ровно такой, какая нужна,
+// и при свободном лимите её нет совсем. Если заголовков в ответе не оказалось,
+// держим фиксированный шаг: лучше подождать лишнее, чем ловить 429 на каждом
+// втором скриншоте.
+async function waitForCapacity() {
+  if (!lastCallAt) return;
+
+  if (budget) {
+    const left = budget.resetAt - Date.now();
+    if (left <= 0) {
+      budget = null;
+      return;
+    }
+    if (budget.remaining >= COST_ESTIMATE) return;
+    await sleep(Math.min(left + 1000, MAX_CAPACITY_WAIT_MS));
+    budget = null;
+    return;
+  }
+
+  const since = Date.now() - lastCallAt;
+  if (since < PACE_MS) await sleep(PACE_MS - since);
+}
+
+// Сколько ждать после 429. Заголовок retry-after Groq присылает не всегда,
+// зато точное время почти всегда есть в тексте ошибки («try again in 9.66s»).
+// Если не нашли ни того ни другого — ждать вслепую не будем, вернём 0.
+function retryDelayMs(res, data) {
+  const header = Number(res.headers.get('retry-after'));
+  let seconds = Number.isFinite(header) && header > 0 ? header : 0;
+
+  if (!seconds) {
+    const message = (data && data.error && data.error.message) || '';
+    const match = /try again in ([\d.]+)s/i.exec(message);
+    if (match) seconds = Number(match[1]);
+  }
+  if (!seconds) return 0;
+
+  // Секунда сверху: лимит считается по скользящему окну на стороне Groq,
+  // и повтор ровно в названный момент иногда прилетает в тот же отказ.
+  return Math.min((seconds + 1) * 1000, MAX_WAIT_MS);
+}
+
 // Единственное место, где мы ходим в Groq. content — тело user-сообщения в
 // формате OpenAI chat completions: строка или массив частей text/image_url.
 // Возвращает массив разобранных объявлений (обычно один элемент).
@@ -144,28 +225,45 @@ async function ask(content, systemSuffix) {
     ? `${buildSystem(categories)}\n\n${systemSuffix}`
     : buildSystem(categories);
 
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: JSON.stringify({
-      model: MODEL,
-      temperature: 0,
-      max_completion_tokens: 3000,
-      // Qwen3.6 — reasoning-модель: без этого она сначала пишет блок
-      // размышлений и может не успеть добраться до самого JSON в пределах
-      // max_completion_tokens. Задача чисто формальная, размышления не нужны.
-      reasoning_effort: 'none',
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content },
-      ],
-    }),
+  const body = JSON.stringify({
+    model: MODEL,
+    temperature: 0,
+    max_completion_tokens: 3000,
+    // Qwen3.6 — reasoning-модель: без этого она сначала пишет блок
+    // размышлений и может не успеть добраться до самого JSON в пределах
+    // max_completion_tokens. Задача чисто формальная, размышления не нужны.
+    reasoning_effort: 'none',
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content },
+    ],
   });
 
-  const data = await res.json();
-  if (!res.ok) {
-    const detail = data && data.error ? data.error.message : res.status;
-    throw new Error(`Groq: ${detail}`);
+  let res;
+  let data;
+  for (let attempt = 0; ; attempt += 1) {
+    // Только перед первой попыткой: для повторов паузу диктует сам ответ 429,
+    // и ждать вдобавок ещё и по остатку лимита значило бы ждать дважды.
+    if (attempt === 0) await waitForCapacity();
+    res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+      body,
+    });
+    data = await res.json();
+    readBudget(res);
+    if (res.ok) break;
+
+    // Лимит токенов в минуту выбирается двумя скриншотами подряд: один разбор
+    // весит около 5к токенов при лимите 8000. Groq в ответе говорит, через
+    // сколько станет можно, — проще подождать и повторить, чем отдавать админу
+    // ошибку на объявление, которое разобралось бы само через десять секунд.
+    const wait = res.status === 429 && attempt < RETRIES ? retryDelayMs(res, data) : 0;
+    if (!wait) {
+      const detail = data && data.error ? data.error.message : res.status;
+      throw new Error(`Groq: ${detail}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, wait));
   }
 
   const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
@@ -205,4 +303,4 @@ async function applyCorrections(parsed, corrections) {
   return list[0];
 }
 
-module.exports = { fromImage, fromText, applyCorrections };
+module.exports = { fromImage, fromText, applyCorrections, PACE_MS };

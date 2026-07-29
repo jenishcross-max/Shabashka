@@ -29,3 +29,9 @@ services:
         generateValue: true
       - key: TELEGRAM_CHANNEL_ID
         sync: false
+      # Автопостинг роликов в Instagram. Без них бот просто присылает готовый
+      # mp4 в Telegram, чтобы опубликовать вручную.
+      - key: INSTAGRAM_USER_ID
+        sync: false
+      - key: INSTAGRAM_ACCESS_TOKEN
+        sync: false

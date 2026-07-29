@@ -13,6 +13,7 @@ const homeRoutes = require('./routes/home');
 const conversationRoutes = require('./routes/conversations');
 const adminRoutes = require('./routes/admin');
 const telegram = require('./telegram');
+const social = require('./social');
 const metaRoutes = require('./meta');
 const { apiLimiter } = require('./rateLimit');
 
@@ -41,6 +42,10 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 // Вебхук Telegram — до apiLimiter: пачка апдейтов после простоя иначе упёрлась
 // бы в общий лимит, а Telegram счёл бы это сбоем и начал слать их повторно.
 app.use('/api/telegram', telegram.router);
+
+// Тоже до apiLimiter: за роликом приходит загрузчик Instagram, и упереться
+// в лимит на публикации ему нельзя — второй попытки он не делает.
+app.use('/api/social', social.router);
 
 app.use('/api', apiLimiter);
 app.use('/api/home', homeRoutes);
