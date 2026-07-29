@@ -8,6 +8,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import ProtectedAdminRoute from './components/ProtectedAdminRoute';
 import Home from './pages/Home';
 import AllOrders from './pages/AllOrders';
+import Board from './pages/Board';
 import OrderDetail from './pages/OrderDetail';
 import Vacancies from './pages/Vacancies';
 import VacancyDetail from './pages/VacancyDetail';
@@ -47,6 +48,7 @@ function PublicSite() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/board" element={<Board />} />
           <Route path="/orders" element={<AllOrders />} />
           <Route path="/orders/:id" element={<OrderDetail />} />
           <Route path="/vacancies" element={<Vacancies />} />

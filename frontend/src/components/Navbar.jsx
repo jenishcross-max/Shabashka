@@ -105,6 +105,9 @@ export default function Navbar() {
         <NavLink to="/vacancies" className={navClass}>
           Вакансии
         </NavLink>
+        <NavLink to="/board" className={navClass}>
+          Доска
+        </NavLink>
         <NavLink to="/favorites" className={navClass}>
           ★ Избранное
         </NavLink>

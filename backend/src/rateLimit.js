@@ -36,4 +36,14 @@ const messageLimiter = rateLimit({
   message: { error: 'Слишком много сообщений. Попробуйте через несколько минут.' },
 });
 
-module.exports = { authLimiter, reportLimiter, apiLimiter, messageLimiter };
+// Доска — записки живут шесть часов, и один человек не должен занимать её целиком.
+// Лимит на адрес, а не на аккаунт: аккаунт заводится за минуту, адрес — нет.
+const boardLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Слишком много объявлений на доске за час. Попробуйте позже.' },
+});
+
+module.exports = { authLimiter, reportLimiter, apiLimiter, messageLimiter, boardLimiter };

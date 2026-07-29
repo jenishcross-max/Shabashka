@@ -133,6 +133,25 @@ CREATE TABLE IF NOT EXISTS imported_listings (
   published_at  TIMESTAMPTZ  -- когда ушло на сайт; по нему считается счётчик за день
 );
 
+-- «Доска» — быстрые объявления, которые живут шесть часов и пропадают сами.
+-- Отдельная таблица, а не флаг в orders: у заказа есть категория, бюджет,
+-- переписка, статус и жизнь в поиске, а здесь всё это лишнее — записка на
+-- доске нужна ровно до конца смены. Срок хранится в expires_at, а не считается
+-- от created_at в запросах: так его видно в самой строке и его можно продлить,
+-- не трогая время публикации.
+CREATE TABLE IF NOT EXISTS board_posts (
+  id             SERIAL PRIMARY KEY,
+  user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  text           TEXT NOT NULL,
+  city           TEXT NOT NULL,
+  whatsapp_phone TEXT, -- необязателен, как и в заказах
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at     TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '6 hours'
+);
+
+CREATE INDEX IF NOT EXISTS idx_board_posts_expires ON board_posts(expires_at);
+CREATE INDEX IF NOT EXISTS idx_board_posts_user ON board_posts(user_id);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_imported_dedup
   ON imported_listings(dedup_hash) WHERE dedup_hash IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_imported_status ON imported_listings(status);

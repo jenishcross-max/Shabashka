@@ -69,6 +69,10 @@ export const api = {
   deleteVacancy: (id, token) => request(`/vacancies/${id}`, { method: 'DELETE', token }),
   bumpVacancy: (id, token) => request(`/vacancies/${id}/bump`, { method: 'POST', token }),
 
+  boardPosts: (params = {}) => request(`/board${toQueryString(params)}`),
+  createBoardPost: (payload, token) => request('/board', { method: 'POST', body: payload, token }),
+  deleteBoardPost: (id, token) => request(`/board/${id}`, { method: 'DELETE', token }),
+
   conversations: (token) => request('/conversations', { token }),
   conversation: (id, token) => request(`/conversations/${id}`, { token }),
   unreadCount: (token) => request('/conversations/unread-count', { token }),
