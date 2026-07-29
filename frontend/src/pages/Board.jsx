@@ -8,6 +8,18 @@ import CityAutocomplete from '../components/CityAutocomplete';
 
 const MAX_TEXT = 500;
 
+// Метка браузера для тех, кто пишет на доску без аккаунта: по ней сервер считает
+// лимит в три объявления и по ней же гость снимает своё. Живёт в localStorage,
+// заводится один раз и ничего о человеке не знает.
+function guestId() {
+  let id = localStorage.getItem('shabashka_board_guest');
+  if (!id) {
+    id = crypto.randomUUID ? crypto.randomUUID() : `g${Math.random().toString(36).slice(2)}${Date.now()}`;
+    localStorage.setItem('shabashka_board_guest', id);
+  }
+  return id;
+}
+
 // Сколько записке осталось жить. Считаем в минутах: секунды на доске никому не
 // нужны, а перерисовка раз в секунду ради них — нет.
 function timeLeft(expiresAt) {
@@ -24,14 +36,15 @@ export default function Board() {
   const cities = useCities();
   useMeta(
     'Доска — срочная подработка в Кыргызстане',
-    'Быстрые объявления о работе и подработке. Каждое живёт шесть часов и пропадает само — на доске только актуальное.'
+    'Быстрые объявления о работе и подработке. Без регистрации, каждое живёт шесть часов и пропадает само — на доске только актуальное.'
   );
 
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
-  const [city, setCity] = useState(user?.city || '');
-  const [phone, setPhone] = useState(user?.phone || '');
+  const [name, setName] = useState('');
+  const [city, setCity] = useState('');
+  const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   // Пересчитывает «осталось столько-то» без запроса на сервер
@@ -54,16 +67,18 @@ export default function Board() {
     return () => document.body.classList.remove('board-theme');
   }, []);
 
+  // Токен и метку браузера отправляем и на чтение: по ним сервер помечает записки,
+  // которые можно снять, а сам guest_id наружу не отдаёт.
   const load = useCallback(async () => {
     try {
-      const { posts } = await api.boardPosts();
+      const { posts } = await api.boardPosts({ guestId: guestId() }, token);
       setPosts(posts);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     load();
@@ -84,7 +99,10 @@ export default function Board() {
     setError('');
     setSubmitting(true);
     try {
-      const { post } = await api.createBoardPost({ text, city, whatsapp_phone: phone }, token);
+      const { post } = await api.createBoardPost(
+        { text, city, whatsapp_phone: phone, name, guestId: guestId() },
+        token
+      );
       setPosts((list) => [post, ...list]);
       setText('');
     } catch (err) {
@@ -95,8 +113,9 @@ export default function Board() {
   }
 
   async function handleDelete(id) {
+    setError('');
     try {
-      await api.deleteBoardPost(id, token);
+      await api.deleteBoardPost(id, { guestId: guestId() }, token);
       setPosts((list) => list.filter((p) => p.id !== id));
     } catch (err) {
       setError(err.message);
@@ -108,44 +127,59 @@ export default function Board() {
       <header className="board-head">
         <h1>Доска</h1>
         <p>
-          Срочные объявления о работе. Каждое живёт <strong>6 часов</strong> и пропадает само —
-          здесь только то, что актуально прямо сейчас.
+          Срочные объявления о работе — <strong>без регистрации</strong>. Каждое живёт{' '}
+          <strong>6 часов</strong> и пропадает само: здесь только то, что актуально прямо сейчас.
         </p>
       </header>
 
-      {user ? (
-        <form className="board-form" onSubmit={handleSubmit}>
-          <textarea
-            required
-            rows={3}
-            maxLength={MAX_TEXT}
-            placeholder="Например: нужны два грузчика на сегодня, с 14:00, район Аламедин-1, 1500 сом"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
-          <div className="board-form-row">
-            <CityAutocomplete required cities={cities} value={city} onChange={setCity} />
+      <form className="board-form" onSubmit={handleSubmit}>
+        <textarea
+          required
+          rows={3}
+          maxLength={MAX_TEXT}
+          placeholder="Например: нужны два грузчика на сегодня, с 14:00, район Аламедин-1, 1500 сом"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+        <div className="board-form-row">
+          {!user && (
             <input
-              type="tel"
-              placeholder="WhatsApp (необязательно)"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              className="board-name"
+              placeholder="Как вас зовут"
+              maxLength={40}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
             />
-            <button type="submit" disabled={submitting}>
-              {submitting ? 'Вешаем…' : 'Повесить на доску'}
-            </button>
-          </div>
-          <span className="board-counter">
-            {text.length}/{MAX_TEXT}
-          </span>
-        </form>
-      ) : (
-        <div className="board-login">
-          <p>Чтобы повесить объявление на доску, войдите в аккаунт.</p>
-          <Link to="/login">Войти</Link>
-          <Link to="/register">Зарегистрироваться</Link>
+          )}
+          <CityAutocomplete
+            required
+            className="board-city"
+            placeholder="Город"
+            cities={cities}
+            value={city}
+            onChange={setCity}
+          />
+          <input
+            type="tel"
+            required={!user}
+            placeholder={user ? 'WhatsApp (необязательно)' : 'WhatsApp'}
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
+          <button type="submit" disabled={submitting}>
+            {submitting ? 'Вешаем…' : 'Повесить на доску'}
+          </button>
         </div>
-      )}
+        <span className="board-counter">
+          {text.length}/{MAX_TEXT} · до 3 объявлений
+          {user ? '' : '. Есть аккаунт? '}
+          {!user && (
+            <Link to="/login" className="board-counter-link">
+              войдите
+            </Link>
+          )}
+        </span>
+      </form>
 
       {error && <p className="board-error">{error}</p>}
 
@@ -176,7 +210,7 @@ export default function Board() {
                     Написать в WhatsApp
                   </a>
                 )}
-                {user && (user.id === post.user_id || user.role === 'admin') && (
+                {post.mine && (
                   <button type="button" className="board-note-del" onClick={() => handleDelete(post.id)}>
                     Снять
                   </button>

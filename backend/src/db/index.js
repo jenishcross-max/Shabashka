@@ -91,6 +91,12 @@ function init() {
       await pool.query('ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ');
       await pool.query("UPDATE imported_listings SET published_at = created_at WHERE status = 'published' AND published_at IS NULL");
 
+      // Доска сначала была только для зарегистрированных — доращиваем её до гостей
+      await pool.query('ALTER TABLE board_posts ADD COLUMN IF NOT EXISTS guest_id TEXT');
+      await pool.query('ALTER TABLE board_posts ADD COLUMN IF NOT EXISTS author_name TEXT');
+      await pool.query('ALTER TABLE board_posts ALTER COLUMN user_id DROP NOT NULL');
+      await pool.query('CREATE INDEX IF NOT EXISTS idx_board_posts_guest ON board_posts(guest_id)');
+
       await pool.query('CREATE INDEX IF NOT EXISTS idx_conversations_listing ON conversations(listing_type, listing_id)');
       await pool.query(
         'CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_listing_seeker ON conversations(listing_type, listing_id, seeker_id)'

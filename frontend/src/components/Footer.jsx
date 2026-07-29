@@ -47,8 +47,8 @@ export default function Footer() {
           <h4>Контакты</h4>
           <ul>
             <li>
-              <a href="https://wa.me/996553675070" target="_blank" rel="noopener noreferrer">
-                💬 WhatsApp: 0553675070
+              <a href="https://wa.me/996777675070" target="_blank" rel="noopener noreferrer">
+                💬 WhatsApp: 0777675070
               </a>
             </li>
             <li>

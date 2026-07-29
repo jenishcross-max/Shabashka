@@ -32,9 +32,27 @@ async function requireAuth(req, res, next) {
   }
 }
 
+// То же самое, но без обязательности: доску читают и пишут без аккаунта, а
+// вошедшему всё равно нужно знать, что запись его. Любая проблема с токеном
+// здесь не ошибка, а просто «гость».
+async function optionalAuth(req, _res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) return next();
+
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    const { rows } = await db.query('SELECT * FROM users WHERE id = $1', [payload.id]);
+    if (rows[0] && !rows[0].is_blocked) req.user = rows[0];
+  } catch {
+    // истёкший или чужой токен — считаем, что человек не вошёл
+  }
+  next();
+}
+
 function requireAdmin(req, res, next) {
   if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Доступно только администраторам' });
   next();
 }
 
-module.exports = { signToken, requireAuth, requireAdmin, JWT_SECRET };
+module.exports = { signToken, requireAuth, optionalAuth, requireAdmin, JWT_SECRET };

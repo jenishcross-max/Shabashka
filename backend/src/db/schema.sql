@@ -139,15 +139,24 @@ CREATE TABLE IF NOT EXISTS imported_listings (
 -- доске нужна ровно до конца смены. Срок хранится в expires_at, а не считается
 -- от created_at в запросах: так его видно в самой строке и его можно продлить,
 -- не трогая время публикации.
+-- Писать на доску можно и без аккаунта: регистрация ради записки, которая живёт
+-- шесть часов, отпугивает больше, чем спасает. У гостя вместо user_id — guest_id,
+-- случайная строка из его браузера: по ней считается лимит и по ней же он снимает
+-- своё объявление. Это не защита от подмены, а удобство — цена вопроса тут
+-- объявление на полдня, а не доступ к аккаунту.
 CREATE TABLE IF NOT EXISTS board_posts (
   id             SERIAL PRIMARY KEY,
-  user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id        INTEGER REFERENCES users(id) ON DELETE CASCADE, -- NULL у гостей
+  guest_id       TEXT,   -- заполнен, только если объявление повесил гость
+  author_name    TEXT,   -- имя гостя; у зарегистрированных берём из users
   text           TEXT NOT NULL,
   city           TEXT NOT NULL,
-  whatsapp_phone TEXT, -- необязателен, как и в заказах
+  whatsapp_phone TEXT, -- у гостя обязателен: связаться с ним больше нечем
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   expires_at     TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '6 hours'
 );
+
+CREATE INDEX IF NOT EXISTS idx_board_posts_guest ON board_posts(guest_id);
 
 CREATE INDEX IF NOT EXISTS idx_board_posts_expires ON board_posts(expires_at);
 CREATE INDEX IF NOT EXISTS idx_board_posts_user ON board_posts(user_id);

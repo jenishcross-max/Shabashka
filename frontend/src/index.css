@@ -2468,13 +2468,17 @@ body.board-theme .navbar {
   flex-wrap: wrap;
   gap: 10px;
 }
-/* Город тянется, телефон и кнопка держат свою ширину: на узком экране всё
+/* Город тянется, имя и телефон держат свою ширину: на узком экране всё
    сваливается в столбик само. */
-.board-form-row > *:first-child {
-  flex: 1 1 220px;
+.board-form .board-city {
+  flex: 1 1 200px;
+}
+.board-form-row .board-name {
+  flex: 0 1 180px;
+  width: auto;
 }
 .board-form-row input[type='tel'] {
-  flex: 0 1 240px;
+  flex: 0 1 220px;
   width: auto;
 }
 .board-form-row button {
@@ -2505,29 +2509,9 @@ body.board-theme .navbar {
   color: rgba(255, 255, 255, 0.75);
 }
 
-.board-login {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 14px;
-  background: rgba(255, 255, 255, 0.14);
-  border: 1px solid rgba(255, 255, 255, 0.34);
-  border-radius: 16px;
-  padding: 16px 18px;
-  margin-bottom: 28px;
-}
-.board-login p {
-  margin: 0;
-  flex: 1 1 240px;
-}
-.board-login a {
+.board-counter-link {
   color: #fff;
-  font-weight: 600;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.6);
-}
-.board-login a:hover {
-  text-decoration: none;
-  border-bottom-color: #fff;
+  text-decoration: underline;
 }
 
 .board-error {
