@@ -147,12 +147,14 @@ function extractJson(text) {
 const RETRIES = 2;
 const MAX_WAIT_MS = 40000;
 
-// Разбор одного скриншота стоит примерно 4–5 тысяч токенов при лимите 8000
-// в минуту, то есть подряд их проходит только полтора. Отсюда и шаг очереди
-// PACE_MS — по нему бот считает, когда доберётся до пачки; на глаз это ~40 сек
-// на скриншот. Точное ожидание всё равно считается по ответам Groq.
-const PACE_MS = 40000;
-const COST_ESTIMATE = 5000;
+// Разбор одного скриншота весит около 6800 токенов при лимите 8000 в минуту:
+// промпт (~2300), ужатая картинка (~1900) и зарезервированный ответ (2600) —
+// Groq считает всё это заранее, ещё до самого ответа. То есть подряд проходит
+// ровно один скриншот в минуту. Отсюда и шаг очереди PACE_MS — по нему бот
+// считает, когда доберётся до пачки. Точное ожидание всё равно берётся из
+// заголовков с остатком лимита.
+const PACE_MS = 55000;
+const COST_ESTIMATE = 6800;
 const MAX_CAPACITY_WAIT_MS = 70000;
 
 // Остаток минутного лимита с прошлого ответа: { remaining, resetAt }.
@@ -240,9 +242,11 @@ async function ask(content, systemSuffix) {
   const body = JSON.stringify({
     model: MODEL,
     temperature: 0,
-    // Хватает примерно на десяток объявлений: кириллица токенизируется вдвое
-    // дороже латиницы, а на плотном скриншоте чата их бывает и пять, и семь.
-    max_completion_tokens: 4000,
+    // Groq считает запрос в минутный лимит вместе с max_completion_tokens, а не
+    // по фактическому ответу: при 4000 один скриншот весил 8200 при лимите 8000
+    // и отбивался целиком, сколько ни жди. 2600 хватает примерно на десяток
+    // объявлений — больше на скриншот всё равно не влезает.
+    max_completion_tokens: 2600,
     // Qwen3.6 — reasoning-модель, и по умолчанию размышления выключены: иначе
     // она пишет длинный блок рассуждений и может не добраться до JSON в пределах
     // max_completion_tokens, а сами рассуждения ещё и съедают минутный лимит.
@@ -277,7 +281,14 @@ async function ask(content, systemSuffix) {
     // ошибку на объявление, которое разобралось бы само через десять секунд.
     const wait = res.status === 429 && attempt < RETRIES ? retryDelayMs(res, data) : 0;
     if (!wait) {
-      const detail = data && data.error ? data.error.message : res.status;
+      const detail = String((data && data.error && data.error.message) || res.status);
+      // «Request too large» — не про скорость, а про размер: ждать бесполезно,
+      // столько же попросим и в следующий раз. Говорим, что с этим делать.
+      if (/request too large/i.test(detail)) {
+        throw new Error(
+          'Скриншот слишком большой для бесплатного лимита Groq. Обрежь его до нужной части переписки и пришли ещё раз.'
+        );
+      }
       throw new Error(`Groq: ${detail}`);
     }
     await new Promise((resolve) => setTimeout(resolve, wait));
@@ -299,12 +310,50 @@ async function ask(content, systemSuffix) {
   return list.map(normalize);
 }
 
+// Картинку модель считает не файлом, а плитками 28×28 точек: скриншот телефона
+// на 3–4 мегапикселя — это несколько тысяч токенов, и вместе с промптом он уже
+// не помещается в минутный лимит. Ужимаем до полутора мегапикселей: текст чата
+// на такой ширине ещё читается, а вес запроса становится предсказуемым.
+const MAX_PIXELS = 1500000;
+
+async function shrink(buffer, mediaType) {
+  const { createCanvas, loadImage } = require('@napi-rs/canvas');
+  const image = await loadImage(buffer);
+  const scale = Math.sqrt(MAX_PIXELS / (image.width * image.height));
+  const size = `${image.width}×${image.height}`;
+  // Порог с запасом: ужимать картинку, которая вылезла за лимит на процент,
+  // значит перекодировать её впустую и потерять чёткость ни за что.
+  if (scale >= 0.97) {
+    console.log(`[extract] картинка ${size} — ужимать не надо`);
+    return { buffer, mediaType };
+  }
+
+  const w = Math.round(image.width * scale);
+  const h = Math.round(image.height * scale);
+  const canvas = createCanvas(w, h);
+  canvas.getContext('2d').drawImage(image, 0, 0, w, h);
+  // Считаем в точках, а не в байтах: модель платит за плитки 28×28, и сжатый
+  // файл может весить больше исходного, оставаясь при этом вдвое дешевле.
+  console.log(`[extract] картинка ${size} → ${w}×${h}`);
+  // 82 — качество, на котором мелкий текст ещё не расползается в артефакты.
+  return { buffer: await canvas.encode('jpeg', 82), mediaType: 'image/jpeg' };
+}
+
 // Скриншот из чата: на нём видно и текст объявления, и интерфейс мессенджера —
 // модели это не мешает, а вот кропать заранее пришлось бы вручную.
-function fromImage(buffer, mediaType = 'image/jpeg') {
+async function fromImage(buffer, mediaType = 'image/jpeg') {
+  let image = { buffer, mediaType };
+  try {
+    image = await shrink(buffer, mediaType);
+  } catch (err) {
+    // Не разобрали картинку — отправляем как есть: пусть лучше упрётся в лимит,
+    // чем скриншот не дойдёт до модели вовсе.
+    console.error('[extract] не удалось ужать скриншот:', err.message);
+  }
+
   return ask([
     { type: 'text', text: 'Разбери объявления с этого скриншота. Пройди все сообщения сверху вниз и верни каждое объявление отдельным элементом массива.' },
-    { type: 'image_url', image_url: { url: `data:${mediaType};base64,${buffer.toString('base64')}` } },
+    { type: 'image_url', image_url: { url: `data:${image.mediaType};base64,${image.buffer.toString('base64')}` } },
   ]);
 }
 
