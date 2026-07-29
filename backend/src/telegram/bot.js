@@ -135,6 +135,17 @@ async function handleParsed(chatId, listings, { source, rawText }) {
     return;
   }
 
+  // По самим карточкам не видно, сколько объявлений было на скриншоте: одна
+  // карточка — это и «объявление было одно», и «модель разглядела одно из пяти».
+  // Строкой выше разница заметна сразу, без лазанья в логи.
+  const skipped = listings.length - real.length;
+  if (real.length > 1 || skipped) {
+    await tg.sendMessage(
+      chatId,
+      `🔍 Объявлений: ${real.length}${skipped ? ` (ещё ${skipped} пропустил — не заказы и не вакансии)` : ''}`
+    );
+  }
+
   for (const parsed of real) {
     const id = await imports.create({ source, rawText, parsed, chatId });
     if (id === null) {
