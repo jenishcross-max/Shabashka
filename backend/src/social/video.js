@@ -1,24 +1,48 @@
-const { execFile } = require('child_process');
+const { spawn } = require('child_process');
+const { once } = require('events');
 const { promises: fs } = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 
 const card = require('./card');
+const music = require('./music');
 
 // Бинарник ffmpeg приходит npm-пакетом под текущую платформу — на Render его
 // нет в системе, а ставить через apt в бесплатном плане некуда.
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 
-const LISTING_SECONDS = 6;
-const OUTRO_SECONDS = 3;
-
-function run(args) {
+// Кадры отдаём ffmpeg сырыми пикселями в stdin, а не пишем PNG на диск: 270
+// картинок по 3,7 МБ — это лишние полтора гигабайта записи и столько же чтения
+// ради данных, которые живут доли секунды.
+function render(args, renderer) {
   return new Promise((resolve, reject) => {
-    execFile(ffmpegPath, args, { maxBuffer: 1024 * 1024 * 16 }, (err, _stdout, stderr) => {
-      if (err) reject(new Error(`ffmpeg: ${String(stderr).split('\n').slice(-4).join(' ').trim()}`));
-      else resolve();
+    const proc = spawn(ffmpegPath, args, { stdio: ['pipe', 'ignore', 'pipe'] });
+
+    let tail = '';
+    proc.stderr.on('data', (chunk) => {
+      tail = (tail + chunk).slice(-4000);
     });
+
+    proc.on('error', reject);
+    proc.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`ffmpeg: ${tail.split('\n').filter(Boolean).slice(-3).join(' ').trim()}`));
+    });
+
+    // Если ffmpeg упал, недописанный кадр прилетит сюда как EPIPE. Настоящую
+    // причину скажет stderr и код возврата, так что здесь просто молчим.
+    proc.stdin.on('error', () => {});
+
+    (async () => {
+      for (let i = 0; i < renderer.frames; i++) {
+        if (proc.exitCode !== null) return;
+        // Ждём drain на каждом кадре: без этого Node сложит весь ролик в свою
+        // очередь записи, и памяти уйдёт больше, чем весь лимит контейнера.
+        if (!proc.stdin.write(renderer.frame(i / card.FPS))) await once(proc.stdin, 'drain');
+      }
+      proc.stdin.end();
+    })().catch(() => {});
   });
 }
 
@@ -33,42 +57,51 @@ function build(parsed, listingType) {
   return next;
 }
 
-// Ролик статичный: два кадра-картинки встык. Анимации тут не нужны — объявление
-// читают, а не смотрят, и любое движение только мешает успеть прочитать текст.
-//
-// Возвращает Buffer с mp4. Файлы кладём во временную папку и убираем за собой:
+// Возвращает Buffer с mp4. Файл кладём во временную папку и убираем за собой:
 // на Render диск эфемерный, но за время жизни процесса мусор бы копился.
 async function encode(parsed, listingType) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'shabashka-reel-'));
   try {
-    const listingPng = path.join(dir, 'listing.png');
-    const outroPng = path.join(dir, 'outro.png');
     const out = path.join(dir, 'reel.mp4');
+    const renderer = card.createRenderer(parsed, listingType);
+    const track = music.pick();
 
-    await fs.writeFile(listingPng, card.renderListing(parsed, listingType));
-    await fs.writeFile(outroPng, card.renderOutro());
-
-    await run([
+    const args = [
       '-y',
-      '-loop', '1', '-t', String(LISTING_SECONDS), '-i', listingPng,
-      '-loop', '1', '-t', String(OUTRO_SECONDS), '-i', outroPng,
-      // Instagram отклоняет ролики без звуковой дорожки, поэтому подкладываем тишину
-      '-f', 'lavfi', '-t', String(LISTING_SECONDS + OUTRO_SECONDS),
-      '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
-      '-filter_complex', '[0:v][1:v]concat=n=2:v=1:a=0[v]',
-      '-map', '[v]', '-map', '2:a',
-      // Один поток вместо потока на ядро. libx264 держит свой набор буферов кадров
-      // на каждый поток, а кадр 1080×1920 весит 3 МБ — на 512 МБ бесплатного Render
-      // многопоточное кодирование упирается в лимит памяти, и процесс убивают (137).
-      // Ускорять тут нечего: девять секунд неподвижной картинки жмутся и в один поток.
-      '-threads', '1', '-filter_complex_threads', '1',
-      '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'stillimage',
-      '-pix_fmt', 'yuv420p', '-r', '25', '-g', '50',
-      '-c:a', 'aac', '-b:a', '64k', '-shortest',
-      '-movflags', '+faststart',
-      out,
-    ]);
+      '-f', 'rawvideo', '-pix_fmt', 'rgba',
+      '-s', `${card.W}x${card.H}`, '-r', String(card.FPS),
+      '-i', 'pipe:0',
+    ];
 
+    if (track) {
+      // Трек может быть короче ролика — зацикливаем и обрезаем по видео.
+      args.push('-stream_loop', '-1', '-i', track);
+    } else {
+      // Instagram отклоняет ролики без звуковой дорожки, поэтому подкладываем тишину
+      args.push('-f', 'lavfi', '-t', String(card.TOTAL_SECONDS),
+        '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
+    }
+
+    args.push(
+      '-map', '0:v', '-map', '1:a',
+      // Один поток вместо потока на ядро. libx264 держит свой набор буферов кадров
+      // на каждый поток, а на 512 МБ бесплатного Render многопоточное кодирование
+      // упирается в лимит памяти, и процесс убивают (137).
+      '-threads', '1',
+      '-c:v', 'libx264', '-preset', 'veryfast',
+      '-pix_fmt', 'yuv420p', '-r', String(card.FPS), '-g', String(card.FPS * 2),
+      '-c:a', 'aac', '-b:a', '96k', '-ac', '2', '-ar', '44100', '-shortest',
+      '-movflags', '+faststart'
+    );
+
+    if (track) {
+      // Музыка — фон, а не номер: приглушаем и уводим в тишину к концовке.
+      args.push('-af', `volume=0.45,afade=t=in:st=0:d=0.8,afade=t=out:st=${card.TOTAL_SECONDS - 1.2}:d=1.2`);
+    }
+
+    args.push(out);
+
+    await render(args, renderer);
     return await fs.readFile(out);
   } finally {
     await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
