@@ -21,6 +21,15 @@ const ADMIN_IDS = new Set(
     .filter(Boolean)
 );
 
+// Отдельный чат-«входящие». Копии объявлений из чужих чатов удобнее скидывать в
+// один чат, а не в личку боту: туда их кладёт кнопка «Поделиться», и там они
+// лежат историей. Группу бот читает и без этой переменной — там у каждого
+// сообщения есть автор, и права проверяются по нему. А в канале автора нет
+// (пост идёт от имени самого канала), поэтому канал приходится назвать прямо:
+// иначе бота хватило бы добавить в свой канал, чтобы публиковать на сайт что
+// угодно. ID канала показывает команда /id.
+const INBOX_CHAT_ID = String(process.env.TELEGRAM_INBOX_CHAT_ID || '').trim();
+
 const SITE_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
 // Публичный канал, куда бот сам постит опубликованные объявления. Не задан —
 // просто пропускаем этот шаг, остальная публикация работает как раньше.
@@ -339,8 +348,18 @@ async function onMessage(message) {
   }
 
   const text = (message.text || message.caption || '').trim();
+  // В группе команда приходит с приставкой — «/start@shabashka_bot».
+  const command = text.split(/\s+/)[0].replace(/@[\w_]+$/, '');
 
-  if (text === '/start' || text === '/help') {
+  if (command === '/id') {
+    await tg.sendMessage(
+      chatId,
+      `ID этого чата: <code>${chatId}</code>\nВаш ID: <code>${userId}</code>`
+    );
+    return;
+  }
+
+  if (command === '/start' || command === '/help') {
     await tg.sendMessage(
       chatId,
       [
@@ -366,17 +385,57 @@ async function onMessage(message) {
         'Пачку скриншотов можно кинуть разом: поставлю в очередь и разберу по одному',
         '(бесплатный Groq за минуту успевает примерно полтора скриншота).',
         '',
+        '📥 Если удобнее скидывать всё в отдельный чат, а не сюда:',
+        '• <b>группа</b> — создай группу, добавь меня и сделай администратором',
+        '  (иначе Telegram не даёт мне видеть обычные сообщения). Дальше просто',
+        '  кидай туда копии объявлений — читаю и отвечаю там же.',
+        '• <b>канал</b> — добавь меня администратором, пришли /id в канал',
+        '  и впиши этот ID в TELEGRAM_INBOX_CHAT_ID на Render. Канал останется',
+        '  чистой лентой того, что накидал, а карточки буду присылать сюда, в личку.',
+        '',
         '/stats — сколько опубликовано сегодня и сколько роликов ещё в работе',
+        '/id — ID этого чата (нужен для настройки канала)',
       ].join('\n')
     );
     return;
   }
 
-  if (text === '/stats') {
+  if (command === '/stats') {
     await tg.sendMessage(chatId, await statsText());
     return;
   }
 
+  await intake(message, chatId);
+}
+
+// Пост в канале-«входящих». Автора у него нет, поэтому право публиковать
+// проверяем по самому каналу: писать в канал могут только его администраторы.
+// Отчёты и кнопки уходят в личку — канал остаётся чистой лентой того, что
+// накидали, а не свалкой карточек.
+async function onChannelPost(post) {
+  const text = (post.text || post.caption || '').trim();
+
+  // /id отвечаем в самом канале и до проверки: ID нужен, чтобы канал вообще
+  // можно было прописать в TELEGRAM_INBOX_CHAT_ID, — иначе взять его негде.
+  // Отвечаем именно в канал, а не в личку админу: бот там администратор, значит
+  // писать может, и чужой канал так не сможет дёргать наши личные сообщения.
+  if (text.split(/\s+/)[0].replace(/@[\w_]+$/, '') === '/id') {
+    await tg.sendMessage(post.chat.id, `ID этого канала: <code>${post.chat.id}</code>`);
+    return;
+  }
+
+  if (!INBOX_CHAT_ID || String(post.chat.id) !== INBOX_CHAT_ID) return;
+
+  const replyTo = [...ADMIN_IDS][0];
+  if (!replyTo) return;
+
+  await intake(post, replyTo);
+}
+
+// Разбор и публикация одного присланного сообщения. chatId — куда отвечать: для
+// лички и группы это тот же чат, для канала — личка админа.
+async function intake(message, chatId) {
+  const text = (message.text || message.caption || '').trim();
   const fileId = photoFileId(message);
   if (fileId) {
     const mediaType =
@@ -466,11 +525,14 @@ async function onCallback(query) {
 async function handleUpdate(update) {
   try {
     if (update.message) await onMessage(update.message);
+    else if (update.channel_post) await onChannelPost(update.channel_post);
     else if (update.callback_query) await onCallback(update.callback_query);
   } catch (err) {
     console.error('Telegram bot:', err);
+    // Про ошибку в канале пишем админу в личку: в самом канале ей делать нечего.
     const chatId =
       (update.message && update.message.chat.id) ||
+      (update.channel_post && [...ADMIN_IDS][0]) ||
       (update.callback_query && update.callback_query.message.chat.id);
     if (chatId) {
       await tg

@@ -29,6 +29,10 @@ services:
         generateValue: true
       - key: TELEGRAM_CHANNEL_ID
         sync: false
+      # Канал-«входящие»: посты оттуда бот разбирает как присланные объявления.
+      # Не задан — работает только личка и группы. ID показывает команда /id.
+      - key: TELEGRAM_INBOX_CHAT_ID
+        sync: false
       # Автопостинг роликов в Instagram. Без них бот просто присылает готовый
       # mp4 в Telegram, чтобы опубликовать вручную.
       - key: INSTAGRAM_USER_ID
