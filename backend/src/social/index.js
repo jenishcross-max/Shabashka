@@ -74,7 +74,13 @@ async function post(label, fn) {
 // минуту работы и лишний расход, а весит он пару сотен килобайт. Перезапуск
 // процесса всё это теряет, и это нормально: кнопка просто скажет, что ролик
 // выветрился, а сам ролик у админа уже есть в чате.
-const RETRY_TTL_MS = 40 * 60 * 1000;
+//
+// Восемь часов, а не сорок минут, как было сначала: Instagram на частых
+// публикациях отвечает «User is performing too many actions», и это не сбой, а
+// троттлинг на часы. За сорок минут он не отпускал, задание выветривалось, и
+// объявление приходилось искать и выкладывать заново руками — ровно то, чего
+// автоповторы должны избавлять. Расписание самих попыток — в telegram/bot.js.
+const RETRY_TTL_MS = 8 * 60 * 60 * 1000;
 const retryJobs = new Map();
 
 function sweepJobs() {
@@ -91,29 +97,51 @@ function remember(job, targets) {
   return id;
 }
 
+// Собирает ролик и обе подписи к нему. Отдельной функцией, а не внутри run:
+// сборка — тоже повторяемый шаг, и повтору нужно уметь пересобрать ролик с нуля.
+async function buildJob(parsed, listingType, siteLink) {
+  // Логи по этапам: на бесплатном Render процесс может умереть посередине (сон
+  // сервиса или нехватка памяти), и тогда молчание в чате — единственный симптом.
+  // По последней строке в логах видно, на чём именно оборвалось.
+  console.log('[видео] сборка ролика');
+  const { buffer, credit } = await video.build(parsed, listingType);
+  console.log(`[видео] ролик собран: ${buffer.length} байт`);
+  return {
+    buffer,
+    caption: video.caption(parsed, listingType, credit, siteLink),
+    // credit (автор трека) сюда не идёт: это условие лицензии на музыку в ролике,
+    // а Threads-пост текстовый, без ролика и без музыки.
+    threadsText: video.threadsText(parsed, listingType, siteLink),
+  };
+}
+
 // Раскладывает уже собранный ролик по перечисленным площадкам. Ссылку выкладываем
 // заново на каждой попытке: с прошлого раза файл мог выветриться из hosting.
 async function deliver(job, targets) {
-  const url = `${backendUrl()}/api/social/video/${hosting.put(video.fileName(), job.buffer)}`;
-  console.log(`[видео] отдаю ссылку ${url}`);
+  const result = { instagram: null, threads: null };
 
-  // Параллельно, а не по очереди: каждая площадка обрабатывает ролик у себя
-  // минуту-другую, и последовательное ожидание удвоило бы время до ответа в чат.
-  const [instagramResult, threadsResult] = await Promise.all([
-    targets.includes('instagram')
-      ? post('insta', () => instagram.publishReel(url, job.caption, video.COVER_MS))
-      : null,
-    // Threads публикуется текстом, без ролика: контейнер типа TEXT не кодирует
-    // видео и публикуется сразу, поэтому ссылку на файл сюда не передаём.
-    targets.includes('threads') ? post('threads', () => threads.publishText(job.threadsText)) : null,
-  ]);
+  // Instagram — первым и в одиночку. Подписчики приходят почти только оттуда, а
+  // часовой лимит Graph API у Instagram и Threads общий на всё приложение: если
+  // остатка хватает на одну площадку, потратить его нужно на Reels. Раньше обе
+  // шли параллельно — ради экономии времени, но ждать теперь нечего, текстовый
+  // пост в Threads публикуется сразу, без кодирования.
+  if (targets.includes('instagram')) {
+    const url = `${backendUrl()}/api/social/video/${hosting.put(video.fileName(), job.buffer)}`;
+    console.log(`[видео] отдаю ссылку ${url}`);
+    result.instagram = await post('insta', () => instagram.publishReel(url, job.caption, video.COVER_MS));
+  }
 
-  const result = { instagram: instagramResult, threads: threadsResult };
+  // Провал Instagram не отменяет Threads: пост там текстовый и от ролика вообще
+  // не зависит, так что «too many actions» в Instagram не должен стоить и его.
+  if (targets.includes('threads')) {
+    result.threads = await post('threads', () => threads.publishText(job.threadsText));
+  }
+
   const failed = targets.filter((name) => result[name] && !result[name].posted);
   return { result, failed };
 }
 
-// Повторная попытка — по кнопке в боте или сама, в фоне (см. AUTO_RETRY_ATTEMPTS
+// Повторная попытка — по кнопке в боте или сама, в фоне (см. AUTO_RETRY_DELAYS
 // в telegram/bot.js). Возвращает null, если ролик уже выветрился из памяти —
 // тогда публиковать остаётся только вручную. Идёт через ту же очередь, что и
 // первая публикация: авто-повторы нескольких объявлений не должны стартовать
@@ -126,6 +154,18 @@ async function retry(id) {
   return schedule(async () => {
     inFlight += 1;
     try {
+      // Ролика может не быть вовсе: первая попытка могла оборваться ещё на сборке.
+      // Тогда собираем его сейчас — публиковать без ролика нечего.
+      if (!job.buffer) {
+        try {
+          Object.assign(job, await buildJob(job.parsed, job.listingType, job.siteLink));
+        } catch (err) {
+          console.log(`[видео] снова не собрался: ${err.message}`);
+          job.expiresAt = Date.now() + RETRY_TTL_MS;
+          return { reason: `Ролик не собрался: ${err.message}`, retryId: id };
+        }
+      }
+
       const { result, failed } = await deliver(job, job.targets);
       if (failed.length) {
         // Повторяем в следующий раз только то, что снова не вышло, и даём ролику
@@ -143,34 +183,45 @@ async function retry(id) {
 }
 
 async function run(parsed, listingType, siteLink) {
-  // Логи по этапам: на бесплатном Render процесс может умереть посередине (сон
-  // сервиса или нехватка памяти), и тогда молчание в чате — единственный симптом.
-  // По последней строке в логах видно, на чём именно оборвалось.
-  console.log('[видео] сборка ролика');
-  const { buffer, credit } = await video.build(parsed, listingType);
-  const caption = video.caption(parsed, listingType, credit, siteLink);
   const base = backendUrl();
-  console.log(`[видео] ролик собран: ${buffer.length} байт`);
-
   const targets = [];
   if (instagram.isConfigured()) targets.push('instagram');
   if (threads.isConfigured()) targets.push('threads');
 
+  let job;
+  try {
+    job = await buildJob(parsed, listingType, siteLink);
+  } catch (err) {
+    // Сборка ролика — такой же повторяемый шаг, как и сама публикация: «fetch
+    // failed» здесь почти всегда сетевой сбой на музыке или шрифте и сам проходит
+    // через несколько минут. Объявление к этому моменту уже стоит на сайте и в
+    // Telegram, и терять его из-за оборвавшейся загрузки незачем — кладём задание
+    // в память без ролика, повтор соберёт его заново. Если публиковать всё равно
+    // некуда, повторять нечего — тогда ошибка уходит наверх как раньше.
+    console.log(`[видео] не собрался: ${err.message}`);
+    if (!targets.length || !base) throw err;
+    return {
+      reason: `Ролик не собрался: ${err.message}`,
+      retryId: remember({ parsed, listingType, siteLink }, targets),
+    };
+  }
+
   if (!targets.length) {
-    return { buffer, caption, reason: 'Ни Instagram, ни Threads не настроены' };
+    return { ...job, reason: 'Ни Instagram, ни Threads не настроены' };
   }
   if (!base) {
-    return { buffer, caption, reason: 'Не задан адрес бэкенда' };
+    return { ...job, reason: 'Не задан адрес бэкенда' };
   }
 
-  // Ролик один на обе площадки: каждая скачивает файл сама, со своих серверов,
-  // и второй раз кодировать то же самое незачем.
-  // credit (автор трека) сюда не идёт: это условие лицензии на музыку в ролике,
-  // а Threads-пост теперь текстовый, без ролика и без музыки.
-  const job = { buffer, caption, threadsText: video.threadsText(parsed, listingType, siteLink) };
   const { result, failed } = await deliver(job, targets);
 
-  return { buffer, caption, ...result, retryId: failed.length ? remember(job, failed) : null };
+  // В память кладём и исходные поля объявления: если ролик придётся пересобирать
+  // (файл выветрился из hosting, а попытка не первая), собирать его будет из чего.
+  return {
+    ...job,
+    ...result,
+    retryId: failed.length ? remember({ ...job, parsed, listingType, siteLink }, failed) : null,
+  };
 }
 
 module.exports = { shareListing, retry, pending, router: hosting.router };

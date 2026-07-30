@@ -116,12 +116,18 @@ function socialReport(result) {
 // Автоматические повторы, если что-то не опубликовалось: без них админу
 // пришлось бы самому нажимать «Попробовать ещё раз» на каждый недобитый ролик,
 // а по факту чаще всего дело во временном сбое площадки — токен протухает
-// редко, а сеть или часовой лимит Meta отпускают сами через несколько минут.
+// редко, а сеть или лимит Meta отпускают сами.
 // Кнопка при этом никуда не девается — ей можно поторопить, не дожидаясь паузы.
-const AUTO_RETRY_DELAY_MS = 5 * 60 * 1000;
-const AUTO_RETRY_ATTEMPTS = 6; // до получаса автоматических попыток
+//
+// Пауза растёт, а не держится на пяти минутах: сетевой сбой проходит за минуты,
+// а «User is performing too many actions» в Instagram — это троттлинг на часы, и
+// частые попытки в него же и упираются, только тратя лимит приложения. Всего
+// расписание тянется около шести часов (TTL задания в social/index.js — восемь).
+const MINUTE_MS = 60 * 1000;
+const AUTO_RETRY_DELAYS = [5, 10, 20, 30, 45, 60, 60, 60, 60].map((m) => m * MINUTE_MS);
+const AUTO_RETRY_SPAN = 'почти шесть часов';
 
-function scheduleAutoRetry(chatId, retryId, attempt = 1) {
+function scheduleAutoRetry(chatId, retryId, attempt = 0) {
   setTimeout(async () => {
     let result;
     try {
@@ -133,23 +139,29 @@ function scheduleAutoRetry(chatId, retryId, attempt = 1) {
     if (!result) return; // ролик выветрился из памяти — дальше только вручную, из сообщения выше
 
     const { sites, failed, lines } = socialReport(result);
-    if (!failed.length) {
+    // reason — это сорвавшаяся сборка ролика: площадки до неё даже не дошли, и в
+    // отчёте по ним поэтому пусто. Без этой строки провал выглядел бы как успех.
+    if (result.reason) lines.push(`🎬 ${tg.esc(result.reason)}`);
+
+    if (!failed.length && !result.reason) {
       if (sites.length) {
         await tg
-          .sendMessage(chatId, `${sites.map((n) => SITE_LABELS[n]).join(' и ')} — ролик опубликован (сам, со второй попытки)`)
+          .sendMessage(chatId, `${sites.map((n) => SITE_LABELS[n]).join(' и ')} — ролик опубликован (сам, с повторной попытки)`)
           .catch(() => {});
       }
       return;
     }
 
-    if (attempt < AUTO_RETRY_ATTEMPTS && result.retryId) {
+    if (attempt + 1 < AUTO_RETRY_DELAYS.length && result.retryId) {
       scheduleAutoRetry(chatId, result.retryId, attempt + 1);
       return;
     }
 
     // Автопопытки кончились — дальше только руками по кнопке в исходном сообщении.
-    await tg.sendMessage(chatId, `⚠️ Само не получилось за полчаса: ${lines.join('; ')}`).catch(() => {});
-  }, AUTO_RETRY_DELAY_MS);
+    await tg
+      .sendMessage(chatId, `⚠️ Само не получилось за ${AUTO_RETRY_SPAN}: ${lines.join('; ')}`)
+      .catch(() => {});
+  }, AUTO_RETRY_DELAYS[attempt]);
 }
 
 async function shareToSocial(chatId, parsed, listingType, siteLink) {
@@ -157,7 +169,7 @@ async function shareToSocial(chatId, parsed, listingType, siteLink) {
     const result = await social.shareListing(parsed, listingType, siteLink);
     const { sites, failed, lines } = socialReport(result);
 
-    if (sites.length && !failed.length) {
+    if (sites.length && !failed.length && !result.reason) {
       await tg.sendMessage(chatId, `${sites.map((n) => SITE_LABELS[n]).join(' и ')} — ролик опубликован`);
       return;
     }
@@ -166,9 +178,17 @@ async function shareToSocial(chatId, parsed, listingType, siteLink) {
     // выложить руками, и говорим, где именно не сработало. Ролик при этом
     // остаётся в памяти: бот сам повторит попытку через несколько минут, а
     // кнопкой можно поторопить его прямо сейчас.
-    await tg.sendVideo(chatId, result.buffer, result.caption);
-    if (!sites.length) lines.push(`🎬 Автопостинг не сработал: ${tg.esc(result.reason)}`);
-    lines.push('Бот попробует ещё раз сам. Ролик выше — можно опубликовать и вручную.');
+    // Ролика может не быть совсем, если сорвалась сборка — тогда в чат отдавать
+    // нечего, но объявление уже на сайте и в Telegram, и повтор соберёт его заново.
+    if (result.buffer) await tg.sendVideo(chatId, result.buffer, result.caption);
+    if (result.reason) lines.push(`🎬 ${tg.esc(result.reason)}`);
+    if (result.retryId) {
+      lines.push(
+        result.buffer
+          ? 'Бот попробует ещё раз сам. Ролик выше — можно опубликовать и вручную.'
+          : 'Бот соберёт ролик заново и попробует опубликовать сам.'
+      );
+    }
     await tg.sendMessage(
       chatId,
       lines.join('\n'),
@@ -187,14 +207,16 @@ async function retrySocial(chatId, retryId) {
   if (!result) {
     await tg.sendMessage(
       chatId,
-      '🎬 Ролик уже не в памяти (прошло больше сорока минут или сервер перезапускался) — выложите его вручную из сообщения выше.'
+      '🎬 Ролик уже не в памяти (прошло больше восьми часов или сервер перезапускался) — выложите его вручную из сообщения выше.'
     );
     return;
   }
 
   const { failed, lines } = socialReport(result);
-  if (!failed.length) {
-    await tg.sendMessage(chatId, [...lines, '🔁 Со второй попытки получилось.'].join('\n'));
+  if (result.reason) lines.push(`🎬 ${tg.esc(result.reason)}`);
+
+  if (!failed.length && !result.reason) {
+    await tg.sendMessage(chatId, [...lines, '🔁 С повторной попытки получилось.'].join('\n'));
     return;
   }
 
@@ -312,7 +334,10 @@ async function handleParsed(chatId, listings, { source, rawText }) {
   for (const parsed of real) {
     const id = await imports.create({ source, rawText, parsed, chatId });
     if (id === null) {
-      await tg.sendMessage(chatId, `♻️ «${tg.esc(parsed.title || 'без названия')}» уже приходило раньше — пропускаю.`);
+      await tg.sendMessage(
+        chatId,
+        `♻️ «${tg.esc(parsed.title || 'без названия')}» уже приходило в этот час — пропускаю. Через час можно опубликовать заново.`
+      );
       continue;
     }
     try {
