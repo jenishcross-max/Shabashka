@@ -1,6 +1,8 @@
 // Публикация Reels через Instagram Graph API. Три шага, иначе никак: сначала
 // создаётся контейнер, Instagram сам скачивает ролик по ссылке и кодирует его,
 // и только готовый контейнер можно опубликовать.
+const { sleep, isNetworkError, withRetry } = require('./net');
+
 const USER_ID = process.env.INSTAGRAM_USER_ID || '';
 const TOKEN = process.env.INSTAGRAM_ACCESS_TOKEN || '';
 // graph.instagram.com — вариант «Instagram API with Instagram Login»: заводится
@@ -31,19 +33,47 @@ async function call(method, path, params) {
   return data;
 }
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Создание контейнера и опрос статуса можно повторять сколько угодно: ничего
+// наружу они не публикуют, так что оборванное соединение здесь ничем не грозит.
+const safeCall = (method, path, params) => withRetry('insta', 3, () => call(method, path, params));
+
+function status(creationId) {
+  return safeCall('GET', creationId, { fields: 'status_code' }).then((d) => d.status_code);
+}
 
 async function waitReady(creationId) {
   for (let i = 0; i < POLL_ATTEMPTS; i++) {
     await sleep(POLL_INTERVAL_MS);
-    const { status_code: status } = await call('GET', creationId, { fields: 'status_code' });
-    console.log(`[insta] статус ролика ${creationId}: ${status}`);
-    if (status === 'FINISHED') return;
-    if (status === 'ERROR' || status === 'EXPIRED') {
-      throw new Error(`Instagram не смог обработать ролик (${status})`);
+    const code = await status(creationId);
+    console.log(`[insta] статус ролика ${creationId}: ${code}`);
+    // PUBLISHED — если публикация уже прошла в предыдущей, оборвавшейся попытке
+    if (code === 'FINISHED' || code === 'PUBLISHED') return code;
+    if (code === 'ERROR' || code === 'EXPIRED') {
+      throw new Error(`Instagram не смог обработать ролик (${code})`);
     }
   }
   throw new Error('Instagram слишком долго обрабатывает ролик');
+}
+
+// Единственный шаг, который нельзя повторять слепо: если запрос до Instagram
+// дошёл, а ответ потерялся по дороге, второй такой же запрос выложит второй
+// ролик. Поэтому на сетевом сбое сначала спрашиваем контейнер, не опубликован
+// ли он уже, и повторяем только если нет.
+async function publishContainer(creationId) {
+  try {
+    const { id } = await call('POST', `${USER_ID}/media_publish`, { creation_id: creationId });
+    return id;
+  } catch (err) {
+    if (!isNetworkError(err)) throw err;
+    console.log(`[insta] публикация оборвалась (${err.message}) — проверяю контейнер`);
+    await sleep(POLL_INTERVAL_MS);
+    if ((await status(creationId)) === 'PUBLISHED') {
+      console.log(`[insta] ролик всё-таки опубликован (контейнер ${creationId})`);
+      return creationId;
+    }
+    const { id } = await call('POST', `${USER_ID}/media_publish`, { creation_id: creationId });
+    return id;
+  }
 }
 
 // videoUrl должен быть публично доступен — Instagram ходит за ним со своих
@@ -51,15 +81,14 @@ async function waitReady(creationId) {
 // thumbOffsetMs — с какой миллисекунды взять картинку для сетки профиля. Без
 // него Instagram берёт первый кадр, а объявление к тому моменту ещё не выехало.
 async function publishReel(videoUrl, caption, thumbOffsetMs) {
-  const { id } = await call('POST', `${USER_ID}/media`, {
+  const { id } = await safeCall('POST', `${USER_ID}/media`, {
     media_type: 'REELS',
     video_url: videoUrl,
     caption,
     ...(thumbOffsetMs ? { thumb_offset: String(thumbOffsetMs) } : {}),
   });
-  await waitReady(id);
-  const published = await call('POST', `${USER_ID}/media_publish`, { creation_id: id });
-  return published.id;
+  if ((await waitReady(id)) === 'PUBLISHED') return id;
+  return publishContainer(id);
 }
 
 module.exports = { isConfigured, publishReel };

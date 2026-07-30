@@ -83,33 +83,79 @@ function clamp(text, max) {
 // сайт: кодирование и обработка на стороне площадок занимают до пары минут, и
 // держать ради них подтверждение публикации было бы странно. Поэтому шаг
 // отдельный и отвечает своим сообщением, а его провал публикацию не отменяет.
+const SITE_LABELS = { instagram: '📸 Instagram', threads: '🧵 Threads' };
+
+function retryKeyboard(retryId) {
+  return {
+    reply_markup: {
+      inline_keyboard: [[{ text: '🔁 Попробовать опубликовать ещё раз', callback_data: `rt:${retryId}` }]],
+    },
+  };
+}
+
+// Отчёт по площадкам. Площадка попадает в него, только если она настроена:
+// строка «Threads: не настроен» под каждым объявлением была бы шумом, а не новостью.
+function socialReport(result) {
+  const sites = ['instagram', 'threads'].filter((name) => result[name]);
+  const failed = sites.filter((name) => !result[name].posted);
+  const lines = sites
+    .filter((name) => result[name].posted)
+    .map((name) => `${SITE_LABELS[name]}: опубликовано`);
+  for (const name of failed) lines.push(`${SITE_LABELS[name]}: ${tg.esc(result[name].reason)}`);
+  return { sites, failed, lines };
+}
+
 async function shareToSocial(chatId, parsed, listingType, siteLink) {
   try {
     const result = await social.shareListing(parsed, listingType, siteLink);
-    // Площадка попадает в отчёт, только если она настроена: строка «Threads: не
-    // настроен» под каждым объявлением была бы шумом, а не новостью.
-    const sites = [
-      ['📸 Instagram', result.instagram],
-      ['🧵 Threads', result.threads],
-    ].filter(([, r]) => r);
-    const failed = sites.filter(([, r]) => !r.posted);
+    const { sites, failed, lines } = socialReport(result);
 
     if (sites.length && !failed.length) {
-      await tg.sendMessage(chatId, `${sites.map(([name]) => name).join(' и ')} — ролик опубликован`);
+      await tg.sendMessage(chatId, `${sites.map((n) => SITE_LABELS[n]).join(' и ')} — ролик опубликован`);
       return;
     }
 
     // Хоть где-то не вышло — отдаём готовый mp4 с подписью, чтобы можно было
-    // выложить руками, и говорим, где именно не сработало.
+    // выложить руками, и говорим, где именно не сработало. Ролик при этом
+    // остаётся в памяти: чаще всего мешает сорвавшееся соединение до Meta, и со
+    // второй попытки по кнопке он уходит сам.
     await tg.sendVideo(chatId, result.buffer, result.caption);
-    const lines = sites.filter(([, r]) => r.posted).map(([name]) => `${name}: опубликовано`);
     if (!sites.length) lines.push(`🎬 Автопостинг не сработал: ${tg.esc(result.reason)}`);
-    for (const [name, r] of failed) lines.push(`${name}: ${tg.esc(r.reason)}`);
     lines.push('Ролик выше — можно опубликовать вручную.');
-    await tg.sendMessage(chatId, lines.join('\n'));
+    await tg.sendMessage(
+      chatId,
+      lines.join('\n'),
+      result.retryId ? retryKeyboard(result.retryId) : undefined
+    );
   } catch (err) {
     await tg.sendMessage(chatId, `⚠️ Ролик не собрался: ${tg.esc(err.message)}`);
   }
+}
+
+// Повтор по кнопке. Ролик уже собран и лежит в памяти процесса, заново кодировать
+// его не надо — попытка занимает столько, сколько площадка обрабатывает видео.
+async function retrySocial(chatId, retryId) {
+  const result = await social.retry(retryId);
+  if (!result) {
+    await tg.sendMessage(
+      chatId,
+      '🎬 Ролик уже не в памяти (прошло больше сорока минут или сервер перезапускался) — выложите его вручную из сообщения выше.'
+    );
+    return;
+  }
+
+  const { failed, lines } = socialReport(result);
+  if (!failed.length) {
+    await tg.sendMessage(chatId, [...lines, '🔁 Со второй попытки получилось.'].join('\n'));
+    return;
+  }
+
+  lines.push('Ролик выше — можно опубликовать вручную.');
+  await tg.sendMessage(
+    chatId,
+    lines.join('\n'),
+    result.retryId ? retryKeyboard(result.retryId) : undefined
+  );
 }
 
 // Итог дня: сколько ушло на сайт и сколько роликов ещё едет на площадки.
@@ -288,6 +334,10 @@ async function onMessage(message) {
         'как он ушёл на сайт, и кнопку 🗑 «Удалить с сайта» — прочитал, и если',
         'в разбор попало лишнее, сразу убрал.',
         '',
+        'Если ролик не ушёл в Instagram или Threads (у Meta часто рвётся соединение),',
+        'пришлю сам ролик и кнопку 🔁 «Попробовать опубликовать ещё раз» —',
+        'нажал, и он поедет заново, без пересборки.',
+        '',
         'Пачку скриншотов можно кинуть разом: поставлю в очередь и разберу по одному',
         '(бесплатный Groq за минуту успевает примерно полтора скриншота).',
         '',
@@ -347,9 +397,25 @@ async function onCallback(query) {
   }
 
   const [action, rawId] = String(query.data || '').split(':');
-  const id = parseInt(rawId, 10);
   const chatId = query.message.chat.id;
   const messageId = query.message.message_id;
+
+  if (action === 'rt') {
+    // Ответить Telegram надо в пару секунд, а площадка обрабатывает ролик минуту
+    // и дольше — поэтому попытка уезжает своим ходом. Кнопку сразу убираем: два
+    // нажатия подряд означали бы два поста об одном объявлении.
+    await tg.answerCallbackQuery(query.id, 'Пробую ещё раз — напишу, чем кончилось');
+    await tg
+      .call('editMessageReplyMarkup', { chat_id: chatId, message_id: messageId })
+      .catch(() => {}); // кнопки уже нет — не повод падать
+    retrySocial(chatId, rawId).catch(async (err) => {
+      console.error('Повтор публикации:', err);
+      await tg.sendMessage(chatId, `⚠️ Повтор не вышел: ${tg.esc(err.message)}`).catch(() => {});
+    });
+    return;
+  }
+
+  const id = parseInt(rawId, 10);
 
   const row = Number.isInteger(id) ? await imports.get(id) : null;
   if (!row) {

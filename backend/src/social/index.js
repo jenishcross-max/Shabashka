@@ -43,6 +43,72 @@ async function post(label, fn) {
   }
 }
 
+// Ролики, которые ушли не везде: по ним админ может нажать в боте «попробовать
+// ещё раз». Держим в памяти вместе с самим mp4 — собирать его заново было бы
+// минуту работы и лишний расход, а весит он пару сотен килобайт. Перезапуск
+// процесса всё это теряет, и это нормально: кнопка просто скажет, что ролик
+// выветрился, а сам ролик у админа уже есть в чате.
+const RETRY_TTL_MS = 40 * 60 * 1000;
+const retryJobs = new Map();
+
+function sweepJobs() {
+  const now = Date.now();
+  for (const [id, job] of retryJobs) {
+    if (job.expiresAt <= now) retryJobs.delete(id);
+  }
+}
+
+function remember(job, targets) {
+  sweepJobs();
+  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  retryJobs.set(id, { ...job, targets, expiresAt: Date.now() + RETRY_TTL_MS });
+  return id;
+}
+
+// Раскладывает уже собранный ролик по перечисленным площадкам. Ссылку выкладываем
+// заново на каждой попытке: с прошлого раза файл мог выветриться из hosting.
+async function deliver(job, targets) {
+  const url = `${backendUrl()}/api/social/video/${hosting.put(video.fileName(), job.buffer)}`;
+  console.log(`[видео] отдаю ссылку ${url}`);
+
+  // Параллельно, а не по очереди: каждая площадка обрабатывает ролик у себя
+  // минуту-другую, и последовательное ожидание удвоило бы время до ответа в чат.
+  const [instagramResult, threadsResult] = await Promise.all([
+    targets.includes('instagram')
+      ? post('insta', () => instagram.publishReel(url, job.caption, video.COVER_MS))
+      : null,
+    targets.includes('threads') ? post('threads', () => threads.publishReel(url, job.threadsText)) : null,
+  ]);
+
+  const result = { instagram: instagramResult, threads: threadsResult };
+  const failed = targets.filter((name) => result[name] && !result[name].posted);
+  return { result, failed };
+}
+
+// Повторная попытка по кнопке в боте. Возвращает null, если ролик уже выветрился
+// из памяти — тогда публиковать остаётся только вручную.
+async function retry(id) {
+  sweepJobs();
+  const job = retryJobs.get(id);
+  if (!job) return null;
+
+  inFlight += 1;
+  try {
+    const { result, failed } = await deliver(job, job.targets);
+    if (failed.length) {
+      // Повторяем в следующий раз только то, что снова не вышло, и даём ролику
+      // ещё столько же времени: админ может нажать кнопку не сразу.
+      job.targets = failed;
+      job.expiresAt = Date.now() + RETRY_TTL_MS;
+    } else {
+      retryJobs.delete(id);
+    }
+    return { ...result, retryId: failed.length ? id : null };
+  } finally {
+    inFlight -= 1;
+  }
+}
+
 async function run(parsed, listingType, siteLink) {
   // Логи по этапам: на бесплатном Render процесс может умереть посередине (сон
   // сервиса или нехватка памяти), и тогда молчание в чате — единственный симптом.
@@ -53,33 +119,23 @@ async function run(parsed, listingType, siteLink) {
   const base = backendUrl();
   console.log(`[видео] ролик собран: ${buffer.length} байт`);
 
-  const wantInsta = instagram.isConfigured();
-  const wantThreads = threads.isConfigured();
+  const targets = [];
+  if (instagram.isConfigured()) targets.push('instagram');
+  if (threads.isConfigured()) targets.push('threads');
 
-  if (!wantInsta && !wantThreads) {
+  if (!targets.length) {
     return { buffer, caption, reason: 'Ни Instagram, ни Threads не настроены' };
   }
   if (!base) {
     return { buffer, caption, reason: 'Не задан адрес бэкенда' };
   }
 
-  // Ролик и ссылка на него общие: обе площадки скачивают файл сами, каждая со
-  // своих серверов, и второй раз кодировать то же самое незачем.
-  const url = `${base}/api/social/video/${hosting.put(video.fileName(), buffer)}`;
-  console.log(`[видео] отдаю ссылку ${url}`);
+  // Ролик один на обе площадки: каждая скачивает файл сама, со своих серверов,
+  // и второй раз кодировать то же самое незачем.
+  const job = { buffer, caption, threadsText: video.threadsText(parsed, listingType, siteLink, credit) };
+  const { result, failed } = await deliver(job, targets);
 
-  // Параллельно, а не по очереди: каждая площадка обрабатывает ролик у себя
-  // минуту-другую, и последовательное ожидание удвоило бы время до ответа в чат.
-  const [ig, th] = await Promise.all([
-    wantInsta ? post('insta', () => instagram.publishReel(url, caption, video.COVER_MS)) : null,
-    wantThreads
-      ? post('threads', () =>
-          threads.publishReel(url, video.threadsText(parsed, listingType, siteLink, credit))
-        )
-      : null,
-  ]);
-
-  return { buffer, caption, instagram: ig, threads: th };
+  return { buffer, caption, ...result, retryId: failed.length ? remember(job, failed) : null };
 }
 
-module.exports = { shareListing, pending, router: hosting.router };
+module.exports = { shareListing, retry, pending, router: hosting.router };
