@@ -22,6 +22,15 @@
   box-sizing: border-box;
 }
 
+.waking-banner {
+  padding: 10px 16px;
+  background: var(--red-tint);
+  border-bottom: 1px solid var(--red-border);
+  font-size: 14px;
+  color: var(--text);
+  text-align: center;
+}
+
 .email-verify-banner {
   display: flex;
   flex-wrap: wrap;

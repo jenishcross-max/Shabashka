@@ -1,15 +1,37 @@
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
+// Бэкенд живёт на бесплатном Render и после долгого простоя поднимается почти
+// минуту. Пустой скелет всё это время читается как «сайт сломан», поэтому
+// считаем незакрытые запросы и даём интерфейсу возможность объясниться.
+let inFlight = 0;
+const watchers = new Set();
+
+export function onPendingChange(fn) {
+  watchers.add(fn);
+  return () => watchers.delete(fn);
+}
+
+function track(delta) {
+  inFlight += delta;
+  watchers.forEach((fn) => fn(inFlight));
+}
+
 async function request(path, { method = 'GET', body, token } = {}) {
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body) headers['Content-Type'] = 'application/json';
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  track(1);
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } finally {
+    track(-1);
+  }
 
   const isJson = res.headers.get('content-type')?.includes('application/json');
   const data = isJson ? await res.json() : null;

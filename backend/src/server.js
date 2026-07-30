@@ -16,6 +16,7 @@ const adminRoutes = require('./routes/admin');
 const telegram = require('./telegram');
 const social = require('./social');
 const metaRoutes = require('./meta');
+const keepalive = require('./keepalive');
 const { apiLimiter } = require('./rateLimit');
 
 const app = express();
@@ -80,6 +81,7 @@ async function bootstrap() {
   });
   // Бот не должен ронять сервер: сайт работает и без импорта объявлений
   telegram.start().catch((err) => console.error('Telegram-бот не запустился:', err));
+  keepalive.start();
 }
 
 bootstrap().catch((err) => {
