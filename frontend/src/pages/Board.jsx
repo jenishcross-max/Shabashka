@@ -56,6 +56,10 @@ export default function Board() {
   const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // Записки, на которые этот человек уже пожаловался — чтобы кнопка не предлагала
+  // сделать это второй раз. Список живёт в памяти страницы, и это правильно:
+  // никакого смысла помнить его дольше, чем живёт сама записка.
+  const [reported, setReported] = useState([]);
   // Пересчитывает «осталось столько-то» без запроса на сервер
   const [, setTick] = useState(0);
   const [target] = useState(targetId);
@@ -139,6 +143,22 @@ export default function Board() {
     }
   }
 
+  // Доска — единственное место на сайте, куда пишут без аккаунта и без проверки
+  // на входе, так что кнопка «пожаловаться» нужна здесь больше, чем где-либо.
+  // Записка живёт шесть часов: пока жалоба дойдёт до админки, её может уже не
+  // быть — поэтому сервер сохраняет копию текста вместе с жалобой.
+  async function handleReport(id) {
+    const reason = window.prompt('Что не так с этим объявлением?');
+    if (!reason || !reason.trim()) return;
+    setError('');
+    try {
+      await api.reportBoardPost(id, reason);
+      setReported((ids) => [...ids, id]);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   return (
     <div className="board">
       <header className="board-head">
@@ -151,7 +171,12 @@ export default function Board() {
         </p>
         <p className="board-warning">
           ⚠️ Запрещены спам, реклама, мошенничество, наркотики и всё, что нарушает закон.
-          Такие объявления будут удалены, автор — заблокирован.
+          Такие объявления будут удалены, автор — заблокирован. Заметили нарушение — нажмите
+          «Пожаловаться» на объявлении.
+        </p>
+        <p className="board-warning">
+          💸 Не переводите деньги вперёд. Доска открыта для всех и объявления никто не
+          проверяет — предоплата «за материалы» или «за бронь» почти всегда обман.
         </p>
       </header>
 
@@ -228,6 +253,11 @@ export default function Board() {
               key={post.id}
             >
               <p className="board-note-text">{post.text}</p>
+              {!!post.is_imported && (
+                <p className="board-note-imported" title="Автора этого объявления мы не проверяли">
+                  ℹ️ Из открытых чатов
+                </p>
+              )}
               <div className="board-note-meta">
                 <span className="board-note-city">{post.city}</span>
                 <span className="board-note-timer" title="Через столько объявление пропадёт">
@@ -246,9 +276,20 @@ export default function Board() {
                     Написать в WhatsApp
                   </a>
                 )}
-                {post.mine && (
+                {post.mine ? (
                   <button type="button" className="board-note-del" onClick={() => handleDelete(post.id)}>
                     Снять
+                  </button>
+                ) : reported.includes(post.id) ? (
+                  <span className="board-note-reported">Жалоба отправлена</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="board-note-report"
+                    title="Пожаловаться на объявление"
+                    onClick={() => handleReport(post.id)}
+                  >
+                    ⚑ Пожаловаться
                   </button>
                 )}
               </div>

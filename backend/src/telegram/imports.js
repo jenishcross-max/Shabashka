@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const db = require('../db');
 const categoriesRepo = require('../categoriesRepo');
 const { invalidate } = require('../cache');
+const moderation = require('../moderation');
 const { money } = require('../money');
 
 // Одно объявление автор рассылает сразу в несколько чатов, и скриншоты приходят
@@ -197,8 +198,8 @@ async function publish(id) {
   // на доске, где оно живёт несколько часов рядом с остальной срочной мелочью.
   if (parsed.listing_type === 'board') {
     const inserted = await db.query(
-      `INSERT INTO board_posts (user_id, text, city, whatsapp_phone)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
+      `INSERT INTO board_posts (user_id, text, city, whatsapp_phone, is_imported)
+       VALUES ($1, $2, $3, $4, true) RETURNING id`,
       [userId, boardText(parsed), parsed.city, parsed.phone]
     );
     const postId = inserted.rows[0].id;
@@ -214,8 +215,8 @@ async function publish(id) {
   if (parsed.listing_type === 'vacancy') {
     const inserted = await db.query(
       `INSERT INTO vacancies
-        (user_id, title, description, category, employment_type, city, address, work_format, experience, salary_min, whatsapp_phone)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+        (user_id, title, description, category, employment_type, city, address, work_format, experience, salary_min, whatsapp_phone, is_imported)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true) RETURNING id`,
       [
         userId,
         parsed.title,
@@ -242,8 +243,8 @@ async function publish(id) {
   }
 
   const inserted = await db.query(
-    `INSERT INTO orders (user_id, title, description, category, city, address, work_format, budget, whatsapp_phone)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+    `INSERT INTO orders (user_id, title, description, category, city, address, work_format, budget, whatsapp_phone, is_imported)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true) RETURNING id`,
     [
       userId,
       parsed.title,
@@ -282,16 +283,26 @@ async function countToday() {
 // Снять уже опубликованное объявление с сайта. Подтверждения перед публикацией
 // больше нет, поэтому убрать лишнее нужно уметь после неё — иначе чужой телефон
 // останется в ленте навсегда.
+// Удаляем со снимком в журнал модерации: чаще всего кнопку жмут именно потому,
+// что в разбор попало лишнее — чужая переписка, не тот телефон, мошенническое
+// объявление, — и это как раз те случаи, по которым потом спрашивают, что было
+// на сайте и как быстро это убрали.
 async function remove(id) {
   const row = await get(id);
   if (!row) throw new Error('Объявление не найдено');
 
-  if (row.vacancy_id) await db.query('DELETE FROM vacancies WHERE id = $1', [row.vacancy_id]);
-  else if (row.order_id) await db.query('DELETE FROM orders WHERE id = $1', [row.order_id]);
+  const target = row.vacancy_id
+    ? { listingType: 'vacancy', listingId: row.vacancy_id }
+    : row.order_id
+      ? { listingType: 'order', listingId: row.order_id }
+      : row.board_post_id
+        ? { listingType: 'board', listingId: row.board_post_id }
+        : null;
+  if (!target) throw new Error('Это объявление на сайт не уходило');
+
   // Записка на доске могла пропасть сама — тогда удалять уже нечего, но пометить
   // импорт отклонённым всё равно надо, иначе кнопка так и будет предлагать удаление.
-  else if (row.board_post_id) await db.query('DELETE FROM board_posts WHERE id = $1', [row.board_post_id]);
-  else throw new Error('Это объявление на сайт не уходило');
+  await moderation.removeWithLog({ ...target, actor: 'bot', reason: 'снято через бота' });
 
   await reject(id);
   invalidate('home:');

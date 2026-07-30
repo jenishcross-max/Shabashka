@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS orders (
   views          INTEGER NOT NULL DEFAULT 0,
   pinned         INTEGER NOT NULL DEFAULT 0,
   bumped_at      TIMESTAMPTZ, -- когда объявление последний раз подняли в списке (см. /bump)
+  is_imported    BOOLEAN NOT NULL DEFAULT false, -- взято ботом из чужого чата, автор не проверен
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -37,15 +38,39 @@ CREATE INDEX IF NOT EXISTS idx_orders_category ON orders(category);
 CREATE INDEX IF NOT EXISTS idx_orders_city ON orders(city);
 CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
 
+-- Жалобы на объявления. listing_type/listing_id — полиморфная ссылка (orders,
+-- vacancies или board_posts), как в conversations. Внешнего ключа здесь нет
+-- намеренно: жалоба должна пережить удаление объявления, иначе после «скрыть»
+-- не остаётся ни следа разбора, ни доказательства, что нарушение убрали.
+-- snapshot — копия объявления на момент жалобы: пока её разбирают, автор успевает
+-- поправить текст, и без копии непонятно, на что жаловались.
 CREATE TABLE IF NOT EXISTS reports (
-  id         SERIAL PRIMARY KEY,
-  order_id   INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-  reason     TEXT NOT NULL,
-  resolved   INTEGER NOT NULL DEFAULT 0,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id           SERIAL PRIMARY KEY,
+  listing_type TEXT NOT NULL DEFAULT 'order', -- order | vacancy | board
+  listing_id   INTEGER NOT NULL,
+  reason       TEXT NOT NULL,
+  snapshot     JSONB,
+  resolved     INTEGER NOT NULL DEFAULT 0,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_reports_order ON reports(order_id);
+CREATE INDEX IF NOT EXISTS idx_reports_listing ON reports(listing_type, listing_id);
+
+-- Журнал модерации: см. moderation.js. Здесь остаётся всё, что сняли с сайта,
+-- вместе с полной копией объявления — это единственный источник ответа на вопрос
+-- «а что там вообще было написано» после удаления.
+CREATE TABLE IF NOT EXISTS moderation_log (
+  id           SERIAL PRIMARY KEY,
+  listing_type TEXT NOT NULL,        -- order | vacancy | board
+  listing_id   INTEGER NOT NULL,
+  action       TEXT NOT NULL,        -- removed | hidden | closed | dismissed
+  actor        TEXT NOT NULL,        -- admin:<id> | bot
+  reason       TEXT,
+  snapshot     JSONB NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_moderation_log_listing ON moderation_log(listing_type, listing_id);
 
 CREATE TABLE IF NOT EXISTS categories (
   id            SERIAL PRIMARY KEY,
@@ -75,6 +100,7 @@ CREATE TABLE IF NOT EXISTS vacancies (
   views           INTEGER NOT NULL DEFAULT 0,
   pinned          INTEGER NOT NULL DEFAULT 0,
   bumped_at       TIMESTAMPTZ, -- когда вакансию последний раз подняли в списке (см. /bump)
+  is_imported     BOOLEAN NOT NULL DEFAULT false, -- взято ботом из чужого чата, автор не проверен
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -156,7 +182,8 @@ CREATE TABLE IF NOT EXISTS board_posts (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   expires_at     TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '6 hours',
   pinned         BOOLEAN NOT NULL DEFAULT FALSE, -- поднимает объявление в общей ленте, ставит только админ
-  hidden         BOOLEAN NOT NULL DEFAULT FALSE  -- скрыто модератором, но не удалено — видно только в админке
+  hidden         BOOLEAN NOT NULL DEFAULT FALSE, -- скрыто модератором, но не удалено — видно только в админке
+  is_imported    BOOLEAN NOT NULL DEFAULT FALSE  -- взято ботом из чужого чата, автор не проверен
 );
 
 CREATE INDEX IF NOT EXISTS idx_board_posts_guest ON board_posts(guest_id);
@@ -165,7 +192,7 @@ CREATE INDEX IF NOT EXISTS idx_board_posts_expires ON board_posts(expires_at);
 CREATE INDEX IF NOT EXISTS idx_board_posts_user ON board_posts(user_id);
 
 -- Не уникальный: повтор режется по времени в коде (см. telegram/imports.js),
--- а не в базе — тот же дубль можно опубликовать заново спустя 12 часов.
+-- а не в базе — тот же дубль можно опубликовать заново спустя час.
 CREATE INDEX IF NOT EXISTS idx_imported_dedup
   ON imported_listings(dedup_hash) WHERE dedup_hash IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_imported_status ON imported_listings(status);

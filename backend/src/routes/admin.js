@@ -5,6 +5,7 @@ const db = require('../db');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const categoriesRepo = require('../categoriesRepo');
 const asyncHandler = require('../asyncHandler');
+const moderation = require('../moderation');
 
 function generateTempPassword() {
   return crypto.randomBytes(9).toString('base64').replace(/[+/=]/g, '');
@@ -231,11 +232,17 @@ router.patch(
   })
 );
 
+// Удаляем со снимком в журнал модерации: после DELETE от заказа не остаётся
+// ничего, а вопрос «что там было написано» приходит уже после удаления.
 router.delete(
   '/orders/:id',
   asyncHandler(async (req, res) => {
-    const { rowCount } = await db.query('DELETE FROM orders WHERE id = $1', [req.params.id]);
-    if (!rowCount) return res.status(404).json({ error: 'Заказ не найден' });
+    const removed = await moderation.removeWithLog({
+      listingType: 'order',
+      listingId: req.params.id,
+      actor: `admin:${req.user.id}`,
+    });
+    if (!removed) return res.status(404).json({ error: 'Заказ не найден' });
     res.status(204).end();
   })
 );
@@ -331,8 +338,12 @@ router.patch(
 router.delete(
   '/vacancies/:id',
   asyncHandler(async (req, res) => {
-    const { rowCount } = await db.query('DELETE FROM vacancies WHERE id = $1', [req.params.id]);
-    if (!rowCount) return res.status(404).json({ error: 'Вакансия не найдена' });
+    const removed = await moderation.removeWithLog({
+      listingType: 'vacancy',
+      listingId: req.params.id,
+      actor: `admin:${req.user.id}`,
+    });
+    if (!removed) return res.status(404).json({ error: 'Вакансия не найдена' });
     res.status(204).end();
   })
 );
@@ -430,21 +441,35 @@ router.patch(
 router.delete(
   '/board/:id',
   asyncHandler(async (req, res) => {
-    const { rowCount } = await db.query('DELETE FROM board_posts WHERE id = $1', [req.params.id]);
-    if (!rowCount) return res.status(404).json({ error: 'Объявление не найдено' });
+    const removed = await moderation.removeWithLog({
+      listingType: 'board',
+      listingId: req.params.id,
+      actor: `admin:${req.user.id}`,
+    });
+    if (!removed) return res.status(404).json({ error: 'Объявление не найдено' });
     res.status(204).end();
   })
 );
 
+// Жалобы по всем трём видам объявлений. LEFT JOIN, а не JOIN: объявление к
+// моменту разбора могло уже пропасть — записка с доски живёт шесть часов, заказ
+// удаляет автор. Такая жалоба из списка исчезать не должна, поэтому заголовок
+// берём из снимка, снятого при подаче.
 router.get(
   '/reports',
   asyncHandler(async (req, res) => {
     const onlyOpen = req.query.status !== 'all';
     const { rows } = await db.query(
       `SELECT reports.id, reports.reason, reports.resolved, reports.created_at,
-              orders.id AS order_id, orders.title AS order_title, orders.status AS order_status
+              reports.listing_type, reports.listing_id, reports.snapshot,
+              COALESCE(orders.title, vacancies.title, board_posts.text) AS listing_title,
+              COALESCE(orders.status, vacancies.status) AS listing_status,
+              board_posts.hidden AS board_hidden,
+              (orders.id IS NOT NULL OR vacancies.id IS NOT NULL OR board_posts.id IS NOT NULL) AS listing_alive
        FROM reports
-       JOIN orders ON orders.id = reports.order_id
+       LEFT JOIN orders ON reports.listing_type = 'order' AND orders.id = reports.listing_id
+       LEFT JOIN vacancies ON reports.listing_type = 'vacancy' AND vacancies.id = reports.listing_id
+       LEFT JOIN board_posts ON reports.listing_type = 'board' AND board_posts.id = reports.listing_id
        ${onlyOpen ? 'WHERE reports.resolved = 0' : ''}
        ORDER BY reports.created_at DESC`
     );
@@ -452,6 +477,9 @@ router.get(
   })
 );
 
+// hide — убрать объявление из выдачи, dismiss — признать жалобу необоснованной.
+// В обоих случаях пишем в журнал модерации: важно не только то, что нарушение
+// убрали, но и то, что жалобу вообще разобрали и когда.
 router.patch(
   '/reports/:id',
   asyncHandler(async (req, res) => {
@@ -464,12 +492,45 @@ router.patch(
       return res.status(400).json({ error: 'Действие может быть только hide или dismiss' });
     }
 
+    const actor = `admin:${req.user.id}`;
+    const { listing_type: type, listing_id: listingId } = report;
+
     if (action === 'hide') {
-      await db.query("UPDATE orders SET status = 'closed' WHERE id = $1", [report.order_id]);
+      // Заказ и вакансию закрываем, записку на доске скрываем: удалять нельзя —
+      // на объявление есть жалоба, и оно само себе доказательство.
+      if (type === 'board') {
+        await db.query('UPDATE board_posts SET hidden = TRUE WHERE id = $1', [listingId]);
+      } else if (type === 'vacancy') {
+        await db.query("UPDATE vacancies SET status = 'closed' WHERE id = $1", [listingId]);
+      } else {
+        await db.query("UPDATE orders SET status = 'closed' WHERE id = $1", [listingId]);
+      }
     }
+
+    await moderation.log({
+      listingType: type,
+      listingId,
+      action: action === 'hide' ? 'hidden' : 'dismissed',
+      actor,
+      reason: report.reason,
+      // Объявления может уже не быть — тогда в журнал уходит снимок из жалобы.
+      snapshot: (await moderation.snapshot(type, listingId)) || report.snapshot,
+    });
     await db.query('UPDATE reports SET resolved = 1 WHERE id = $1', [report.id]);
 
     res.json({ ok: true });
+  })
+);
+
+// Журнал модерации — что и когда сняли с сайта, вместе с текстом объявления.
+router.get(
+  '/moderation-log',
+  asyncHandler(async (req, res) => {
+    const { rows } = await db.query(
+      `SELECT id, listing_type, listing_id, action, actor, reason, snapshot, created_at
+       FROM moderation_log ORDER BY created_at DESC LIMIT 200`
+    );
+    res.json({ entries: rows });
   })
 );
 

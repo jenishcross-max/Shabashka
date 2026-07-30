@@ -4,6 +4,7 @@ const { requireAuth } = require('../middleware/auth');
 const categoriesRepo = require('../categoriesRepo');
 const KNOWN_CITIES = require('../cities');
 const { reportLimiter } = require('../rateLimit');
+const reportsRepo = require('../reportsRepo');
 const asyncHandler = require('../asyncHandler');
 const { ORDER_FIELDS } = require('../sqlFields');
 const { invalidate } = require('../cache');
@@ -410,7 +411,8 @@ router.post(
   })
 );
 
-// Пожаловаться на заказ — доступно всем, без авторизации
+// Пожаловаться на заказ — доступно всем, без авторизации. Требовать аккаунт здесь
+// нельзя: обманывают чаще всего исполнителя, а он на сайте не регистрируется.
 router.post(
   '/:id/report',
   reportLimiter,
@@ -418,13 +420,11 @@ router.post(
     const id = toId(req.params.id);
     if (id === null) return res.status(404).json({ error: 'Заказ не найден' });
 
-    const { rows } = await db.query('SELECT id FROM orders WHERE id = $1', [id]);
-    if (!rows[0]) return res.status(404).json({ error: 'Заказ не найден' });
-
     const { reason } = req.body || {};
     if (!reason || !reason.trim()) return res.status(400).json({ error: 'Укажите причину жалобы' });
 
-    await db.query('INSERT INTO reports (order_id, reason) VALUES ($1, $2)', [id, reason.trim()]);
+    const reportId = await reportsRepo.create({ listingType: 'order', listingId: id, reason });
+    if (!reportId) return res.status(404).json({ error: 'Заказ не найден' });
     res.status(201).json({ ok: true });
   })
 );

@@ -1005,6 +1005,33 @@ a:hover {
   margin: 16px 0 0;
 }
 
+/* Предупреждение про предоплату и пометка об импорте (см. SafetyNote.jsx).
+   Стоит сразу под кнопкой WhatsApp — там, где человек решает, писать ли и
+   переводить ли деньги, а не в правилах, куда никто не заходит. */
+.safety-note {
+  margin: 18px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.safety-note p {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.safety-note-imported {
+  background: #f1f5f9;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.safety-note-money {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+}
+
 /* ---------- auth / forms (2b, 2c) ---------- */
 .auth-card,
 .legal-page {
@@ -2658,4 +2685,31 @@ body.board-theme .navbar {
 }
 .board-note-del:hover {
   color: var(--red-dark);
+}
+/* Пожаловаться — та же неприметная кнопка, что и «Снять»: она нужна редко, но
+   должна быть на каждой записке, иначе о нарушении сообщают в WhatsApp админу
+   или вообще никуда. */
+.board-note-report {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--muted-light);
+  cursor: pointer;
+}
+.board-note-report:hover {
+  color: var(--red-dark);
+}
+.board-note-reported {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+/* Пометка «взято из чужого чата» — под текстом записки, до города и таймера:
+   это свойство самого объявления, а не его метаданные. */
+.board-note-imported {
+  margin: -6px 0 12px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--muted-light);
 }

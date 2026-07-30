@@ -2,7 +2,8 @@ const express = require('express');
 const db = require('../db');
 const { optionalAuth } = require('../middleware/auth');
 const asyncHandler = require('../asyncHandler');
-const { boardLimiter } = require('../rateLimit');
+const { boardLimiter, reportLimiter } = require('../rateLimit');
+const reportsRepo = require('../reportsRepo');
 
 const router = express.Router();
 
@@ -20,7 +21,8 @@ async function sweepExpired() {
 
 const POST_FIELDS = `board_posts.id, board_posts.text, board_posts.city, board_posts.whatsapp_phone,
   board_posts.user_id, board_posts.guest_id, board_posts.created_at, board_posts.expires_at,
-  board_posts.pinned, COALESCE(users.name, board_posts.author_name) AS author_name`;
+  board_posts.pinned, board_posts.is_imported,
+  COALESCE(users.name, board_posts.author_name) AS author_name`;
 
 // guest_id наружу не отдаём: это единственное, чем гость подтверждает права на
 // своё объявление. Вместо него — готовый ответ на вопрос «моё ли это».
@@ -140,6 +142,24 @@ router.delete(
 
     await db.query('DELETE FROM board_posts WHERE id = $1', [id]);
     res.status(204).end();
+  })
+);
+
+// Пожаловаться на записку с доски. Доска — единственное место на сайте, куда
+// пишут без аккаунта и без модерации на входе, так что жалоба здесь нужнее всего.
+router.post(
+  '/:id/report',
+  reportLimiter,
+  asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(404).json({ error: 'Объявление не найдено' });
+
+    const { reason } = req.body || {};
+    if (!reason || !reason.trim()) return res.status(400).json({ error: 'Укажите причину жалобы' });
+
+    const reportId = await reportsRepo.create({ listingType: 'board', listingId: id, reason });
+    if (!reportId) return res.status(404).json({ error: 'Объявление не найдено' });
+    res.status(201).json({ ok: true });
   })
 );
 

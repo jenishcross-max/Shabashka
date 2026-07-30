@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import FavoriteButton from '../components/FavoriteButton';
 import OrderCard from '../components/OrderCard';
 import FormatIcon from '../components/FormatIcon';
+import SafetyNote from '../components/SafetyNote';
 import { SkeletonOrderDetail } from '../components/Skeleton';
 import { useMeta } from '../useMeta';
 import { viewWord } from '../plural';
@@ -58,9 +59,15 @@ export default function OrderDetail() {
   async function handleReport() {
     const reason = window.prompt('Опишите, что не так с этим заказом:');
     if (!reason || !reason.trim()) return;
-    await api.reportOrder(order.id, reason);
-    setReportMsg('Спасибо, жалоба отправлена на проверку');
-    setTimeout(() => setReportMsg(''), 3000);
+    // Ошибку показываем на той же кнопке: лимит на жалобы с одного адреса
+    // сработает молча, и человек будет думать, что жалоба ушла.
+    try {
+      await api.reportOrder(order.id, reason);
+      setReportMsg('Жалоба отправлена — разберём в ближайшее время');
+    } catch (err) {
+      setReportMsg(err.message);
+    }
+    setTimeout(() => setReportMsg(''), 4000);
   }
 
   async function handleSendMessage(e) {
@@ -179,6 +186,8 @@ export default function OrderDetail() {
             )}
           </>
         )}
+
+        {!order.is_example && <SafetyNote isImported={order.is_imported} />}
 
         <div className="secondary-actions">
           <button type="button" onClick={handleShare}>

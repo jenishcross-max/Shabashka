@@ -157,11 +157,10 @@ async function main() {
     'Подозрение на мошенничество',
   ];
   for (let i = 0; i < 4; i++) {
-    await db.query('INSERT INTO reports (order_id, reason, resolved) VALUES ($1, $2, $3)', [
-      pick(orderIds),
-      pick(reasons),
-      Math.random() < 0.5 ? 1 : 0,
-    ]);
+    await db.query(
+      "INSERT INTO reports (listing_type, listing_id, reason, resolved) VALUES ('order', $1, $2, $3)",
+      [pick(orderIds), pick(reasons), Math.random() < 0.5 ? 1 : 0]
+    );
   }
 
   console.log(`

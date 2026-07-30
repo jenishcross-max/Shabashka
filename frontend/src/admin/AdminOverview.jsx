@@ -4,6 +4,16 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import { SkeletonBox, SkeletonStatCards, SkeletonTableRows, SkeletonComplaint } from '../components/Skeleton';
 
+// Жалоба может прийти на заказ, вакансию или записку с доски. Заголовок живого
+// объявления приходит из базы, от удалённого остаётся снимок из самой жалобы.
+const REPORT_TYPE_LABELS = { order: 'Заказ', vacancy: 'Вакансия', board: 'Доска' };
+
+function reportTitle(report) {
+  if (report.listing_title) return report.listing_title;
+  const snap = report.snapshot || {};
+  return snap.title || snap.text || 'без названия';
+}
+
 function StatusBadge({ blocked }) {
   return blocked ? (
     <span className="badge status-closed">Заблокирован</span>
@@ -224,13 +234,13 @@ export default function AdminOverview() {
             <div key={r.id} className="admin-complaint">
               <div className="admin-complaint-text">
                 <div className="strong">
-                  Заказ «{r.order_title}» — {r.reason}
+                  {REPORT_TYPE_LABELS[r.listing_type] || r.listing_type} «{reportTitle(r)}» — {r.reason}
                 </div>
                 <div className="admin-subtitle">{new Date(r.created_at).toLocaleString('ru-RU')}</div>
               </div>
               <div className="admin-complaint-actions">
                 <button className="admin-btn-danger" onClick={() => resolveReport(r.id, 'hide')}>
-                  Скрыть заказ
+                  Скрыть
                 </button>
                 <button className="admin-btn-ghost" onClick={() => resolveReport(r.id, 'dismiss')}>
                   Отклонить

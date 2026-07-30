@@ -6,6 +6,8 @@ const KNOWN_CITIES = require('../cities');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
 const EXPERIENCE_LEVELS = require('../experienceLevels');
 const asyncHandler = require('../asyncHandler');
+const { reportLimiter } = require('../rateLimit');
+const reportsRepo = require('../reportsRepo');
 const { VACANCY_FIELDS } = require('../sqlFields');
 const { invalidate } = require('../cache');
 const { canCreateListing } = require('../emailGate');
@@ -395,6 +397,25 @@ router.post(
       [vacancy.id]
     );
     res.json({ vacancy: rows[0] });
+  })
+);
+
+// Пожаловаться на вакансию — доступно всем, без авторизации. «Работа» с
+// предоплатой за форму или обучение приходит именно вакансией, и пожаловаться
+// на неё должен успеть тот, кто ещё не завёл аккаунт.
+router.post(
+  '/:id/report',
+  reportLimiter,
+  asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(404).json({ error: 'Вакансия не найдена' });
+
+    const { reason } = req.body || {};
+    if (!reason || !reason.trim()) return res.status(400).json({ error: 'Укажите причину жалобы' });
+
+    const reportId = await reportsRepo.create({ listingType: 'vacancy', listingId: id, reason });
+    if (!reportId) return res.status(404).json({ error: 'Вакансия не найдена' });
+    res.status(201).json({ ok: true });
   })
 );
 

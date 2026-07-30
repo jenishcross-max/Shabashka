@@ -8,6 +8,7 @@ import { experienceLabel } from '../experienceLevels';
 import { formatSalary } from '../components/VacancyCard';
 import FavoriteButton from '../components/FavoriteButton';
 import FormatIcon from '../components/FormatIcon';
+import SafetyNote from '../components/SafetyNote';
 import { SkeletonOrderDetail } from '../components/Skeleton';
 import { useMeta, useJsonLd } from '../useMeta';
 import { viewWord } from '../plural';
@@ -34,6 +35,7 @@ export default function VacancyDetail() {
   const [vacancy, setVacancy] = useState(null);
   const [error, setError] = useState('');
   const [shareMsg, setShareMsg] = useState('');
+  const [reportMsg, setReportMsg] = useState('');
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
@@ -58,6 +60,20 @@ export default function VacancyDetail() {
     await navigator.clipboard.writeText(url);
     setShareMsg('Ссылка скопирована');
     setTimeout(() => setShareMsg(''), 2500);
+  }
+
+  // «Работа» с предоплатой за обучение, форму или медосмотр приходит именно
+  // вакансией — пожаловаться на неё нужно уметь так же, как на заказ.
+  async function handleReport() {
+    const reason = window.prompt('Опишите, что не так с этой вакансией:');
+    if (!reason || !reason.trim()) return;
+    try {
+      await api.reportVacancy(vacancy.id, reason);
+      setReportMsg('Жалоба отправлена — разберём в ближайшее время');
+    } catch (err) {
+      setReportMsg(err.message);
+    }
+    setTimeout(() => setReportMsg(''), 4000);
   }
 
   async function handleSendMessage(e) {
@@ -228,14 +244,24 @@ export default function VacancyDetail() {
           </>
         )}
 
-        <div className={`secondary-actions${isOwner ? '' : ' single'}`}>
+        {!vacancy.is_example && <SafetyNote isImported={vacancy.is_imported} />}
+
+        {/* single — когда рядом с «Поделиться» никого нет: у примера вакансии
+            нет ни кнопки правки, ни жалобы. */}
+        <div className={`secondary-actions${!isOwner && vacancy.is_example ? ' single' : ''}`}>
           <button type="button" onClick={handleShare}>
             🔗 {shareMsg || 'Поделиться'}
           </button>
-          {isOwner && (
+          {isOwner ? (
             <Link to={`/vacancies/${vacancy.id}/edit`} className="admin-btn-ghost secondary-link">
               ✏️ Изменить вакансию
             </Link>
+          ) : (
+            !vacancy.is_example && (
+              <button type="button" className="muted" onClick={handleReport}>
+                ⚑ {reportMsg || 'Пожаловаться'}
+              </button>
+            )
           )}
         </div>
 

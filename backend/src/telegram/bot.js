@@ -1,6 +1,9 @@
 const { domainToUnicode } = require('url');
 
 const tg = require('./api');
+// Кто имеет право публиковать через бота. Список общий с уведомлениями о жалобах
+// (см. notify.js): это те же люди и тот же чат.
+const { ADMIN_IDS, isAllowed } = require('./notify');
 const extract = require('./extract');
 const imports = require('./imports');
 const queue = require('./queue');
@@ -12,25 +15,12 @@ const EXPERIENCE_LEVELS = require('../experienceLevels');
 const EMPLOYMENT_LABELS = Object.fromEntries(EMPLOYMENT_TYPES.map((t) => [t.value, t.label]));
 const EXPERIENCE_LABELS = Object.fromEntries(EXPERIENCE_LEVELS.map((t) => [t.value, t.label]));
 
-// Кто имеет право публиковать через бота. Без этого списка любой, кто нашёл
-// бота в поиске, смог бы залить на сайт что угодно.
-const ADMIN_IDS = new Set(
-  String(process.env.TELEGRAM_ADMIN_IDS || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-);
-
 const SITE_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
 // Публичный канал, куда бот сам постит опубликованные объявления. Не задан —
 // просто пропускаем этот шаг, остальная публикация работает как раньше.
 const CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID || '';
 
 const LISTING_PATHS = { vacancy: 'vacancies', order: 'orders' };
-
-function isAllowed(userId) {
-  return ADMIN_IDS.has(String(userId));
-}
 
 // Текст объявления для публикации — без внутренних пометок вроде ⚠️ note,
 // которые имеют смысл только админу. Возвращает обычный текст без HTML-разметки:

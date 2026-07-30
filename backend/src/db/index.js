@@ -133,8 +133,60 @@ function init() {
       }
       await tagCategories(onlineCategories, 'online');
 
+      // Объявления, которые бот взял из чужих чатов. Помечаем их в самой карточке:
+      // автора такого объявления никто не проверял и он о публикации не просил,
+      // и выдавать его за проверенное — единственное, чем площадка реально
+      // рискует. См. telegram/imports.js.
+      await pool.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_imported BOOLEAN NOT NULL DEFAULT false');
+      await pool.query('ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS is_imported BOOLEAN NOT NULL DEFAULT false');
+      await pool.query('ALTER TABLE board_posts ADD COLUMN IF NOT EXISTS is_imported BOOLEAN NOT NULL DEFAULT false');
+
+      // Задним числом помечаем то, что уже опубликовал бот: связи в
+      // imported_listings для этого есть, а без разметки старые объявления
+      // выглядели бы как поданные вручную.
+      await pool.query(
+        `UPDATE orders SET is_imported = true WHERE id IN
+           (SELECT order_id FROM imported_listings WHERE order_id IS NOT NULL)`
+      );
+      await pool.query(
+        `UPDATE vacancies SET is_imported = true WHERE id IN
+           (SELECT vacancy_id FROM imported_listings WHERE vacancy_id IS NOT NULL)`
+      );
+      await pool.query(
+        `UPDATE board_posts SET is_imported = true WHERE id IN
+           (SELECT board_post_id FROM imported_listings WHERE board_post_id IS NOT NULL)`
+      );
+
+      // Жалобы были только на заказы (reports.order_id с каскадным удалением).
+      // Обобщаем на вакансии и доску через полиморфную пару listing_type/listing_id
+      // и снимаем каскад: жалоба должна пережить удаление объявления, иначе после
+      // «скрыть» не остаётся доказательства, что нарушение вообще разбирали.
+      await pool.query("ALTER TABLE reports ADD COLUMN IF NOT EXISTS listing_type TEXT NOT NULL DEFAULT 'order'");
+      await pool.query('ALTER TABLE reports ADD COLUMN IF NOT EXISTS listing_id INTEGER');
+      await pool.query('ALTER TABLE reports ADD COLUMN IF NOT EXISTS snapshot JSONB');
+      const { rows: legacyReports } = await pool.query(
+        "SELECT 1 FROM information_schema.columns WHERE table_name = 'reports' AND column_name = 'order_id'"
+      );
+      if (legacyReports.length > 0) {
+        await pool.query('UPDATE reports SET listing_id = order_id WHERE listing_id IS NULL');
+        // Колонку убираем целиком: вместе с ней уходит внешний ключ с ON DELETE
+        // CASCADE, из-за которого жалобы исчезали вслед за заказом.
+        await pool.query('ALTER TABLE reports DROP COLUMN order_id');
+      }
+      // Строки без listing_id остаться не должны, но если такие есть (жалоба на
+      // заказ, удалённый ещё каскадом), NOT NULL их не пропустит — тогда просто
+      // оставляем колонку как есть, читать журнал это не мешает.
+      const { rows: orphanReports } = await pool.query(
+        'SELECT COUNT(*)::int AS n FROM reports WHERE listing_id IS NULL'
+      );
+      if (orphanReports[0].n === 0) {
+        await pool.query('ALTER TABLE reports ALTER COLUMN listing_id SET NOT NULL');
+      }
+      await pool.query('DROP INDEX IF EXISTS idx_reports_order');
+      await pool.query('CREATE INDEX IF NOT EXISTS idx_reports_listing ON reports(listing_type, listing_id)');
+
       // Лимит на повтор объявления был вечным (уникальный индекс) — теперь это
-      // окно в 12 часов, которое считается в коде (см. telegram/imports.js), так
+      // окно в час, которое считается в коде (см. telegram/imports.js), так
       // что сам индекс на дубли-в-базе больше не годится и его снимаем.
       await pool.query('DROP INDEX IF EXISTS idx_imported_dedup');
       await pool.query(
