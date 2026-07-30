@@ -106,7 +106,7 @@ export default function Navbar() {
           Вакансии
         </NavLink>
         <NavLink to="/board" className={navClass}>
-          Доска
+          Доска <span className="nav-board-badge">№6</span>
         </NavLink>
         <NavLink to="/favorites" className={navClass}>
           ★ Избранное

@@ -160,6 +160,17 @@ a:hover {
   color: var(--red);
   font-weight: 600;
 }
+.nav-board-badge {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 1px 7px;
+  border-radius: 100px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 700;
+  vertical-align: 1px;
+}
 .nav-unread-badge {
   display: inline-block;
   min-width: 18px;
@@ -2442,6 +2453,17 @@ body.board-theme .navbar {
   margin: 0 0 8px;
   font-size: 40px;
   letter-spacing: -0.02em;
+}
+.board-head-badge {
+  display: inline-block;
+  margin-left: 12px;
+  padding: 4px 14px;
+  border-radius: 100px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 700;
+  vertical-align: middle;
 }
 .board-head p {
   margin: 0 0 26px;

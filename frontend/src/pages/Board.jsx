@@ -142,7 +142,9 @@ export default function Board() {
   return (
     <div className="board">
       <header className="board-head">
-        <h1>Доска</h1>
+        <h1>
+          Доска <span className="board-head-badge">№6</span>
+        </h1>
         <p>
           Срочные объявления — <strong>без регистрации</strong>. Каждое живёт{' '}
           <strong>6 часов</strong> и пропадает само: здесь только то, что актуально прямо сейчас.
