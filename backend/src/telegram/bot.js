@@ -113,6 +113,45 @@ function socialReport(result) {
   return { sites, failed, lines };
 }
 
+// Автоматические повторы, если что-то не опубликовалось: без них админу
+// пришлось бы самому нажимать «Попробовать ещё раз» на каждый недобитый ролик,
+// а по факту чаще всего дело во временном сбое площадки — токен протухает
+// редко, а сеть или часовой лимит Meta отпускают сами через несколько минут.
+// Кнопка при этом никуда не девается — ей можно поторопить, не дожидаясь паузы.
+const AUTO_RETRY_DELAY_MS = 5 * 60 * 1000;
+const AUTO_RETRY_ATTEMPTS = 6; // до получаса автоматических попыток
+
+function scheduleAutoRetry(chatId, retryId, attempt = 1) {
+  setTimeout(async () => {
+    let result;
+    try {
+      result = await social.retry(retryId);
+    } catch (err) {
+      console.error('Автопостинг (авто-повтор):', err);
+      return;
+    }
+    if (!result) return; // ролик выветрился из памяти — дальше только вручную, из сообщения выше
+
+    const { sites, failed, lines } = socialReport(result);
+    if (!failed.length) {
+      if (sites.length) {
+        await tg
+          .sendMessage(chatId, `${sites.map((n) => SITE_LABELS[n]).join(' и ')} — ролик опубликован (сам, со второй попытки)`)
+          .catch(() => {});
+      }
+      return;
+    }
+
+    if (attempt < AUTO_RETRY_ATTEMPTS && result.retryId) {
+      scheduleAutoRetry(chatId, result.retryId, attempt + 1);
+      return;
+    }
+
+    // Автопопытки кончились — дальше только руками по кнопке в исходном сообщении.
+    await tg.sendMessage(chatId, `⚠️ Само не получилось за полчаса: ${lines.join('; ')}`).catch(() => {});
+  }, AUTO_RETRY_DELAY_MS);
+}
+
 async function shareToSocial(chatId, parsed, listingType, siteLink) {
   try {
     const result = await social.shareListing(parsed, listingType, siteLink);
@@ -125,16 +164,17 @@ async function shareToSocial(chatId, parsed, listingType, siteLink) {
 
     // Хоть где-то не вышло — отдаём готовый mp4 с подписью, чтобы можно было
     // выложить руками, и говорим, где именно не сработало. Ролик при этом
-    // остаётся в памяти: чаще всего мешает сорвавшееся соединение до Meta, и со
-    // второй попытки по кнопке он уходит сам.
+    // остаётся в памяти: бот сам повторит попытку через несколько минут, а
+    // кнопкой можно поторопить его прямо сейчас.
     await tg.sendVideo(chatId, result.buffer, result.caption);
     if (!sites.length) lines.push(`🎬 Автопостинг не сработал: ${tg.esc(result.reason)}`);
-    lines.push('Ролик выше — можно опубликовать вручную.');
+    lines.push('Бот попробует ещё раз сам. Ролик выше — можно опубликовать и вручную.');
     await tg.sendMessage(
       chatId,
       lines.join('\n'),
       result.retryId ? retryKeyboard(result.retryId) : undefined
     );
+    if (result.retryId) scheduleAutoRetry(chatId, result.retryId);
   } catch (err) {
     await tg.sendMessage(chatId, `⚠️ Ролик не собрался: ${tg.esc(err.message)}`);
   }
@@ -158,7 +198,7 @@ async function retrySocial(chatId, retryId) {
     return;
   }
 
-  lines.push('Ролик выше — можно опубликовать вручную.');
+  lines.push('Бот попробует ещё раз сам. Ролик выше — можно опубликовать и вручную.');
   await tg.sendMessage(
     chatId,
     lines.join('\n'),

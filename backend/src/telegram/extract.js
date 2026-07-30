@@ -157,17 +157,32 @@ const MAX_WAIT_MS = 40000;
 
 // Разбор одного скриншота весит около 6800 токенов при лимите 8000 в минуту:
 // промпт (~2300), ужатая картинка (~1900) и зарезервированный ответ (2600) —
-// Groq считает всё это заранее, ещё до самого ответа. То есть подряд проходит
-// ровно один скриншот в минуту. Отсюда и шаг очереди PACE_MS — по нему бот
-// считает, когда доберётся до пачки. Точное ожидание всё равно берётся из
-// заголовков с остатком лимита.
+// Groq считает всё это заранее, ещё до самого ответа. То есть на один ключ
+// подряд проходит ровно один скриншот в минуту. Отсюда и шаг очереди PACE_MS —
+// по нему бот считает, когда доберётся до пачки. Точное ожидание всё равно
+// берётся из заголовков с остатком лимита.
 const PACE_MS = 55000;
 const COST_ESTIMATE = 6800;
 const MAX_CAPACITY_WAIT_MS = 70000;
 
-// Остаток минутного лимита с прошлого ответа: { remaining, resetAt }.
-let budget = null;
-let lastCallAt = 0;
+// Несколько бесплатных ключей — несколько независимых минутных лимитов:
+// GROQ_API_KEY может содержать один ключ или несколько через запятую, и тогда
+// они работают по очереди (round robin), каждый по своему графику. У каждого
+// ключа свой остаток лимита и своё время последнего звонка — их нельзя мешать
+// в одну переменную, иначе пауза считалась бы так, будто ключ один.
+const KEYS = String(process.env.GROQ_API_KEY || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+const keyStates = KEYS.map((key) => ({ key, budget: null, lastCallAt: 0 }));
+const KEY_COUNT = keyStates.length;
+
+let roundRobin = 0;
+function nextKeyState() {
+  const state = keyStates[roundRobin % keyStates.length];
+  roundRobin += 1;
+  return state;
+}
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -183,11 +198,11 @@ function parseDuration(value) {
   return (minutes * 60 + seconds) * 1000;
 }
 
-function readBudget(res) {
-  lastCallAt = Date.now();
+function readBudget(state, res) {
+  state.lastCallAt = Date.now();
   const remaining = Number(res.headers.get('x-ratelimit-remaining-tokens'));
   const reset = parseDuration(res.headers.get('x-ratelimit-reset-tokens'));
-  budget = Number.isFinite(remaining) && reset !== null
+  state.budget = Number.isFinite(remaining) && reset !== null
     ? { remaining, resetAt: Date.now() + reset }
     : null;
 }
@@ -197,22 +212,22 @@ function readBudget(res) {
 // и при свободном лимите её нет совсем. Если заголовков в ответе не оказалось,
 // держим фиксированный шаг: лучше подождать лишнее, чем ловить 429 на каждом
 // втором скриншоте.
-async function waitForCapacity() {
-  if (!lastCallAt) return;
+async function waitForCapacity(state) {
+  if (!state.lastCallAt) return;
 
-  if (budget) {
-    const left = budget.resetAt - Date.now();
+  if (state.budget) {
+    const left = state.budget.resetAt - Date.now();
     if (left <= 0) {
-      budget = null;
+      state.budget = null;
       return;
     }
-    if (budget.remaining >= COST_ESTIMATE) return;
+    if (state.budget.remaining >= COST_ESTIMATE) return;
     await sleep(Math.min(left + 1000, MAX_CAPACITY_WAIT_MS));
-    budget = null;
+    state.budget = null;
     return;
   }
 
-  const since = Date.now() - lastCallAt;
+  const since = Date.now() - state.lastCallAt;
   if (since < PACE_MS) await sleep(PACE_MS - since);
 }
 
@@ -239,8 +254,9 @@ function retryDelayMs(res, data) {
 // формате OpenAI chat completions: строка или массив частей text/image_url.
 // Возвращает массив разобранных объявлений (обычно один элемент).
 async function ask(content, systemSuffix) {
-  const key = process.env.GROQ_API_KEY;
-  if (!key) throw new Error('Не задан GROQ_API_KEY');
+  if (!keyStates.length) throw new Error('Не задан GROQ_API_KEY');
+  const state = nextKeyState();
+  const key = state.key;
 
   const categories = await categoriesRepo.listNames();
   const system = systemSuffix
@@ -273,14 +289,14 @@ async function ask(content, systemSuffix) {
   for (let attempt = 0; ; attempt += 1) {
     // Только перед первой попыткой: для повторов паузу диктует сам ответ 429,
     // и ждать вдобавок ещё и по остатку лимита значило бы ждать дважды.
-    if (attempt === 0) await waitForCapacity();
+    if (attempt === 0) await waitForCapacity(state);
     res = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
       body,
     });
     data = await res.json();
-    readBudget(res);
+    readBudget(state, res);
     if (res.ok) break;
 
     // Лимит токенов в минуту выбирается двумя скриншотами подряд: один разбор
@@ -369,4 +385,4 @@ function fromText(text) {
   return ask(`Разбери объявления из этого сообщения чата:\n\n${text}`);
 }
 
-module.exports = { fromImage, fromText, PACE_MS };
+module.exports = { fromImage, fromText, PACE_MS, KEY_COUNT };

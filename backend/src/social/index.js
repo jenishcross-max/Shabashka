@@ -20,13 +20,39 @@ function backendUrl() {
 let inFlight = 0;
 const pending = () => inFlight;
 
+// Meta считает вызовы Graph API на час вперёд для всего приложения, а не по
+// ролику: один Reels — это уже три десятка запросов (создание контейнера,
+// опрос статуса раз в несколько секунд почти две минуты, публикация). Если
+// админ разбирает пачку скриншотов, ролики раньше уходили в Instagram и
+// Threads параллельно и быстро упирались в «Application request limit
+// reached». Через очередь с паузой они идут по одному, и лимит набирается
+// медленнее. Очередь — цепочка промисов в памяти процесса, ничего не хранит.
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const MIN_INTERVAL_MS = 90 * 1000;
+let chain = Promise.resolve();
+let lastStartedAt = 0;
+
+function schedule(fn) {
+  const job = chain.then(async () => {
+    const wait = MIN_INTERVAL_MS - (Date.now() - lastStartedAt);
+    if (wait > 0) await sleep(wait);
+    lastStartedAt = Date.now();
+    return fn();
+  });
+  // Ошибка одного ролика не должна обрывать очередь для следующих за ним.
+  chain = job.catch(() => {});
+  return job;
+}
+
 async function shareListing(parsed, listingType, siteLink) {
-  inFlight += 1;
-  try {
-    return await run(parsed, listingType, siteLink);
-  } finally {
-    inFlight -= 1;
-  }
+  return schedule(async () => {
+    inFlight += 1;
+    try {
+      return await run(parsed, listingType, siteLink);
+    } finally {
+      inFlight -= 1;
+    }
+  });
 }
 
 // Одна площадка не должна ронять другую: в Threads ролик уходит, даже если у
@@ -85,28 +111,33 @@ async function deliver(job, targets) {
   return { result, failed };
 }
 
-// Повторная попытка по кнопке в боте. Возвращает null, если ролик уже выветрился
-// из памяти — тогда публиковать остаётся только вручную.
+// Повторная попытка — по кнопке в боте или сама, в фоне (см. AUTO_RETRY_ATTEMPTS
+// в telegram/bot.js). Возвращает null, если ролик уже выветрился из памяти —
+// тогда публиковать остаётся только вручную. Идёт через ту же очередь, что и
+// первая публикация: авто-повторы нескольких объявлений не должны стартовать
+// в Meta все разом.
 async function retry(id) {
   sweepJobs();
   const job = retryJobs.get(id);
   if (!job) return null;
 
-  inFlight += 1;
-  try {
-    const { result, failed } = await deliver(job, job.targets);
-    if (failed.length) {
-      // Повторяем в следующий раз только то, что снова не вышло, и даём ролику
-      // ещё столько же времени: админ может нажать кнопку не сразу.
-      job.targets = failed;
-      job.expiresAt = Date.now() + RETRY_TTL_MS;
-    } else {
-      retryJobs.delete(id);
+  return schedule(async () => {
+    inFlight += 1;
+    try {
+      const { result, failed } = await deliver(job, job.targets);
+      if (failed.length) {
+        // Повторяем в следующий раз только то, что снова не вышло, и даём ролику
+        // ещё столько же времени: следующая попытка может случиться не сразу.
+        job.targets = failed;
+        job.expiresAt = Date.now() + RETRY_TTL_MS;
+      } else {
+        retryJobs.delete(id);
+      }
+      return { ...result, retryId: failed.length ? id : null };
+    } finally {
+      inFlight -= 1;
     }
-    return { ...result, retryId: failed.length ? id : null };
-  } finally {
-    inFlight -= 1;
-  }
+  });
 }
 
 async function run(parsed, listingType, siteLink) {

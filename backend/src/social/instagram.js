@@ -11,8 +11,11 @@ const TOKEN = process.env.INSTAGRAM_ACCESS_TOKEN || '';
 const HOST = process.env.INSTAGRAM_GRAPH_HOST || 'graph.instagram.com';
 const VERSION = 'v23.0';
 
-const POLL_INTERVAL_MS = 5000;
-const POLL_ATTEMPTS = 24; // ~2 минуты: столько Instagram может кодировать ролик
+// Каждый опрос статуса — отдельный вызов Graph API, а они считаются в тот же
+// часовой лимит приложения, что и публикация. Реже опрашиваем — тот же запас
+// времени на кодирование (~2 минуты), но заметно меньше вызовов на ролик.
+const POLL_INTERVAL_MS = 8000;
+const POLL_ATTEMPTS = 15;
 
 function isConfigured() {
   return Boolean(USER_ID && TOKEN);
