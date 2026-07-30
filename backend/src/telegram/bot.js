@@ -77,10 +77,11 @@ function clamp(text, max) {
   return `${text.slice(0, max).replace(/\s+\S*$/, '')}…`;
 }
 
-// Ролик для Instagram и Threads делается уже после того, как объявление ушло на
-// сайт: кодирование и обработка на стороне площадок занимают до пары минут, и
-// держать ради них подтверждение публикации было бы странно. Поэтому шаг
-// отдельный и отвечает своим сообщением, а его провал публикацию не отменяет.
+// Соцсети публикуются уже после того, как объявление ушло на сайт: Threads —
+// почти сразу, текстом, а Instagram — с задержкой, ему нужен ролик, а
+// кодирование и обработка на стороне Meta занимают до пары минут. Держать ради
+// этого подтверждение публикации было бы странно, поэтому шаг отдельный и
+// отвечает своим сообщением, а провал соцсетей публикацию не отменяет.
 const SITE_LABELS = { instagram: '📸 Instagram', threads: '🧵 Threads' };
 
 function retryKeyboard(retryId) {
@@ -91,8 +92,10 @@ function retryKeyboard(retryId) {
   };
 }
 
-// Отчёт по площадкам. Площадка попадает в него, только если она настроена:
-// строка «Threads: не настроен» под каждым объявлением была бы шумом, а не новостью.
+// Отчёт по площадкам. Ненастроенную площадку тоже называем: раньше её
+// пропускали молча, и «в Threads ничего не публикуется» выглядело как сбой
+// публикации, хотя дело было в незаданном токене. В провалы она не идёт —
+// повторять нечего, и ролик в чат из-за неё отдавать не за чем.
 function socialReport(result) {
   // Порядок — как в публикации: Threads первым, Instagram последним.
   const sites = ['threads', 'instagram'].filter((name) => result[name]);
@@ -101,6 +104,11 @@ function socialReport(result) {
     .filter((name) => result[name].posted)
     .map((name) => `${SITE_LABELS[name]}: опубликовано`);
   for (const name of failed) lines.push(`${SITE_LABELS[name]}: ${tg.esc(result[name].reason)}`);
+  // Только когда есть с чем сравнить: если не настроено вообще ничего, об этом
+  // скажет result.reason, и повторять то же самое двумя строками незачем.
+  if (sites.length) {
+    for (const name of result.skipped || []) lines.push(`${SITE_LABELS[name]}: не настроен`);
+  }
   return { sites, failed, lines };
 }
 
@@ -163,7 +171,14 @@ async function shareToSocial(chatId, parsed, listingType, siteLink) {
     if (sites.length && !failed.length && !result.reason) {
       // «Опубликовано», а не «ролик опубликован»: в Threads уходит текстовый
       // пост, и он может оказаться единственной площадкой в отчёте.
-      await tg.sendMessage(chatId, `${sites.map((n) => SITE_LABELS[n]).join(' и ')} — опубликовано`);
+      // Если рядом есть ненастроенная площадка, короткой фразы мало — она бы
+      // умолчала как раз о том, чего не хватает, поэтому идёт полный отчёт.
+      await tg.sendMessage(
+        chatId,
+        (result.skipped || []).length
+          ? lines.join('\n')
+          : `${sites.map((n) => SITE_LABELS[n]).join(' и ')} — опубликовано`
+      );
       return;
     }
 

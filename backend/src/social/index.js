@@ -45,14 +45,7 @@ function schedule(fn) {
 }
 
 async function shareListing(parsed, listingType, siteLink) {
-  return schedule(async () => {
-    inFlight += 1;
-    try {
-      return await run(parsed, listingType, siteLink);
-    } finally {
-      inFlight -= 1;
-    }
-  });
+  return run(parsed, listingType, siteLink);
 }
 
 // Одна площадка не должна ронять другую: в Threads ролик уходит, даже если у
@@ -122,104 +115,114 @@ async function buildVideo(job) {
   job.caption = video.caption(job.parsed, job.listingType, credit, job.siteLink);
 }
 
-// Раскладывает объявление по перечисленным площадкам — в том порядке, в котором
-// они перечислены (см. run).
-async function deliver(job, targets) {
-  const result = { instagram: null, threads: null };
+// Собирает ролик (если ещё не собран) и публикует его в Instagram. Единственная
+// площадка, которой нужна очередь: у неё есть видео, которое надо закодировать
+// на стороне Meta, и общий с Threads часовой лимит Graph API, который тридцать
+// вызовов одного Reels выедают быстро.
+async function deliverInstagram(job) {
+  const base = backendUrl();
+  if (!base) return { posted: false, reason: 'не задан адрес бэкенда' };
 
-  // Threads — первым: пост текстовый, ролика он не ждёт, и объявление появляется
-  // там через секунды после того, как встало на сайт. Часовой лимит Graph API у
-  // Instagram и Threads общий на всё приложение, но текстовый пост — это два-три
-  // вызова против трёх десятков на Reels, так что Instagram от такой уступки
-  // ничего не теряет.
-  if (targets.includes('threads')) {
-    result.threads = await post('threads', () => threads.publishText(job.threadsText));
+  if (!job.buffer) {
+    try {
+      await buildVideo(job);
+    } catch (err) {
+      // Сборка — такой же повторяемый шаг, как и публикация: «fetch failed»
+      // здесь почти всегда сетевой сбой на музыке или шрифте и сам проходит
+      // через несколько минут. Объявление к этому моменту уже на сайте, в
+      // Telegram и в Threads — терять Instagram насовсем незачем.
+      console.log(`[видео] не собрался: ${err.message}`);
+      return { posted: false, reason: `ролик не собрался: ${err.message}` };
+    }
   }
 
-  // Instagram — в конце: ему нужен готовый mp4, а сборка и обработка на стороне
-  // Meta занимают минуты. Провал Threads его не отменяет, и наоборот.
   // Ссылку выкладываем заново на каждой попытке: с прошлого раза файл мог
   // выветриться из hosting.
-  if (targets.includes('instagram')) {
-    const base = backendUrl();
-    if (!base) {
-      result.instagram = { posted: false, reason: 'не задан адрес бэкенда' };
-      return finish(result, targets);
-    }
-    if (!job.buffer) {
-      try {
-        await buildVideo(job);
-      } catch (err) {
-        // Сборка — такой же повторяемый шаг, как и публикация: «fetch failed»
-        // здесь почти всегда сетевой сбой на музыке или шрифте и сам проходит
-        // через несколько минут. Объявление к этому моменту уже на сайте, в
-        // Telegram и в Threads — терять Instagram насовсем незачем.
-        console.log(`[видео] не собрался: ${err.message}`);
-        result.instagram = { posted: false, reason: `ролик не собрался: ${err.message}` };
-        return finish(result, targets);
-      }
-    }
-    const url = `${base}/api/social/video/${hosting.put(video.fileName(), job.buffer)}`;
-    console.log(`[видео] отдаю ссылку ${url}`);
-    result.instagram = await post('insta', () => instagram.publishReel(url, job.caption, video.COVER_MS));
-  }
-
-  return finish(result, targets);
+  const url = `${base}/api/social/video/${hosting.put(video.fileName(), job.buffer)}`;
+  console.log(`[видео] отдаю ссылку ${url}`);
+  return post('insta', () => instagram.publishReel(url, job.caption, video.COVER_MS));
 }
 
-function finish(result, targets) {
-  return { result, failed: targets.filter((name) => result[name] && !result[name].posted) };
-}
-
-// Повторная попытка — по кнопке в боте или сама, в фоне (см. AUTO_RETRY_DELAYS
-// в telegram/bot.js). Возвращает null, если ролик уже выветрился из памяти —
-// тогда публиковать остаётся только вручную. Идёт через ту же очередь, что и
-// первая публикация: авто-повторы нескольких объявлений не должны стартовать
-// в Meta все разом.
-async function retry(id) {
-  sweepJobs();
-  const job = retryJobs.get(id);
-  if (!job) return null;
-
+function scheduleInstagram(job) {
   return schedule(async () => {
     inFlight += 1;
     try {
-      // Ролика может не быть вовсе: первая попытка могла оборваться ещё на сборке.
-      // Пересоберёт его deliver — там же, где он и нужен.
-      const { result, failed } = await deliver(job, job.targets);
-      if (failed.length) {
-        // Повторяем в следующий раз только то, что снова не вышло, и даём ролику
-        // ещё столько же времени: следующая попытка может случиться не сразу.
-        job.targets = failed;
-        job.expiresAt = Date.now() + RETRY_TTL_MS;
-      } else {
-        retryJobs.delete(id);
-      }
-      return { ...result, retryId: failed.length ? id : null };
+      return await deliverInstagram(job);
     } finally {
       inFlight -= 1;
     }
   });
 }
 
+// Повторная попытка — по кнопке в боте или сама, в фоне (см. AUTO_RETRY_DELAYS
+// в telegram/bot.js). Возвращает null, если ролик уже выветрился из памяти —
+// тогда публиковать остаётся только вручную.
+async function retry(id) {
+  sweepJobs();
+  const job = retryJobs.get(id);
+  if (!job) return null;
+
+  const result = { instagram: null, threads: null };
+  // Threads — сразу, без очереди: очередь ниже придерживает только Instagram.
+  if (job.targets.includes('threads')) {
+    result.threads = await post('threads', () => threads.publishText(job.threadsText));
+  }
+  // Ролика может не быть вовсе: первая попытка могла оборваться ещё на сборке.
+  // Пересоберёт его deliverInstagram — там же, где он и нужен.
+  if (job.targets.includes('instagram')) {
+    result.instagram = await scheduleInstagram(job);
+  }
+
+  const failed = job.targets.filter((name) => result[name] && !result[name].posted);
+  if (failed.length) {
+    // Повторяем в следующий раз только то, что снова не вышло, и даём ролику
+    // ещё столько же времени: следующая попытка может случиться не сразу.
+    job.targets = failed;
+    job.expiresAt = Date.now() + RETRY_TTL_MS;
+  } else {
+    retryJobs.delete(id);
+  }
+  return { ...result, retryId: failed.length ? id : null };
+}
+
 async function run(parsed, listingType, siteLink) {
-  // Порядок в списке — он же порядок публикации: сначала Threads, Instagram
-  // последним (см. deliver).
   const targets = [];
-  if (threads.isConfigured()) targets.push('threads');
-  if (instagram.isConfigured()) targets.push('instagram');
+  const skipped = [];
+  (threads.isConfigured() ? targets : skipped).push('threads');
+  (instagram.isConfigured() ? targets : skipped).push('instagram');
+
+  // Ненастроенную площадку раньше пропускали молча — и молчание нельзя было
+  // отличить от «всё хорошо». Отдаём её наверх отдельно от провалов: повторять
+  // тут нечего, дело не в сбое, а в незаданных переменных окружения.
+  for (const name of skipped) console.log(`[${name}] не настроен — пропускаю`);
 
   const job = makeJob(parsed, listingType, siteLink);
   if (!targets.length) {
-    return { ...job, reason: 'Ни Threads, ни Instagram не настроены' };
+    return { ...job, skipped, reason: 'Ни Threads, ни Instagram не настроены' };
   }
 
-  const { result, failed } = await deliver(job, targets);
+  const result = { instagram: null, threads: null };
+
+  // Threads публикуем сразу, до очереди: пост текстовый, ролика не ждёт, и
+  // должен встать одновременно с сайтом и Telegram-каналом, а не после того,
+  // как своей очереди дождётся видео для Instagram (90 секунд с прошлого
+  // ролика — ощутимая задержка для того, что само по себе мгновенно).
+  if (targets.includes('threads')) {
+    result.threads = await post('threads', () => threads.publishText(job.threadsText));
+  }
+
+  // Instagram — через очередь: ему нужен готовый mp4, а сборка и обработка на
+  // стороне Meta занимают минуты, и лимит Graph API у него общий с Threads.
+  if (targets.includes('instagram')) {
+    result.instagram = await scheduleInstagram(job);
+  }
+
+  const failed = targets.filter((name) => result[name] && !result[name].posted);
 
   // В памяти задание держим целиком, вместе с исходными полями объявления: если
   // ролик придётся пересобирать (сборка сорвалась или файл выветрился из
   // hosting), собирать его будет из чего.
-  return { ...job, ...result, retryId: failed.length ? remember(job, failed) : null };
+  return { ...job, ...result, skipped, retryId: failed.length ? remember(job, failed) : null };
 }
 
 module.exports = { shareListing, retry, pending, router: hosting.router };
