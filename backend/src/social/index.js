@@ -2,6 +2,7 @@ const video = require('./video');
 const hosting = require('./hosting');
 const instagram = require('./instagram');
 const threads = require('./threads');
+const net = require('./net');
 
 // Публичный адрес самого бэкенда — по нему площадки придут за роликом. Отдельной
 // переменной не заводим: адрес уже известен из настроек вебхука, а на Render его
@@ -58,7 +59,7 @@ async function post(label, fn) {
     return { posted: true };
   } catch (err) {
     console.log(`[${label}] не вышло: ${err.message}`);
-    return { posted: false, reason: err.message };
+    return { posted: false, reason: err.message, hardLimit: net.isHardLimit(err) };
   }
 }
 

@@ -112,6 +112,15 @@ function socialReport(result) {
   return { sites, failed, lines };
 }
 
+// true, если хоть одна из недобитых площадок упёрлась не во временный сбой, а
+// в потолок, который часами не сдвинется (суточная квота Instagram, антиспам
+// Threads) — см. isHardLimit в social/net.js. Частые автопопытки тут не
+// помогают, а только тратят ту же квоту или продлевают подозрение, поэтому
+// такие случаи не должны попадать в обычный каскад из scheduleAutoRetry.
+function hasHardLimit(result, failed) {
+  return failed.some((name) => result[name] && result[name].hardLimit);
+}
+
 // Автоматические повторы, если что-то не опубликовалось: без них админу
 // пришлось бы самому нажимать «Попробовать ещё раз» на каждый недобитый ролик,
 // а по факту чаще всего дело во временном сбое площадки — токен протухает
@@ -148,6 +157,16 @@ function scheduleAutoRetry(chatId, retryId, attempt = 0) {
           .sendMessage(chatId, `${sites.map((n) => SITE_LABELS[n]).join(' и ')} — опубликовано (сам, с повторной попытки)`)
           .catch(() => {});
       }
+      return;
+    }
+
+    if (hasHardLimit(result, failed)) {
+      // Квота или антиспам-блокировка сама за минуты не пройдёт — дальнейшие
+      // попытки каждые 5-60 минут только жгли бы её впустую. Останавливаем
+      // каскад сразу и оставляем ролик на ручную кнопку.
+      await tg
+        .sendMessage(chatId, `⏳ Упёрлись в лимит площадки, само за часы не пройдёт: ${lines.join('; ')}`)
+        .catch(() => {});
       return;
     }
 
@@ -190,9 +209,12 @@ async function shareToSocial(chatId, parsed, listingType, siteLink) {
     // нечего, но объявление уже на сайте и в Telegram, и повтор соберёт его заново.
     if (result.buffer) await tg.sendVideo(chatId, result.buffer, result.caption);
     if (result.reason) lines.push(`🎬 ${tg.esc(result.reason)}`);
+    const stuck = result.retryId && hasHardLimit(result, failed);
     if (result.retryId) {
       lines.push(
-        result.buffer
+        stuck
+          ? 'Упёрлись в лимит площадки, само за часы не пройдёт — ролик выше, можно опубликовать вручную.'
+          : result.buffer
           ? 'Бот попробует ещё раз сам. Ролик выше — можно опубликовать и вручную.'
           : 'Бот соберёт ролик заново и попробует опубликовать сам.'
       );
@@ -202,7 +224,10 @@ async function shareToSocial(chatId, parsed, listingType, siteLink) {
       lines.join('\n'),
       result.retryId ? retryKeyboard(result.retryId) : undefined
     );
-    if (result.retryId) scheduleAutoRetry(chatId, result.retryId);
+    // Каскад автопопыток не имеет смысла запускать, если причина — квота или
+    // антиспам-блокировка: они сами не пройдут за те же 5-60 минут. Кнопка
+    // ниже остаётся — админ решит сам, когда попробовать снова.
+    if (result.retryId && !stuck) scheduleAutoRetry(chatId, result.retryId);
   } catch (err) {
     await tg.sendMessage(chatId, `⚠️ Ролик не собрался: ${tg.esc(err.message)}`);
   }

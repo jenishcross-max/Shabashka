@@ -44,6 +44,7 @@ async function call(step, method, path, params) {
       `${step}: ${e.error_user_msg || e.message || res.status}${detail.length ? ` (${detail.join(', ')})` : ''}`
     );
     err.code = e.code;
+    err.subcode = e.error_subcode;
     throw err;
   }
   return data;

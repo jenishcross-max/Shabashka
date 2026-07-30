@@ -45,6 +45,7 @@ async function call(step, method, path, params) {
     );
     // По коду решаем, повторять ли: см. isTransientApiError в net.js.
     err.code = e.code;
+    err.subcode = e.error_subcode;
     throw err;
   }
   return data;

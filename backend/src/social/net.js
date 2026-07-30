@@ -22,6 +22,19 @@ function isTransientApiError(err) {
 
 const isRetryable = (err) => isNetworkError(err) || isTransientApiError(err);
 
+// Эти подкоды означают не сбой, а упор в потолок, который часами не сдвинется:
+// 2207042 — суточная квота Instagram Content Publishing (25 попыток создать
+// пост за 24 часа, независимо от того, опубликовались они или нет);
+// 2207051 — защитная antispam/velocity-блокировка Threads. Частые автопопытки
+// тут не помогают, а только тратят ту же самую квоту или продлевают
+// подозрение — поэтому их надо не повторять по расписанию, а один раз показать
+// админу и остановиться.
+const HARD_LIMIT_SUBCODES = new Set([2207042, 2207051]);
+
+function isHardLimit(err) {
+  return HARD_LIMIT_SUBCODES.has(err && err.subcode);
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Повторяет запрос, пока он падает по сети. Всё остальное отдаёт наверх сразу:
@@ -39,4 +52,4 @@ async function withRetry(label, attempts, fn, retryable = isNetworkError) {
   }
 }
 
-module.exports = { sleep, isNetworkError, isTransientApiError, isRetryable, withRetry };
+module.exports = { sleep, isNetworkError, isTransientApiError, isRetryable, isHardLimit, withRetry };
