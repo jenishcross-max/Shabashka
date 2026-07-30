@@ -347,6 +347,95 @@ router.post(
   })
 );
 
+// Доска живёт без модерации на входе — гость может написать что угодно, поэтому
+// админке нужно быстро скрыть или удалить объявление и закрепить полезное сверху.
+// Просроченные чистим тем же способом, что и на публичной доске: перед чтением.
+router.get(
+  '/board',
+  asyncHandler(async (req, res) => {
+    await db.query('DELETE FROM board_posts WHERE expires_at <= NOW()');
+
+    const { page, limit, offset } = pagination(req);
+    const q = (req.query.q || '').trim();
+
+    const params = [];
+    const addParam = (value) => {
+      params.push(value);
+      return `$${params.length}`;
+    };
+
+    let where = '';
+    if (q) {
+      const idParam = addParam(q);
+      const likeParam = addParam(`%${q}%`);
+      where = `WHERE board_posts.id::text = ${idParam}
+               OR board_posts.text ILIKE ${likeParam}
+               OR board_posts.city ILIKE ${likeParam}
+               OR COALESCE(users.name, board_posts.author_name) ILIKE ${likeParam}`;
+    }
+
+    const total = (
+      await db.query(
+        `SELECT COUNT(*)::int AS n FROM board_posts LEFT JOIN users ON users.id = board_posts.user_id ${where}`,
+        params
+      )
+    ).rows[0].n;
+
+    const { rows } = await db.query(
+      `SELECT board_posts.id, board_posts.text, board_posts.city, board_posts.whatsapp_phone,
+              board_posts.pinned, board_posts.hidden, board_posts.created_at, board_posts.expires_at,
+              board_posts.user_id, board_posts.guest_id,
+              COALESCE(users.name, board_posts.author_name) AS author_name, users.email AS owner_email
+       FROM board_posts
+       LEFT JOIN users ON users.id = board_posts.user_id
+       ${where}
+       ORDER BY board_posts.pinned DESC, board_posts.created_at DESC
+       LIMIT ${addParam(limit)} OFFSET ${addParam(offset)}`,
+      params
+    );
+    res.json({ posts: rows, total, page, limit, pages: Math.max(1, Math.ceil(total / limit)) });
+  })
+);
+
+router.patch(
+  '/board/:id',
+  asyncHandler(async (req, res) => {
+    const { rows } = await db.query('SELECT id FROM board_posts WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Объявление не найдено' });
+
+    const { pinned, hidden } = req.body || {};
+    const values = [];
+    const updates = [];
+    const addUpdate = (column, value) => {
+      values.push(value);
+      updates.push(`${column} = $${values.length}`);
+    };
+
+    if (pinned !== undefined) {
+      if (typeof pinned !== 'boolean') return res.status(400).json({ error: 'Некорректное значение pinned' });
+      addUpdate('pinned', pinned);
+    }
+    if (hidden !== undefined) {
+      if (typeof hidden !== 'boolean') return res.status(400).json({ error: 'Некорректное значение hidden' });
+      addUpdate('hidden', hidden);
+    }
+    if (updates.length === 0) return res.status(400).json({ error: 'Нечего обновлять' });
+
+    values.push(req.params.id);
+    await db.query(`UPDATE board_posts SET ${updates.join(', ')} WHERE id = $${values.length}`, values);
+    res.json({ ok: true });
+  })
+);
+
+router.delete(
+  '/board/:id',
+  asyncHandler(async (req, res) => {
+    const { rowCount } = await db.query('DELETE FROM board_posts WHERE id = $1', [req.params.id]);
+    if (!rowCount) return res.status(404).json({ error: 'Объявление не найдено' });
+    res.status(204).end();
+  })
+);
+
 router.get(
   '/reports',
   asyncHandler(async (req, res) => {

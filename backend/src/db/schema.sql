@@ -153,7 +153,9 @@ CREATE TABLE IF NOT EXISTS board_posts (
   city           TEXT NOT NULL,
   whatsapp_phone TEXT, -- у гостя обязателен: связаться с ним больше нечем
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  expires_at     TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '6 hours'
+  expires_at     TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '6 hours',
+  pinned         BOOLEAN NOT NULL DEFAULT FALSE, -- поднимает объявление в общей ленте, ставит только админ
+  hidden         BOOLEAN NOT NULL DEFAULT FALSE  -- скрыто модератором, но не удалено — видно только в админке
 );
 
 CREATE INDEX IF NOT EXISTS idx_board_posts_guest ON board_posts(guest_id);

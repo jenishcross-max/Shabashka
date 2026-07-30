@@ -36,6 +36,7 @@ const AdminOverview = lazy(() => import('./admin/AdminOverview'));
 const AdminUsers = lazy(() => import('./admin/AdminUsers'));
 const AdminOrders = lazy(() => import('./admin/AdminOrders'));
 const AdminVacancies = lazy(() => import('./admin/AdminVacancies'));
+const AdminBoard = lazy(() => import('./admin/AdminBoard'));
 const AdminReports = lazy(() => import('./admin/AdminReports'));
 const AdminCategories = lazy(() => import('./admin/AdminCategories'));
 
@@ -173,6 +174,7 @@ export default function App() {
           <Route path="users" element={<AdminUsers />} />
           <Route path="orders" element={<AdminOrders />} />
           <Route path="vacancies" element={<AdminVacancies />} />
+          <Route path="board" element={<AdminBoard />} />
           <Route path="reports" element={<AdminReports />} />
           <Route path="categories" element={<AdminCategories />} />
         </Route>

@@ -104,6 +104,13 @@ export const api = {
   adminReports: (token, status = 'open') => request(`/admin/reports?status=${status}`, { token }),
   adminResolveReport: (id, action, token) =>
     request(`/admin/reports/${id}`, { method: 'PATCH', body: { action }, token }),
+  adminBoardPosts: (params = {}, token) => request(`/admin/board${toQueryString(params)}`, { token }),
+  adminSetBoardPinned: (id, pinned, token) =>
+    request(`/admin/board/${id}`, { method: 'PATCH', body: { pinned }, token }),
+  adminSetBoardHidden: (id, hidden, token) =>
+    request(`/admin/board/${id}`, { method: 'PATCH', body: { hidden }, token }),
+  adminDeleteBoardPost: (id, token) => request(`/admin/board/${id}`, { method: 'DELETE', token }),
+
   adminCategories: (token) => request('/admin/categories', { token }),
   adminAddCategory: (name, token) =>
     request('/admin/categories', { method: 'POST', body: { name }, token }),

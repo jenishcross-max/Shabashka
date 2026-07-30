@@ -20,7 +20,7 @@ async function sweepExpired() {
 
 const POST_FIELDS = `board_posts.id, board_posts.text, board_posts.city, board_posts.whatsapp_phone,
   board_posts.user_id, board_posts.guest_id, board_posts.created_at, board_posts.expires_at,
-  COALESCE(users.name, board_posts.author_name) AS author_name`;
+  board_posts.pinned, COALESCE(users.name, board_posts.author_name) AS author_name`;
 
 // guest_id наружу не отдаём: это единственное, чем гость подтверждает права на
 // своё объявление. Вместо него — готовый ответ на вопрос «моё ли это».
@@ -42,7 +42,7 @@ router.get(
 
     const city = String(req.query.city || '').trim();
     const params = [];
-    const where = ['board_posts.expires_at > NOW()'];
+    const where = ['board_posts.expires_at > NOW()', 'board_posts.hidden = FALSE'];
     if (city) {
       params.push(`%${city}%`);
       where.push(`board_posts.city ILIKE $${params.length}`);
@@ -50,7 +50,8 @@ router.get(
 
     const { rows } = await db.query(
       `SELECT ${POST_FIELDS} FROM board_posts LEFT JOIN users ON users.id = board_posts.user_id
-       WHERE ${where.join(' AND ')} ORDER BY board_posts.created_at DESC LIMIT 100`,
+       WHERE ${where.join(' AND ')}
+       ORDER BY board_posts.pinned DESC, board_posts.created_at DESC LIMIT 100`,
       params
     );
     res.json({ posts: rows.map((row) => toPublicPost(row, req)) });

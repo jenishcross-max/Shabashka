@@ -97,6 +97,10 @@ function init() {
       await pool.query('ALTER TABLE board_posts ALTER COLUMN user_id DROP NOT NULL');
       await pool.query('CREATE INDEX IF NOT EXISTS idx_board_posts_guest ON board_posts(guest_id)');
 
+      // Модерация доски: закрепить объявление или скрыть его без удаления
+      await pool.query('ALTER TABLE board_posts ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE');
+      await pool.query('ALTER TABLE board_posts ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE');
+
       await pool.query('CREATE INDEX IF NOT EXISTS idx_conversations_listing ON conversations(listing_type, listing_id)');
       await pool.query(
         'CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_listing_seeker ON conversations(listing_type, listing_id, seeker_id)'

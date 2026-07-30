@@ -1591,6 +1591,9 @@ a:hover {
 .admin-table-orders {
   grid-template-columns: 0.5fr 2fr 1.2fr 1fr 1fr 0.8fr 0.9fr 1.6fr;
 }
+.admin-table-board {
+  grid-template-columns: 0.4fr 2.6fr 1fr 1.3fr 1fr 1fr 1.8fr;
+}
 .admin-row-buttons {
   display: flex;
   gap: 6px;
@@ -1800,7 +1803,8 @@ a:hover {
   .admin-table-row,
   .admin-table-head,
   .admin-table-row-actions,
-  .admin-table-orders {
+  .admin-table-orders,
+  .admin-table-board {
     grid-template-columns: 1fr;
   }
 }
@@ -2438,6 +2442,17 @@ body.board-theme .navbar {
 }
 .board-head strong {
   color: #fff;
+}
+.board-warning {
+  margin: 0 0 26px;
+  max-width: 620px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  font-size: 14px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .board-form {
