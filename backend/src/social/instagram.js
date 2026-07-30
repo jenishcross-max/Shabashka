@@ -1,7 +1,7 @@
 // Публикация Reels через Instagram Graph API. Три шага, иначе никак: сначала
 // создаётся контейнер, Instagram сам скачивает ролик по ссылке и кодирует его,
 // и только готовый контейнер можно опубликовать.
-const { sleep, isNetworkError, withRetry } = require('./net');
+const { sleep, isRetryable, withRetry } = require('./net');
 
 const USER_ID = process.env.INSTAGRAM_USER_ID || '';
 const TOKEN = process.env.INSTAGRAM_ACCESS_TOKEN || '';
@@ -21,7 +21,11 @@ function isConfigured() {
   return Boolean(USER_ID && TOKEN);
 }
 
-async function call(method, path, params) {
+// step — что именно делали. Без него в чат уходит одна строка от Meta, а она
+// сплошь и рядом «An unknown error occurred»: по такой не понять ни этапа, ни
+// причины. Код нужен, чтобы решать, повторять ли (см. net.js), а fbtrace_id —
+// единственное, по чему Meta потом найдёт сам запрос.
+async function call(step, method, path, params) {
   const url = new URL(`https://${HOST}/${VERSION}/${path}`);
   const body = new URLSearchParams({ ...params, access_token: TOKEN });
 
@@ -31,17 +35,28 @@ async function call(method, path, params) {
   });
   const data = await res.json();
   if (!res.ok || data.error) {
-    throw new Error(`Instagram: ${(data.error && data.error.message) || res.status}`);
+    const e = data.error || {};
+    const detail = [
+      e.code ? `код ${e.code}${e.error_subcode ? `/${e.error_subcode}` : ''}` : '',
+      e.fbtrace_id ? `трейс ${e.fbtrace_id}` : '',
+    ].filter(Boolean);
+    const err = new Error(
+      `${step}: ${e.error_user_msg || e.message || res.status}${detail.length ? ` (${detail.join(', ')})` : ''}`
+    );
+    err.code = e.code;
+    throw err;
   }
   return data;
 }
 
 // Создание контейнера и опрос статуса можно повторять сколько угодно: ничего
-// наружу они не публикуют, так что оборванное соединение здесь ничем не грозит.
-const safeCall = (method, path, params) => withRetry('insta', 3, () => call(method, path, params));
+// наружу они не публикуют, так что и оборванное соединение, и временный отказ
+// Meta здесь ничем не грозят.
+const safeCall = (step, method, path, params) =>
+  withRetry('insta', 3, () => call(step, method, path, params), isRetryable);
 
 function status(creationId) {
-  return safeCall('GET', creationId, { fields: 'status_code' }).then((d) => d.status_code);
+  return safeCall('статус ролика', 'GET', creationId, { fields: 'status_code' }).then((d) => d.status_code);
 }
 
 async function waitReady(creationId) {
@@ -52,10 +67,10 @@ async function waitReady(creationId) {
     // PUBLISHED — если публикация уже прошла в предыдущей, оборвавшейся попытке
     if (code === 'FINISHED' || code === 'PUBLISHED') return code;
     if (code === 'ERROR' || code === 'EXPIRED') {
-      throw new Error(`Instagram не смог обработать ролик (${code})`);
+      throw new Error(`ролик не обработан (${code})`);
     }
   }
-  throw new Error('Instagram слишком долго обрабатывает ролик');
+  throw new Error('ролик слишком долго обрабатывается');
 }
 
 // Единственный шаг, который нельзя повторять слепо: если запрос до Instagram
@@ -64,17 +79,17 @@ async function waitReady(creationId) {
 // ли он уже, и повторяем только если нет.
 async function publishContainer(creationId) {
   try {
-    const { id } = await call('POST', `${USER_ID}/media_publish`, { creation_id: creationId });
+    const { id } = await call('публикация', 'POST', `${USER_ID}/media_publish`, { creation_id: creationId });
     return id;
   } catch (err) {
-    if (!isNetworkError(err)) throw err;
-    console.log(`[insta] публикация оборвалась (${err.message}) — проверяю контейнер`);
+    if (!isRetryable(err)) throw err;
+    console.log(`[insta] публикация не прошла (${err.message}) — проверяю контейнер`);
     await sleep(POLL_INTERVAL_MS);
     if ((await status(creationId)) === 'PUBLISHED') {
       console.log(`[insta] ролик всё-таки опубликован (контейнер ${creationId})`);
       return creationId;
     }
-    const { id } = await call('POST', `${USER_ID}/media_publish`, { creation_id: creationId });
+    const { id } = await call('публикация', 'POST', `${USER_ID}/media_publish`, { creation_id: creationId });
     return id;
   }
 }
@@ -84,7 +99,7 @@ async function publishContainer(creationId) {
 // thumbOffsetMs — с какой миллисекунды взять картинку для сетки профиля. Без
 // него Instagram берёт первый кадр, а объявление к тому моменту ещё не выехало.
 async function publishReel(videoUrl, caption, thumbOffsetMs) {
-  const { id } = await safeCall('POST', `${USER_ID}/media`, {
+  const { id } = await safeCall('создание ролика', 'POST', `${USER_ID}/media`, {
     media_type: 'REELS',
     video_url: videoUrl,
     caption,

@@ -94,7 +94,8 @@ function retryKeyboard(retryId) {
 // Отчёт по площадкам. Площадка попадает в него, только если она настроена:
 // строка «Threads: не настроен» под каждым объявлением была бы шумом, а не новостью.
 function socialReport(result) {
-  const sites = ['instagram', 'threads'].filter((name) => result[name]);
+  // Порядок — как в публикации: Threads первым, Instagram последним.
+  const sites = ['threads', 'instagram'].filter((name) => result[name]);
   const failed = sites.filter((name) => !result[name].posted);
   const lines = sites
     .filter((name) => result[name].posted)
@@ -129,14 +130,14 @@ function scheduleAutoRetry(chatId, retryId, attempt = 0) {
     if (!result) return; // ролик выветрился из памяти — дальше только вручную, из сообщения выше
 
     const { sites, failed, lines } = socialReport(result);
-    // reason — это сорвавшаяся сборка ролика: площадки до неё даже не дошли, и в
-    // отчёте по ним поэтому пусто. Без этой строки провал выглядел бы как успех.
+    // reason — это причина, по которой до площадок вообще не дошло (ни одна не
+    // настроена). Без этой строки провал выглядел бы как успех.
     if (result.reason) lines.push(`🎬 ${tg.esc(result.reason)}`);
 
     if (!failed.length && !result.reason) {
       if (sites.length) {
         await tg
-          .sendMessage(chatId, `${sites.map((n) => SITE_LABELS[n]).join(' и ')} — ролик опубликован (сам, с повторной попытки)`)
+          .sendMessage(chatId, `${sites.map((n) => SITE_LABELS[n]).join(' и ')} — опубликовано (сам, с повторной попытки)`)
           .catch(() => {});
       }
       return;
@@ -160,7 +161,9 @@ async function shareToSocial(chatId, parsed, listingType, siteLink) {
     const { sites, failed, lines } = socialReport(result);
 
     if (sites.length && !failed.length && !result.reason) {
-      await tg.sendMessage(chatId, `${sites.map((n) => SITE_LABELS[n]).join(' и ')} — ролик опубликован`);
+      // «Опубликовано», а не «ролик опубликован»: в Threads уходит текстовый
+      // пост, и он может оказаться единственной площадкой в отчёте.
+      await tg.sendMessage(chatId, `${sites.map((n) => SITE_LABELS[n]).join(' и ')} — опубликовано`);
       return;
     }
 
