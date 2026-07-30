@@ -54,7 +54,10 @@ CREATE TABLE IF NOT EXISTS reports (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_reports_listing ON reports(listing_type, listing_id);
+-- idx_reports_listing создаётся в db/index.js после миграции — на уже
+-- развёрнутых базах (там reports ещё с order_id, без listing_type) этот файл
+-- выполняется целиком раньше миграции, и индекс здесь падал бы на колонке,
+-- которой ещё нет (см. idx_conversations_listing по той же причине).
 
 -- Журнал модерации: см. moderation.js. Здесь остаётся всё, что сняли с сайта,
 -- вместе с полной копией объявления — это единственный источник ответа на вопрос
