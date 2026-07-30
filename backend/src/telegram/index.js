@@ -50,7 +50,7 @@ async function start() {
     await tg.call('setWebhook', {
       url: `${WEBHOOK_URL.replace(/\/$/, '')}/api/telegram/webhook`,
       secret_token: SECRET || undefined,
-      allowed_updates: ['message', 'channel_post', 'callback_query'],
+      allowed_updates: ['message', 'callback_query'],
       drop_pending_updates: true,
     });
     console.log('Telegram-бот: webhook');
