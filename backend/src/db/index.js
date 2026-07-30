@@ -97,6 +97,12 @@ function init() {
       await pool.query('ALTER TABLE board_posts ALTER COLUMN user_id DROP NOT NULL');
       await pool.query('CREATE INDEX IF NOT EXISTS idx_board_posts_guest ON board_posts(guest_id)');
 
+      // Бот публикует на доску то, что не заказ и не вакансия (продажа, аренда,
+      // свои услуги). Ссылку на записку держим без REFERENCES: доска чистит себя
+      // сама, и внешний ключ пришлось бы дублировать каскадом ради строки, которая
+      // и так живёт шесть часов.
+      await pool.query('ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS board_post_id INTEGER');
+
       // Модерация доски: закрепить объявление или скрыть его без удаления
       await pool.query('ALTER TABLE board_posts ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE');
       await pool.query('ALTER TABLE board_posts ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE');

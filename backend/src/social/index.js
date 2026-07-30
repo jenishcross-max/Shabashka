@@ -115,7 +115,7 @@ async function run(parsed, listingType, siteLink) {
   // По последней строке в логах видно, на чём именно оборвалось.
   console.log('[видео] сборка ролика');
   const { buffer, credit } = await video.build(parsed, listingType);
-  const caption = video.caption(parsed, listingType, credit);
+  const caption = video.caption(parsed, listingType, credit, siteLink);
   const base = backendUrl();
   console.log(`[видео] ролик собран: ${buffer.length} байт`);
 

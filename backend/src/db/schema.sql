@@ -127,6 +127,7 @@ CREATE TABLE IF NOT EXISTS imported_listings (
   status        TEXT NOT NULL DEFAULT 'pending', -- pending | published | rejected
   order_id      INTEGER REFERENCES orders(id) ON DELETE SET NULL,
   vacancy_id    INTEGER REFERENCES vacancies(id) ON DELETE SET NULL,
+  board_post_id INTEGER, -- записка на доске; без REFERENCES, потому что она пропадает сама
   tg_chat_id    BIGINT,      -- чат и сообщение с карточкой — чтобы обновить её после решения
   tg_message_id BIGINT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),

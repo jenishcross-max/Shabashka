@@ -115,9 +115,7 @@ const easeBack = (p) => 1 + 2.70158 * (p - 1) ** 3 + 1.70158 * (p - 1) ** 2;
 
 // «2000» → «2 000»: на кадре цена крупная, и без разделителя разрядов её
 // приходится пересчитывать глазами.
-function money(value) {
-  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-}
+const { money } = require('../money');
 
 // Переносы считаем по словам с реальной шириной глифов. Если текст не помещается
 // в maxLines — обрезаем последнюю строку многоточием, а не даём ей уехать за край.
@@ -176,14 +174,20 @@ function layout(ctx, parsed, listingType) {
   const isVacancy = listingType === 'vacancy';
 
   ctx.font = `40px ${BOLD}`;
-  const badge = isVacancy ? 'ВАКАНСИЯ' : 'ЗАКАЗ';
+  // «Объявление» — то, что не заказ и не вакансия: продажа, аренда, свои услуги.
+  // Такое уходит на доску, и плашка должна честно говорить, что работы тут не предлагают.
+  const badge = isVacancy ? 'ВАКАНСИЯ' : listingType === 'board' ? 'ОБЪЯВЛЕНИЕ' : 'ЗАКАЗ';
   const badgeWidth = ctx.measureText(badge).width + 64;
 
   ctx.font = `84px ${BOLD}`;
   const title = wrap(ctx, parsed.title, MAXW, 4);
 
   ctx.font = `46px ${REGULAR}`;
-  const metaText = [parsed.category, parsed.city].filter(Boolean).join(' · ');
+  // Категорию у доски не показываем: там продают дом и сдают квартиру, а категории
+  // у нас про работу — «Другое · Бишкек» на кадре только сбивало бы с толку.
+  const metaText = [listingType === 'board' ? '' : parsed.category, parsed.city]
+    .filter(Boolean)
+    .join(' · ');
   const meta = metaText ? wrap(ctx, metaText, MAXW, 1)[0] : '';
 
   ctx.font = `48px ${REGULAR}`;

@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const db = require('../db');
 const categoriesRepo = require('../categoriesRepo');
 const { invalidate } = require('../cache');
+const { money } = require('../money');
 
 // Одно объявление автор рассылает сразу в несколько чатов, и скриншоты приходят
 // пачкой. Ключ повтора — телефон плюс сжатый заголовок: у одного и того же
@@ -121,7 +122,9 @@ async function applyDefaults(parsed) {
   // Ни заголовка, ни описания — публиковать нечего, но и это не тупик:
   // категория с городом уже дают осмысленную строку.
   if (!out.title) {
-    out.title = `${out.listing_type === 'vacancy' ? 'Вакансия' : 'Заказ'}: ${out.category}`;
+    const kind =
+      out.listing_type === 'vacancy' ? 'Вакансия' : out.listing_type === 'board' ? 'Объявление' : 'Заказ';
+    out.title = `${kind}: ${out.category}`;
     out.description = `${out.title}. Подробности по телефону.`;
     filled.push('заголовок', 'описание');
   }
@@ -142,6 +145,23 @@ async function validate(parsed) {
   return errors;
 }
 
+// Доска — это одна записка текстом: ни заголовка, ни категории, ни поля с ценой
+// там нет, поэтому собираем всё в один абзац. Лимит тот же, что у формы на сайте
+// (500 символов): записка на доске должна читаться целиком, не разворачиваясь.
+const BOARD_MAX_TEXT = 500;
+
+function boardText(parsed) {
+  const parts = [];
+  if (parsed.title) parts.push(parsed.title);
+  // Описание модель часто дублирует заголовком — второй раз то же самое не нужно
+  if (parsed.description && parsed.description !== parsed.title) parts.push(parsed.description);
+  if (parsed.budget) parts.push(`💰 ${money(parsed.budget)} сом`);
+
+  const text = parts.join('\n');
+  if (text.length <= BOARD_MAX_TEXT) return text;
+  return `${text.slice(0, BOARD_MAX_TEXT - 1).replace(/\s+\S*$/, '')}…`;
+}
+
 async function publish(id) {
   const row = await get(id);
   if (!row) throw new Error('Объявление не найдено');
@@ -152,6 +172,25 @@ async function publish(id) {
   if (errors.length) throw new Error(`Не хватает данных: ${errors.join(', ')}`);
 
   const userId = await resolveOwnerId();
+
+  // Не заказ и не вакансия (продают дом, сдают квартиру, предлагают свои услуги) —
+  // такому на сайте карточки нет, но и терять его незачем: место такому объявлению
+  // на доске, где оно живёт несколько часов рядом с остальной срочной мелочью.
+  if (parsed.listing_type === 'board') {
+    const inserted = await db.query(
+      `INSERT INTO board_posts (user_id, text, city, whatsapp_phone)
+       VALUES ($1, $2, $3, $4) RETURNING id`,
+      [userId, boardText(parsed), parsed.city, parsed.phone]
+    );
+    const postId = inserted.rows[0].id;
+
+    await db.query(
+      "UPDATE imported_listings SET status = 'published', published_at = NOW(), board_post_id = $1 WHERE id = $2",
+      [postId, id]
+    );
+
+    return { type: 'board', id: postId };
+  }
 
   if (parsed.listing_type === 'vacancy') {
     const inserted = await db.query(
@@ -230,6 +269,9 @@ async function remove(id) {
 
   if (row.vacancy_id) await db.query('DELETE FROM vacancies WHERE id = $1', [row.vacancy_id]);
   else if (row.order_id) await db.query('DELETE FROM orders WHERE id = $1', [row.order_id]);
+  // Записка на доске могла пропасть сама — тогда удалять уже нечего, но пометить
+  // импорт отклонённым всё равно надо, иначе кнопка так и будет предлагать удаление.
+  else if (row.board_post_id) await db.query('DELETE FROM board_posts WHERE id = $1', [row.board_post_id]);
   else throw new Error('Это объявление на сайт не уходило');
 
   await reject(id);

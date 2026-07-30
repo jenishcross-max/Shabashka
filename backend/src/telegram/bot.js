@@ -5,6 +5,7 @@ const extract = require('./extract');
 const imports = require('./imports');
 const queue = require('./queue');
 const social = require('../social');
+const { money } = require('../money');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
 const EXPERIENCE_LEVELS = require('../experienceLevels');
 
@@ -25,6 +26,8 @@ const SITE_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
 // просто пропускаем этот шаг, остальная публикация работает как раньше.
 const CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID || '';
 
+const LISTING_PATHS = { vacancy: 'vacancies', order: 'orders' };
+
 function isAllowed(userId) {
   return ADMIN_IDS.has(String(userId));
 }
@@ -43,7 +46,9 @@ function prettyLink(link) {
   if (!link) return '';
   try {
     const u = new URL(link);
-    return `${domainToUnicode(u.host)}${u.pathname}${u.search}`.replace(/\/$/, '');
+    // Якорь оставляем: у записки на доске своей страницы нет, и адрес без #p12
+    // привёл бы в общую ленту вместо конкретного объявления.
+    return `${domainToUnicode(u.host)}${u.pathname}${u.search}${u.hash}`.replace(/\/$/, '');
   } catch {
     return link;
   }
@@ -51,9 +56,12 @@ function prettyLink(link) {
 
 function publicText(parsed, listingType, siteLink) {
   const isVacancy = listingType === 'vacancy';
-  const lines = [`${isVacancy ? '💼 Вакансия' : '🧰 Заказ'}: ${parsed.title || 'Без заголовка'}`, ''];
+  const isBoard = listingType === 'board';
+  const label = isVacancy ? '💼 Вакансия' : isBoard ? '📌 Объявление' : '🧰 Заказ';
+  const lines = [`${label}: ${parsed.title || 'Без заголовка'}`, ''];
 
-  const meta = [parsed.category, parsed.city].filter(Boolean).join(' · ');
+  // У записки на доске нет категории — там остаётся один город
+  const meta = (isBoard ? [parsed.city] : [parsed.category, parsed.city]).filter(Boolean).join(' · ');
   if (meta) lines.push(meta);
   if (isVacancy) {
     const empExp = [EMPLOYMENT_LABELS[parsed.employment_type], EXPERIENCE_LABELS[parsed.experience]]
@@ -62,7 +70,7 @@ function publicText(parsed, listingType, siteLink) {
     if (empExp) lines.push(empExp);
   }
   if (parsed.address) lines.push(`📍 ${parsed.address}`);
-  if (parsed.budget) lines.push(`💰 ${parsed.budget} сом${isVacancy ? ' (от)' : ''}`);
+  if (parsed.budget) lines.push(`💰 ${money(parsed.budget)} сом${isVacancy ? ' (от)' : ''}`);
   if (parsed.phone) lines.push(`📞 ${parsed.phone}`);
   if (parsed.work_format === 'online') lines.push('💻 Удалённо');
   if (parsed.description) lines.push('', parsed.description);
@@ -174,8 +182,10 @@ async function publishOne(chatId, id, parsed) {
   if (filled.length) await imports.setParsed(id, ready);
 
   const result = await imports.publish(id);
-  const path = result.type === 'vacancy' ? 'vacancies' : 'orders';
-  const siteLink = SITE_URL ? `${SITE_URL}/${path}/${result.id}` : '';
+  // У записки на доске отдельной страницы нет — ведём на доску с якорем: страница
+  // подсветит нужное объявление, пока оно живо.
+  const path = result.type === 'board' ? `board#p${result.id}` : `${LISTING_PATHS[result.type]}/${result.id}`;
+  const siteLink = SITE_URL ? `${SITE_URL}/${path}` : '';
   const shown = prettyLink(siteLink);
   // Текст без ссылки: в сообщения Telegram она добавляется тегом отдельно, а в
   // WhatsApp уходит обычной строкой — разметку там показывать нечем.
@@ -203,7 +213,13 @@ async function publishOne(chatId, id, parsed) {
   // публикацией больше нет, и единственная возможность заметить, что модель
   // разобрала чужую переписку или перепутала телефон, — прочитать текст здесь,
   // рядом с кнопкой удаления.
-  const lines = ['✅ Опубликовано', '', `${tg.esc(clamp(body, 3000))}${linkTag}`, ''];
+  const isBoard = result.type === 'board';
+  const lines = [
+    isBoard ? '✅ Повесил на доску — 6 часов, потом пропадёт само' : '✅ Опубликовано',
+    '',
+    `${tg.esc(clamp(body, 3000))}${linkTag}`,
+    '',
+  ];
   if (channelLine) lines.push(channelLine);
   lines.push(`📱 <a href="${waLink}">Отправить в WhatsApp</a>`);
   // Без телефона объявление живое, но откликнуться на него нельзя — это стоит
@@ -212,7 +228,11 @@ async function publishOne(chatId, id, parsed) {
   if (filled.length) lines.push(`✍️ Дописал сам: ${tg.esc(filled.join(', '))}`);
 
   const sent = await tg.sendMessage(chatId, lines.join('\n'), {
-    reply_markup: { inline_keyboard: [[{ text: '🗑 Удалить с сайта', callback_data: `del:${id}` }]] },
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: isBoard ? '🗑 Снять с доски' : '🗑 Удалить с сайта', callback_data: `del:${id}` }],
+      ],
+    },
   });
   await imports.setCard(id, chatId, sent.message_id);
 
@@ -225,7 +245,7 @@ async function handleParsed(chatId, listings, { source, rawText }) {
   const real = listings.filter((p) => p.is_listing && p.listing_type !== 'other');
   if (real.length === 0) {
     const note = listings[0] && listings[0].note;
-    await tg.sendMessage(chatId, `🚫 Не похоже на заказ или вакансию.${note ? `\n${tg.esc(note)}` : ''}`);
+    await tg.sendMessage(chatId, `🚫 Не похоже на объявление.${note ? `\n${tg.esc(note)}` : ''}`);
     return;
   }
 
@@ -328,6 +348,11 @@ async function onMessage(message) {
         'Публикую сразу, ничего не переспрашивая: объявление уходит на сайт,',
         'в Telegram-канал и роликом в Instagram и Threads. Если объявлений на скриншоте',
         'несколько — опубликую каждое.',
+        '',
+        'Заказ и вакансия становятся карточкой на сайте. Всё остальное — продажа дома',
+        'или машины, аренда, «делаем ремонт под ключ», поиск работы для себя —',
+        'уходит на 📌 доску: там объявление живёт 6 часов, ролик и пост в канале',
+        'при этом делаются точно так же.',
         '',
         'Чего не хватает — дописываю сам (город → Бишкек, категория → Другое)',
         'и пишу об этом в ответе. В ответ присылаю текст объявления целиком,',

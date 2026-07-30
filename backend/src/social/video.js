@@ -7,6 +7,7 @@ const crypto = require('crypto');
 
 const card = require('./card');
 const music = require('./music');
+const { money } = require('../money');
 
 // Бинарник ffmpeg приходит npm-пакетом под текущую платформу — на Render его
 // нет в системе, а ставить через apt в бесплатном плане некуда.
@@ -111,25 +112,53 @@ async function encode(parsed, listingType) {
   }
 }
 
-// Подпись под постом. Ссылку Instagram кликабельной не делает ни в подписи, ни
-// в комментариях — поэтому зовём в шапку профиля, а не даём голый URL.
-function caption(parsed, listingType, credit) {
-  const isVacancy = listingType === 'vacancy';
-  const lines = [`${isVacancy ? '💼 Вакансия' : '🧰 Заказ'}: ${parsed.title || ''}`.trim()];
+// Заголовок объявления в подписи. Третий тип — «Объявление»: продажа, аренда,
+// свои услуги. Работы там не предлагают, и называть такое заказом нельзя.
+// Хэштеги по типу: под объявлением о продаже дома «#подработкабишкек» приводит
+// не тех людей, а лента у нас общая — теги её и разделяют.
+const HASHTAGS = {
+  order: '#шабашка #работабишкек #жумуш #подработкабишкек #кыргызстан #заказы',
+  vacancy: '#шабашка #работабишкек #жумуш #вакансиибишкек #кыргызстан',
+  board: '#шабашка #бишкек #кыргызстан #объявлениябишкек #доскаобъявлений #жарнама',
+};
 
-  const meta = [parsed.category, parsed.city].filter(Boolean).join(' · ');
+function label(listingType) {
+  if (listingType === 'vacancy') return '💼 Вакансия';
+  if (listingType === 'board') return '📌 Объявление';
+  return '🧰 Заказ';
+}
+
+// Строка «категория · город». У доски категории нет: она про работу, а там
+// продают дом или сдают квартиру.
+function metaLine(parsed, listingType) {
+  return [listingType === 'board' ? '' : parsed.category, parsed.city].filter(Boolean).join(' · ');
+}
+
+// Подпись под постом. Ссылку Instagram кликабельной не делает ни в подписи, ни
+// в комментариях — поэтому и зовём в шапку профиля, но сам адрес всё равно даём:
+// его набирают руками, а без него из ленты не найти именно это объявление.
+function caption(parsed, listingType, credit, siteLink) {
+  const isVacancy = listingType === 'vacancy';
+  const lines = [`${label(listingType)}: ${parsed.title || ''}`.trim()];
+
+  const meta = metaLine(parsed, listingType);
   if (meta) lines.push(meta);
-  if (parsed.budget) lines.push(`💰 ${parsed.budget} сом${isVacancy ? ' (от)' : ''}`);
+  if (parsed.budget) lines.push(`💰 ${money(parsed.budget)} сом${isVacancy ? ' (от)' : ''}`);
+  // Телефон в подписи обязателен, если он есть: ссылки в Instagram не работают,
+  // и без номера откликнуться прямо из ленты нечем.
+  if (parsed.phone) lines.push(`📞 ${parsed.phone}`);
   if (parsed.description) lines.push('', parsed.description);
 
-  lines.push('', 'Откликнуться — на Шабашка.com, ссылка в шапке профиля.');
+  lines.push(
+    '',
+    siteLink
+      ? `Подробности и отклик: ${siteLink} (ссылка на сайт — в шапке профиля).`
+      : 'Откликнуться — на Шабашка.com, ссылка в шапке профиля.'
+  );
   // Автора трека называем обязательно: музыка в фонотеке под Creative Commons,
   // и указание автора — условие, на котором её вообще можно использовать.
   if (credit) lines.push('', credit);
-  lines.push(
-    '',
-    ['#шабашка', '#работабишкек', '#жумуш', '#подработкабишкек', '#кыргызстан', isVacancy ? '#вакансиибишкек' : '#заказы'].join(' ')
-  );
+  lines.push('', HASHTAGS[listingType] || HASHTAGS.order);
 
   return lines.join('\n');
 }
@@ -145,23 +174,32 @@ function weight(text) {
 
 const THREADS_LIMIT = 500;
 
+// В Threads тегов меньше: пост короткий, и каждый тег отбирает место у описания.
+const THREADS_HASHTAGS = {
+  order: '#шабашка #подработкабишкек #жумуш',
+  vacancy: '#шабашка #вакансиибишкек #жумуш',
+  board: '#шабашка #объявлениябишкек #кыргызстан',
+};
+
 // Текст поста в Threads. От инстаграмной подписи отличается двумя вещами:
 // он короче и в нём есть прямая ссылка на объявление — Threads делает ссылки
 // кликабельными, поэтому звать в шапку профиля здесь незачем.
 function threadsText(parsed, listingType, siteLink, credit) {
   const isVacancy = listingType === 'vacancy';
-  const head = [`${isVacancy ? '💼 Вакансия' : '🧰 Заказ'}: ${parsed.title || ''}`.trim()];
+  const head = [`${label(listingType)}: ${parsed.title || ''}`.trim()];
 
-  const meta = [parsed.category, parsed.city].filter(Boolean).join(' · ');
+  const meta = metaLine(parsed, listingType);
   if (meta) head.push(meta);
-  if (parsed.budget) head.push(`💰 ${parsed.budget} сом${isVacancy ? ' (от)' : ''}`);
+  if (parsed.budget) head.push(`💰 ${money(parsed.budget)} сом${isVacancy ? ' (от)' : ''}`);
+  if (parsed.phone) head.push(`📞 ${parsed.phone}`);
 
-  // Хвост собираем раньше описания: ссылка и указание автора трека обязательны
-  // (второе — условие лицензии на музыку), а описание ужимается под остаток.
+  // Хвост собираем раньше описания: ссылка, номер и указание автора трека
+  // обязательны (последнее — условие лицензии на музыку), а описание ужимается
+  // под остаток.
   const tail = [];
   if (siteLink) tail.push(siteLink);
   if (credit) tail.push(credit);
-  tail.push(isVacancy ? '#шабашка #вакансиибишкек #жумуш' : '#шабашка #подработкабишкек #жумуш');
+  tail.push(THREADS_HASHTAGS[listingType] || THREADS_HASHTAGS.order);
 
   const fixed = weight([...head, '', ...tail].join('\n'));
   // Блок описания добавляет к посту сам текст и два перевода строки — пустую

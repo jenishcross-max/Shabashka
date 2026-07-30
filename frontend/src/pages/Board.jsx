@@ -31,6 +31,15 @@ function timeLeft(expiresAt) {
   return rest ? `${hours} ч ${rest} мин` : `${hours} ч`;
 }
 
+// Ролик в Instagram, пост в Telegram-канале и ссылка в WhatsApp ведут не просто
+// на доску, а на конкретную записку — /board#p123. Своей страницы у записки нет
+// (она живёт шесть часов, страница под неё была бы страницей-призраком), поэтому
+// вместо перехода подсвечиваем её в общей ленте и подкручиваем к ней.
+function targetId() {
+  const match = /^#p(\d+)$/.exec(window.location.hash || '');
+  return match ? Number(match[1]) : null;
+}
+
 export default function Board() {
   const { token, user } = useAuth();
   const cities = useCities();
@@ -49,6 +58,7 @@ export default function Board() {
   const [submitting, setSubmitting] = useState(false);
   // Пересчитывает «осталось столько-то» без запроса на сервер
   const [, setTick] = useState(0);
+  const [target] = useState(targetId);
 
   // Профиль приезжает отдельным запросом и почти всегда позже первого кадра, так
   // что города и телефона в начальном состоянии ещё нет. Подставляем их, когда он
@@ -93,6 +103,13 @@ export default function Board() {
     }, 60 * 1000);
     return () => clearInterval(id);
   }, [load]);
+
+  // Подкручиваем к записке из ссылки, когда лента уже отрисована. Хэш браузер
+  // сам не найдёт: на первом кадре страницы этого элемента ещё нет.
+  useEffect(() => {
+    if (!target || loading) return;
+    document.getElementById(`p${target}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [target, loading, posts.length]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -187,6 +204,15 @@ export default function Board() {
 
       {error && <p className="board-error">{error}</p>}
 
+      {/* Пришли по ссылке из ролика или канала, а объявление уже пропало — об этом
+          лучше сказать прямо, иначе человек ищет глазами то, чего нет. */}
+      {target && !loading && !posts.some((p) => p.id === target) && (
+        <p className="board-gone">
+          Это объявление уже пропало с доски — прошло больше шести часов. Ниже то, что
+          актуально сейчас.
+        </p>
+      )}
+
       {loading ? (
         <p className="board-empty">Загружаем доску…</p>
       ) : posts.length === 0 ? (
@@ -194,7 +220,11 @@ export default function Board() {
       ) : (
         <div className="board-grid">
           {posts.map((post) => (
-            <article className="board-note" key={post.id}>
+            <article
+              className={`board-note${post.id === target ? ' board-note-target' : ''}`}
+              id={`p${post.id}`}
+              key={post.id}
+            >
               <p className="board-note-text">{post.text}</p>
               <div className="board-note-meta">
                 <span className="board-note-city">{post.city}</span>
