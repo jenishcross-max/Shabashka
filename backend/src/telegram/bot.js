@@ -292,9 +292,6 @@ async function publishOne(chatId, id, parsed) {
   ];
   if (channelLine) lines.push(channelLine);
   lines.push(`📱 <a href="${waLink}">Отправить в WhatsApp</a>`);
-  // Без телефона объявление живое, но откликнуться на него нельзя — это стоит
-  // увидеть сразу, пока кнопка удаления рядом.
-  if (!ready.phone) lines.push('⚠️ Телефона нет — откликнуться будет некуда');
   if (filled.length) lines.push(`✍️ Дописал сам: ${tg.esc(filled.join(', '))}`);
 
   const sent = await tg.sendMessage(chatId, lines.join('\n'), {
@@ -345,6 +342,17 @@ async function handleParsed(chatId, listings, { source, rawText }) {
       await tg.sendMessage(
         chatId,
         `♻️ «${tg.esc(parsed.title || 'без названия')}» уже приходило в этот час — пропускаю. Через час можно опубликовать заново.`
+      );
+      continue;
+    }
+    // Без номера объявлению негде получить отклик: автор — не зарегистрированный
+    // пользователь, который читает свою почту на сайте, а служебный аккаунт бота,
+    // а WhatsApp-ссылка ведёт в никуда без телефона. Публиковать такое некому и незачем.
+    if (!parsed.phone) {
+      await imports.reject(id);
+      await tg.sendMessage(
+        chatId,
+        `🚫 «${tg.esc(parsed.title || 'без названия')}» без номера — не публикую, откликнуться было бы некуда.`
       );
       continue;
     }
