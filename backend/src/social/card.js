@@ -174,10 +174,16 @@ function layout(ctx, parsed, listingType) {
   const isVacancy = listingType === 'vacancy';
 
   ctx.font = `40px ${BOLD}`;
-  // «Объявление» — то, что не заказ и не вакансия: продажа, аренда, свои услуги.
-  // Такое уходит на доску, и плашка должна честно говорить, что работы тут не предлагают.
-  const badge = isVacancy ? 'ВАКАНСИЯ' : listingType === 'board' ? 'ОБЪЯВЛЕНИЕ' : 'ЗАКАЗ';
+  // То, что не заказ и не вакансия, — продажа, аренда, свои услуги — уходит на
+  // доску №6. Плашка называет её по номеру, а не словом «объявление»: так короче
+  // и сразу понятно, куда кликать на сайте.
+  const isBoard = listingType === 'board';
+  const badge = isVacancy ? 'ВАКАНСИЯ' : isBoard ? 'ДОСКА №6' : 'ЗАКАЗ';
   const badgeWidth = ctx.measureText(badge).width + 64;
+  // У доски свой синий цвет вместо категорийного акцента — на ней вперемешку
+  // жильё, техника и услуги без общей категории, и плашка не должна прыгать по
+  // цвету от объявления к объявлению.
+  const badgeAccent = isBoard ? '#2563eb' : null;
 
   ctx.font = `84px ${BOLD}`;
   const title = wrap(ctx, parsed.title, MAXW, 4);
@@ -223,7 +229,7 @@ function layout(ctx, parsed, listingType) {
 
   return {
     accent: accentFor(parsed.category),
-    badge, badgeWidth, badgeY,
+    badge, badgeWidth, badgeAccent, badgeY,
     title, titleY,
     meta, metaY,
     amount, pricePrefix, priceFallback, priceWidth,
@@ -299,7 +305,7 @@ function drawListing(ctx, l, t) {
   if (bp > 0) {
     const e = easeOut(bp);
     ctx.globalAlpha = e;
-    ctx.fillStyle = l.accent;
+    ctx.fillStyle = l.badgeAccent || l.accent;
     roundRect(ctx, PAD - (1 - e) * (PAD + l.badgeWidth), l.badgeY, l.badgeWidth, 84, 42);
     ctx.fillStyle = COLORS.white;
     ctx.font = `40px ${BOLD}`;
