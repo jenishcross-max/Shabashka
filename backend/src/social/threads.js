@@ -1,5 +1,4 @@
-// Публикация в Threads. Порядок тот же, что у Instagram: контейнер → Threads
-// сам скачивает ролик по ссылке и кодирует его → публикация готового контейнера.
+// Публикация в Threads — текстовым постом, без ролика (см. publishText).
 // API отдельное от инстаграмного: свой хост, свой идентификатор профиля и свой
 // токен, даже если аккаунт Threads заведён на том же Instagram.
 const { sleep, isNetworkError, withRetry } = require('./net');
@@ -9,10 +8,9 @@ const TOKEN = process.env.THREADS_ACCESS_TOKEN || '';
 const HOST = 'graph.threads.net';
 const VERSION = 'v1.0';
 
-// Meta советует давать роликам около 30 секунд на обработку. Опрашиваем статус
-// вместо глухого ожидания: девятисекундный ролик обычно готов раньше.
-const POLL_INTERVAL_MS = 5000;
-const POLL_ATTEMPTS = 24;
+// Пауза перед повторной проверкой контейнера при сетевом сбое публикации
+// (см. publishContainer) — не связана с обработкой ролика, его больше нет.
+const RETRY_CHECK_DELAY_MS = 5000;
 
 function isConfigured() {
   return Boolean(USER_ID && TOKEN);
@@ -41,21 +39,6 @@ function statusOf(creationId) {
   return safeCall('GET', creationId, { fields: 'status,error_message' });
 }
 
-async function waitReady(creationId) {
-  for (let i = 0; i < POLL_ATTEMPTS; i++) {
-    await sleep(POLL_INTERVAL_MS);
-    const { status, error_message: error } = await statusOf(creationId);
-    console.log(`[threads] статус ролика ${creationId}: ${status}`);
-    if (status === 'FINISHED' || status === 'PUBLISHED') return status;
-    if (status === 'ERROR' || status === 'EXPIRED') {
-      // error_message у Threads конкретный (INVALID_DURATION, FAILED_PROCESSING_AUDIO)
-      // — без него по одному ERROR не понять, чинить ролик или ждать.
-      throw new Error(`Threads не смог обработать ролик (${error || status})`);
-    }
-  }
-  throw new Error('Threads слишком долго обрабатывает ролик');
-}
-
 // Повтор публикации мог бы выложить второй такой же пост, поэтому на сетевом
 // сбое сначала смотрим, не опубликовался ли контейнер с первого раза.
 async function publishContainer(creationId) {
@@ -65,7 +48,7 @@ async function publishContainer(creationId) {
   } catch (err) {
     if (!isNetworkError(err)) throw err;
     console.log(`[threads] публикация оборвалась (${err.message}) — проверяю контейнер`);
-    await sleep(POLL_INTERVAL_MS);
+    await sleep(RETRY_CHECK_DELAY_MS);
     if ((await statusOf(creationId)).status === 'PUBLISHED') {
       console.log(`[threads] пост всё-таки опубликован (контейнер ${creationId})`);
       return creationId;
@@ -75,17 +58,16 @@ async function publishContainer(creationId) {
   }
 }
 
-// videoUrl должен быть доступен снаружи: Threads приходит за роликом со своих
-// серверов. Ссылка в тексте здесь кликабельная — в отличие от Instagram,
-// поэтому текст для Threads собирается свой, с адресом объявления.
-async function publishReel(videoUrl, text) {
+// Ссылка в тексте здесь кликабельная — в отличие от Instagram, поэтому текст
+// для Threads собирается свой, с адресом объявления (см. video.threadsText).
+// Контейнер с media_type TEXT ничего не кодирует, статус проверять незачем —
+// можно публиковать сразу же.
+async function publishText(text) {
   const { id } = await safeCall('POST', `${USER_ID}/threads`, {
-    media_type: 'VIDEO',
-    video_url: videoUrl,
+    media_type: 'TEXT',
     text,
   });
-  if ((await waitReady(id)) === 'PUBLISHED') return id;
   return publishContainer(id);
 }
 
-module.exports = { isConfigured, publishReel };
+module.exports = { isConfigured, publishText };

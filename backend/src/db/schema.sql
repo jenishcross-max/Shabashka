@@ -164,6 +164,8 @@ CREATE INDEX IF NOT EXISTS idx_board_posts_guest ON board_posts(guest_id);
 CREATE INDEX IF NOT EXISTS idx_board_posts_expires ON board_posts(expires_at);
 CREATE INDEX IF NOT EXISTS idx_board_posts_user ON board_posts(user_id);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_imported_dedup
+-- Не уникальный: повтор режется по времени в коде (см. telegram/imports.js),
+-- а не в базе — тот же дубль можно опубликовать заново спустя 12 часов.
+CREATE INDEX IF NOT EXISTS idx_imported_dedup
   ON imported_listings(dedup_hash) WHERE dedup_hash IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_imported_status ON imported_listings(status);

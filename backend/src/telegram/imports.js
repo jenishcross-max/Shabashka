@@ -7,7 +7,10 @@ const { money } = require('../money');
 // Одно объявление автор рассылает сразу в несколько чатов, и скриншоты приходят
 // пачкой. Ключ повтора — телефон плюс сжатый заголовок: у одного и того же
 // заказа они совпадут, даже если скриншот сделан из другого чата.
+// У доски своего лимита нет — туда постят продажу, аренду и разовые услуги,
+// и то же самое объявление там нормально повесить снова хоть на следующий день.
 function dedupHash(parsed) {
+  if (parsed.listing_type === 'board') return null;
   const key = [
     parsed.phone || '',
     String(parsed.title || '')
@@ -18,17 +21,30 @@ function dedupHash(parsed) {
   return crypto.createHash('sha256').update(key).digest('hex');
 }
 
-// Возвращает null, если такое объявление уже приходило.
+// Окно повтора: рассылку по чатам это всё ещё режет (она приходит пачкой за
+// минуты), а через 12 часов то же объявление — это уже не дубль, а повторная
+// публикация, и её нужно пропускать.
+const DEDUP_WINDOW = "12 hours";
+
+// Возвращает null, если такое объявление уже приходило в последние 12 часов.
 async function create({ source, rawText, parsed, chatId }) {
   const hash = dedupHash(parsed);
+  if (hash) {
+    const { rows: dup } = await db.query(
+      `SELECT 1 FROM imported_listings
+       WHERE dedup_hash = $1 AND created_at > NOW() - INTERVAL '${DEDUP_WINDOW}'
+       LIMIT 1`,
+      [hash]
+    );
+    if (dup.length) return null;
+  }
   const { rows } = await db.query(
     `INSERT INTO imported_listings (source, raw_text, parsed, dedup_hash, tg_chat_id)
      VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (dedup_hash) WHERE dedup_hash IS NOT NULL DO NOTHING
      RETURNING id`,
     [source, rawText || null, parsed, hash, chatId]
   );
-  return rows[0] ? rows[0].id : null;
+  return rows[0].id;
 }
 
 async function get(id) {

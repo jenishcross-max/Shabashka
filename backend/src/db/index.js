@@ -132,6 +132,14 @@ function init() {
         await pool.query('INSERT INTO categories (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [name]);
       }
       await tagCategories(onlineCategories, 'online');
+
+      // Лимит на повтор объявления был вечным (уникальный индекс) — теперь это
+      // окно в 12 часов, которое считается в коде (см. telegram/imports.js), так
+      // что сам индекс на дубли-в-базе больше не годится и его снимаем.
+      await pool.query('DROP INDEX IF EXISTS idx_imported_dedup');
+      await pool.query(
+        'CREATE INDEX IF NOT EXISTS idx_imported_dedup ON imported_listings(dedup_hash) WHERE dedup_hash IS NOT NULL'
+      );
     })();
   }
   return readyPromise;

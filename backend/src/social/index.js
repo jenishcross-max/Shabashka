@@ -103,7 +103,9 @@ async function deliver(job, targets) {
     targets.includes('instagram')
       ? post('insta', () => instagram.publishReel(url, job.caption, video.COVER_MS))
       : null,
-    targets.includes('threads') ? post('threads', () => threads.publishReel(url, job.threadsText)) : null,
+    // Threads публикуется текстом, без ролика: контейнер типа TEXT не кодирует
+    // видео и публикуется сразу, поэтому ссылку на файл сюда не передаём.
+    targets.includes('threads') ? post('threads', () => threads.publishText(job.threadsText)) : null,
   ]);
 
   const result = { instagram: instagramResult, threads: threadsResult };
@@ -163,7 +165,9 @@ async function run(parsed, listingType, siteLink) {
 
   // Ролик один на обе площадки: каждая скачивает файл сама, со своих серверов,
   // и второй раз кодировать то же самое незачем.
-  const job = { buffer, caption, threadsText: video.threadsText(parsed, listingType, siteLink, credit) };
+  // credit (автор трека) сюда не идёт: это условие лицензии на музыку в ролике,
+  // а Threads-пост теперь текстовый, без ролика и без музыки.
+  const job = { buffer, caption, threadsText: video.threadsText(parsed, listingType, siteLink) };
   const { result, failed } = await deliver(job, targets);
 
   return { buffer, caption, ...result, retryId: failed.length ? remember(job, failed) : null };
