@@ -72,6 +72,36 @@ function accentFor(category) {
   return ACCENTS[hash % ACCENTS.length];
 }
 
+// Ролик — не случайная тройка объявлений, а выпуск за число: в одну пачку
+// собираются объявления одного типа, и шапка называет их так, как назвал бы
+// человек. У доски в шапке «объявления», а не «доска №6»: номер доски объясняет,
+// куда кликать на сайте, и на плашке он к месту, а в заголовке выпуска — нет.
+const COLLECTIONS = {
+  vacancy: 'Вакансии дня',
+  order: 'Заказы дня',
+  board: 'Объявления дня',
+};
+
+const collectionTitle = (listingType) => COLLECTIONS[listingType] || COLLECTIONS.order;
+
+const MONTHS = [
+  'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+];
+
+// «31 июля» по бишкекскому времени. Render живёт по UTC, и объявление,
+// опубликованное в час ночи, ушло бы в ролик вчерашним числом. Бишкек круглый
+// год UTC+6 и часы не переводит, поэтому хватает сдвига — тянуть базу часовых
+// поясов ради одной строки незачем. Месяц берём из своего списка, а не из Intl:
+// нужен родительный падеж («31 июля», не «31 июль»), и он не должен зависеть
+// от того, с какой сборкой ICU собран Node на площадке.
+const BISHKEK_OFFSET_MS = 6 * 60 * 60 * 1000;
+
+function dayLabel(now = Date.now()) {
+  const d = new Date(now + BISHKEK_OFFSET_MS);
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+}
+
 // Полупрозрачные заливки задаём через rgba: холст не умеет складывать hex с
 // альфой в градиентах, а globalAlpha пришлось бы возвращать после каждой фигуры.
 function rgba(hex, alpha) {
@@ -302,6 +332,34 @@ function drawListing(ctx, l, t, progress) {
   ctx.fillStyle = l.accent;
   ctx.fillRect(0, 0, DW * Math.min(1, progress), 10);
 
+  // Шапка выпуска: «ВАКАНСИИ ДНЯ» слева, число справа. Рисуем её до наезда и
+  // не трогаем зумом — она должна стоять неподвижно, как полоска прогресса:
+  // это рамка ролика, а не часть карточки. По той же причине она переживает
+  // смену карточек без анимации появления, только с общим проявлением в начале.
+  const hp = at(t, 0.05, 0.5);
+  if (hp > 0) {
+    const e = easeOut(hp);
+    ctx.save();
+    ctx.globalAlpha = e;
+    ctx.translate(0, (1 - e) * -24);
+    ctx.fillStyle = rgba(l.accent, 0.1);
+    ctx.fillRect(0, 10, DW, 118);
+    ctx.fillStyle = rgba(l.accent, 0.28);
+    ctx.fillRect(0, 126, DW, 2);
+
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.font = `44px ${BOLD}`;
+    ctx.fillStyle = l.accent;
+    ctx.fillText(l.collection.toUpperCase(), PAD, 70);
+
+    ctx.textAlign = 'right';
+    ctx.font = `44px ${REGULAR}`;
+    ctx.fillStyle = COLORS.muted;
+    ctx.fillText(l.day, DW - PAD, 70);
+    ctx.restore();
+  }
+
   // Медленный наезд на весь кадр: движение есть, а читать не мешает.
   ctx.save();
   const zoom = 1 + 0.035 * easeInOut(Math.min(1, t / CARD_SECONDS));
@@ -517,9 +575,15 @@ function createRenderer(items) {
   ensureFonts();
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
-  const cards = items.map(({ parsed, listingType }, i) =>
-    layout(ctx, parsed, listingType, i, items.length)
-  );
+  // Заголовок выпуска берём по первому объявлению: пачка собирается из одного
+  // типа (см. очереди в social/index.js), так что он общий на весь ролик.
+  const collection = collectionTitle(items[0] && items[0].listingType);
+  const day = dayLabel();
+  const cards = items.map(({ parsed, listingType }, i) => ({
+    ...layout(ctx, parsed, listingType, i, items.length),
+    collection,
+    day,
+  }));
 
   const outroAt = cards.length * CARD_SECONDS;
   const seconds = totalSeconds(cards.length);
@@ -555,4 +619,6 @@ function createRenderer(items) {
   };
 }
 
-module.exports = { createRenderer, totalSeconds, W, H, FPS, COVER_AT };
+module.exports = {
+  createRenderer, totalSeconds, collectionTitle, dayLabel, W, H, FPS, COVER_AT,
+};

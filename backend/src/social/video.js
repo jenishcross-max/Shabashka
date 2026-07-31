@@ -146,16 +146,9 @@ function clampText(text, max) {
   return `${text.slice(0, max).replace(/\s+\S*$/, '')}…`;
 }
 
-function plural(n) {
-  const ten = n % 10;
-  const hundred = n % 100;
-  if (ten === 1 && hundred !== 11) return 'объявление';
-  if (ten >= 2 && ten <= 4 && (hundred < 12 || hundred > 14)) return 'объявления';
-  return 'объявлений';
-}
-
-// Хэштеги — объединение по всем типам в ролике: в одной пачке может ехать и
-// вакансия, и запись с доски, и теги только по первой привели бы не тех людей.
+// Хэштеги — объединение по всем типам в ролике. Пачка собирается из одного
+// типа, но повтор по типу первого объявления сломался бы молча, если когда-то
+// в ролик поедет смесь.
 function hashtagsFor(items) {
   const tags = new Set();
   for (const { listingType } of items) {
@@ -187,10 +180,12 @@ function captionBlock({ parsed, listingType, siteLink }, index, total) {
 // Подпись под постом. items — [{ parsed, listingType, siteLink }, ...], те же
 // объявления и в том же порядке, что и карточки в ролике.
 function caption(items, credit) {
-  const lines = [];
-  if (items.length > 1) {
-    lines.push(`📋 ${items.length} ${plural(items.length)} в одном ролике`, '');
-  }
+  // Шапка та же, что и на кадре: «Заказы дня · 31 июля». В ленте подпись видна
+  // раньше, чем досмотрен ролик, и она должна называть выпуск так же.
+  const lines = [
+    `📋 ${card.collectionTitle(items[0] && items[0].listingType)} · ${card.dayLabel()}`,
+    '',
+  ];
   lines.push(items.map((item, i) => captionBlock(item, i, items.length)).join('\n\n'));
   lines.push('', 'Откликнуться — на Шабашка.com, ссылка в шапке профиля.');
   // Автора трека называем обязательно: музыка в фонотеке под Creative Commons,

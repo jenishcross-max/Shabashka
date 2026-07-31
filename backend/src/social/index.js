@@ -1,4 +1,5 @@
 const video = require('./video');
+const card = require('./card');
 const hosting = require('./hosting');
 const instagram = require('./instagram');
 const threads = require('./threads');
@@ -18,11 +19,22 @@ function backendUrl() {
 // способность аккаунта, ничего не обходя.
 const BATCH_SIZE = 3;
 
-// Объявления, ждущие своего ролика. Копятся, пока не наберётся полная тройка:
-// выкладывать неполную пачку по таймеру не стали — пост квоты, потраченный на
-// одно объявление, стоит дороже, чем задержка до следующих двух. В Threads при
-// этом объявление уходит сразу, поэтому «ждёт» тут только Instagram.
-const waiting = [];
+// Объявления, ждущие своего ролика, — по очереди на каждый тип. Ролик выходит
+// выпуском: «Вакансии дня», «Заказы дня», «Объявления дня», и мешать в одном
+// три разных типа нельзя. Из девяти присланных объявлений так получается три
+// ролика, а не три случайные тройки.
+//
+// Копятся, пока не наберётся полная тройка своего типа: выкладывать неполную
+// пачку по таймеру не стали — пост квоты, потраченный на одно объявление, стоит
+// дороже, чем задержка до следующих двух. Обратная сторона у этого своя: тип,
+// которого приходит по одному в день, до Instagram не доедет вовсе, пока не
+// наберётся тройка. Сколько чего ждёт — видно в /stats.
+const waiting = new Map();
+
+function queueFor(listingType) {
+  if (!waiting.has(listingType)) waiting.set(listingType, []);
+  return waiting.get(listingType);
+}
 
 // Threads суточной квоты на публикации почти не имеет, зато у него есть защита
 // от частоты: посты залпом ловят подкод 2207051 («We restrict certain
@@ -52,7 +64,11 @@ function onThreads(fn) {
 // сборками, так что расходиться с реальностью ему негде.
 let inFlight = 0;
 const pending = () => inFlight;
-const queued = () => waiting.length;
+const queued = () => [...waiting.values()].reduce((n, q) => n + q.length, 0);
+// Разбивка по типам для /stats: пустые очереди не показываем — «заказы 0»
+// ничего не сообщает, а строку занимает.
+const queuedByType = () =>
+  [...waiting].map(([listingType, q]) => ({ listingType, count: q.length })).filter((q) => q.count);
 
 // Meta считает вызовы Graph API на час вперёд для всего приложения, а не по
 // ролику: один Reels — это уже три десятка запросов (создание контейнера,
@@ -239,7 +255,11 @@ async function retry(id) {
 // Собирает и выкладывает ролик по накопившейся тройке. Вызывается не из ответа
 // на сообщение, а сама по себе, — поэтому отчитывается через reelHandler.
 async function runBatch(entries) {
-  const job = { items: entries.map(({ ctx, ...item }) => item), targets: ['instagram'] };
+  const job = {
+    items: entries.map(({ ctx, ...item }) => item),
+    listingType: entries[0].listingType,
+    targets: ['instagram'],
+  };
   const instagramResult = await scheduleInstagram(job);
   const failed = instagramResult.posted ? [] : ['instagram'];
 
@@ -256,9 +276,10 @@ async function runBatch(entries) {
 // Пускает ролик, как только набралась полная тройка. Намеренно без await:
 // сборка и обработка на стороне Meta занимают минуты, а следующее объявление
 // из пачки не должно их ждать.
-function flush() {
-  if (waiting.length < BATCH_SIZE) return;
-  const entries = waiting.splice(0, BATCH_SIZE);
+function flush(listingType) {
+  const q = queueFor(listingType);
+  if (q.length < BATCH_SIZE) return;
+  const entries = q.splice(0, BATCH_SIZE);
   runBatch(entries).catch((err) => console.error('Автопостинг (ролик):', err));
 }
 
@@ -292,8 +313,9 @@ async function shareListing(parsed, listingType, siteLink, ctx) {
   }
 
   if (instagram.isConfigured()) {
-    waiting.push({ parsed, listingType, siteLink, ctx });
+    queueFor(listingType).push({ parsed, listingType, siteLink, ctx });
     result.queued = true;
+    result.collection = card.collectionTitle(listingType);
   } else {
     skipped.push('instagram');
     console.log('[instagram] не настроен — пропускаю');
@@ -306,8 +328,8 @@ async function shareListing(parsed, listingType, siteLink, ctx) {
 
   // Считаем очередь до отправки: flush заберёт из неё тройку, и админу надо
   // сказать, сколько объявлений ждёт после этого объявления, а не до него.
-  result.waiting = waiting.length % BATCH_SIZE;
-  flush();
+  result.waiting = queueFor(listingType).length % BATCH_SIZE;
+  flush(listingType);
   return result;
 }
 
@@ -318,6 +340,8 @@ module.exports = {
   onThreads,
   pending,
   queued,
+  queuedByType,
+  collectionTitle: card.collectionTitle,
   threadsQueued: () => paceThreads.queued(),
   quota,
   BATCH_SIZE,

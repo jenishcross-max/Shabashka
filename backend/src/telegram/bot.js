@@ -205,8 +205,8 @@ async function shareToSocial(chatId, parsed, listingType, siteLink) {
     if (result.queued) {
       lines.push(
         result.waiting === 0
-          ? `🎬 Набралась пачка из ${social.BATCH_SIZE} — собираю ролик`
-          : `🎬 В очереди на ролик: ${result.waiting} из ${social.BATCH_SIZE}`
+          ? `🎬 «${tg.esc(result.collection)}» набрались — собираю ролик`
+          : `🎬 «${tg.esc(result.collection)}»: ${result.waiting} из ${social.BATCH_SIZE}`
       );
     }
 
@@ -243,12 +243,15 @@ social.onThreads(async ({ title, ctx, posted, reason, hardLimit, retryId }) => {
 // когда набралась тройка, поэтому перечисляем, что именно в него попало, —
 // иначе по сообщению не понять, за какие объявления оно отчитывается.
 async function reportReel(chatId, result) {
+  const collection = tg.esc(social.collectionTitle(result.listingType));
   const titles = result.items.map(
     (item, i) => `${i + 1}. ${tg.esc(clamp(item.parsed.title || 'без заголовка', 80))}`
   );
 
   if (result.instagram.posted) {
-    await tg.sendMessage(chatId, ['📸 Instagram — опубликовано', ...titles].join('\n')).catch(() => {});
+    await tg
+      .sendMessage(chatId, [`📸 Instagram — опубликовано, «${collection}»`, ...titles].join('\n'))
+      .catch(() => {});
     return;
   }
 
@@ -262,7 +265,7 @@ async function reportReel(chatId, result) {
   }
 
   const stuck = result.retryId && result.instagram.hardLimit;
-  const lines = [`📸 Instagram: ${tg.esc(result.instagram.reason)}`, ...titles];
+  const lines = [`📸 Instagram, «${collection}»: ${tg.esc(result.instagram.reason)}`, ...titles];
   if (result.retryId) {
     lines.push(
       stuck
@@ -318,10 +321,19 @@ async function retrySocial(chatId, retryId) {
 // честно нулевое, потому что вместе с процессом умирают и сами сборки.
 async function statsText() {
   const today = await imports.countToday();
+  // Очередь на ролик — по типам: ролик выходит выпуском одного типа, и общее
+  // число ничего не сказало бы о том, какой выпуск вот-вот наберётся, а какой
+  // стоит с одним объявлением.
+  const byType = social.queuedByType();
+  const waitingLine = byType.length
+    ? byType
+        .map((q) => `${social.collectionTitle(q.listingType).toLowerCase()} ${q.count}/${social.BATCH_SIZE}`)
+        .join(', ')
+    : 'пусто';
   return [
     `📊 Сегодня опубликовано: ${today}`,
     `🎬 Роликов в работе: ${social.pending()}`,
-    `⏳ Ждут ролика: ${social.queued()} из ${social.BATCH_SIZE}`,
+    `⏳ Ждут ролика: ${waitingLine}`,
     `🧵 Ждут очереди в Threads: ${social.threadsQueued()}`,
     // Счётчик обнуляется при перезапуске процесса, поэтому он не гарантия, а
     // подсказка: настоящую квоту Instagram считает у себя (25 за сутки).
@@ -527,8 +539,11 @@ async function onMessage(message) {
         '',
         'В соцсети объявление уходит не мгновенно, и это нарочно: в Threads —',
         `по одному, но не чаще раза в ${social.THREADS_INTERVAL_MIN} минут (иначе он ловит антиспам),`,
-        `в Instagram — пачкой по ${social.BATCH_SIZE} в одном ролике (там квота считает посты,`,
-        'а не объявления). Про каждое напишу отдельно, когда дойдёт очередь.',
+        `в Instagram — выпуском по ${social.BATCH_SIZE} в одном ролике (там квота считает посты,`,
+        'а не объявления). Выпуск собирается из объявлений одного типа и так и',
+        'называется — «Вакансии дня», «Заказы дня», «Объявления дня», с числом на кадре.',
+        `Значит, вакансия ждёт ещё двух вакансий: пока их не ${social.BATCH_SIZE}, ролик не поедет.`,
+        'Сколько чего накопилось — в /stats. Про каждое напишу отдельно, когда дойдёт очередь.',
         '',
         'Если ролик не ушёл в Instagram или Threads (у Meta часто рвётся соединение),',
         'пришлю сам ролик и кнопку 🔁 «Попробовать опубликовать ещё раз» —',
