@@ -159,11 +159,13 @@ function remember(job, targets) {
 // памяти), и тогда молчание в чате — единственный симптом. По последней строке
 // в логах видно, на чём именно оборвалось.
 async function buildVideo(job) {
-  console.log(`[видео] сборка ролика: объявлений ${job.items.length}`);
-  const { buffer, credit } = await video.build(job.items);
+  console.log(`[видео] сборка ролика: объявлений ${job.items.length} — ${job.collection}`);
+  // Название выпуска лежит в самом задании: у дайджеста с сайта оно своё
+  // («Топ-5 вакансий · за 2 дня»), и повтор должен собрать ролик тем же.
+  const { buffer, credit } = await video.build(job.items, job);
   console.log(`[видео] ролик собран: ${buffer.length} байт`);
   job.buffer = buffer;
-  job.caption = video.caption(job.items, credit);
+  job.caption = video.caption(job.items, credit, job);
 }
 
 // Собирает ролик (если ещё не собран) и публикует его в Instagram. Единственная
@@ -254,10 +256,16 @@ async function retry(id) {
 
 // Собирает и выкладывает ролик по накопившейся тройке. Вызывается не из ответа
 // на сообщение, а сама по себе, — поэтому отчитывается через reelHandler.
-async function runBatch(entries) {
+// opts подменяет название выпуска (см. createRenderer в card.js): пусто —
+// обычные «Заказы дня», у дайджеста с сайта — свои заголовок, число и концовка.
+async function runBatch(entries, opts = {}) {
   const job = {
     items: entries.map(({ ctx, ...item }) => item),
     listingType: entries[0].listingType,
+    collection: opts.collection || card.collectionTitle(entries[0].listingType),
+    day: opts.day,
+    cta: opts.cta,
+    digest: Boolean(opts.digest),
     targets: ['instagram'],
   };
   const instagramResult = await scheduleInstagram(job);
@@ -281,6 +289,23 @@ function flush(listingType) {
   if (q.length < BATCH_SIZE) return;
   const entries = q.splice(0, BATCH_SIZE);
   runBatch(entries).catch((err) => console.error('Автопостинг (ролик):', err));
+}
+
+// Ролик-дайджест: подборка уже опубликованного с сайта (см. digestRepo), а не
+// того, что админ только что прислал. В очередь по типу не встаёт — она копит
+// новые объявления, а здесь пачка готова целиком, — но дальше едет ровно той же
+// дорогой: та же очередь публикаций, та же суточная квота, тот же отчёт через
+// onReel и та же кнопка повтора. Возвращает false, если Instagram не настроен:
+// собирать ролик, которому некуда ехать, незачем.
+function shareDigest(items, opts, ctx) {
+  if (!instagram.isConfigured()) return false;
+  const entries = items.map((item) => ({ ...item, ctx }));
+  // Намеренно без await: сборка пяти карточек и обработка на стороне Meta —
+  // это минуты, а ответить на нажатие кнопки надо сразу.
+  runBatch(entries, { ...opts, digest: true }).catch((err) =>
+    console.error('Автопостинг (дайджест):', err)
+  );
+  return true;
 }
 
 // Ставит пост в очередь Threads и отчитывается сам, когда до него дошло: между
@@ -335,6 +360,7 @@ async function shareListing(parsed, listingType, siteLink, ctx) {
 
 module.exports = {
   shareListing,
+  shareDigest,
   retry,
   onReel,
   onThreads,

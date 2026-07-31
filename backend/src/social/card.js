@@ -102,6 +102,10 @@ function dayLabel(now = Date.now()) {
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
 }
 
+// Последняя строка концовки. У обычного выпуска она про сайт вообще, у
+// дайджеста её подменяют на «и ещё 37 вакансий на сайте» — см. digestRepo.cta.
+const DEFAULT_CTA = 'заказы и вакансии по всему Кыргызстану';
+
 // Полупрозрачные заливки задаём через rgba: холст не умеет складывать hex с
 // альфой в градиентах, а globalAlpha пришлось бы возвращать после каждой фигуры.
 function rgba(hex, alpha) {
@@ -111,6 +115,20 @@ function rgba(hex, alpha) {
 
 const PAD = 96;
 const MAXW = DW - PAD * 2;
+
+// Instagram кладёт поверх ролика свои кнопки: сверху — имя аккаунта и «...»,
+// снизу — подпись, лайки, «Подписаться». Раньше шапка выпуска стояла у самой
+// кромки кадра, и в ленте «ТОП-5 ВАКАНСИЙ» просто не было видно — её закрывало.
+// Всё, что должно читаться, теперь живёт между этими полосами.
+const SAFE_TOP = 250;
+// Подвал делаем выше, чем сама плашка с логотипом (260): нижние 180 точек
+// уходят под подпись Instagram, и там остаётся просто тёмное поле. Так адрес
+// сайта виден целиком, а полоса у кромки выглядит задуманной, а не срезанной.
+const FOOTER_H = 440;
+const FOOTER_TOP = DH - FOOTER_H;
+// Откуда начинается само объявление: сразу под шапкой выпуска.
+const BODY_TOP = 448;
+const LINE = 66;
 
 let fontsReady = false;
 function ensureFonts() {
@@ -235,9 +253,6 @@ function layout(ctx, parsed, listingType, index, total) {
     .join(' · ');
   const meta = metaText ? wrap(ctx, metaText, MAXW, 1)[0] : '';
 
-  ctx.font = `48px ${REGULAR}`;
-  const description = parsed.description ? wrap(ctx, parsed.description, MAXW, 6) : [];
-
   // Цена — самое заметное на кадре: по ней в ленте решают, читать ли дальше.
   // У вакансии в этом поле нижняя граница зарплаты, поэтому и подпись другая.
   const amount = Number(String(parsed.budget || '').replace(/[^\d]/g, '')) || 0;
@@ -250,10 +265,10 @@ function layout(ctx, parsed, listingType, index, total) {
   const priceFinal = amount ? `${pricePrefix}${money(amount)} сом` : priceFallback;
   const priceWidth = Math.min(MAXW, ctx.measureText(priceFinal).width + 64);
 
-  // В сетке профиля Instagram показывает не весь кадр, а 4:5 из его середины —
-  // сверху и снизу срезается по 285 точек. Поэтому блок начинаем ниже: при
-  // старте с 190 плашка «ЗАКАЗ» в сетку уже не попадала.
-  let y = 300;
+  // Блок начинается под шапкой выпуска: и она не закрывает плашку «ЗАКАЗ», и в
+  // сетке профиля (Instagram берёт из кадра 4:5 по центру, срезая сверху и снизу
+  // по 285 точек) объявление видно целиком.
+  let y = BODY_TOP;
   const badgeY = y;
   y += 84 + 64;
   const titleY = y;
@@ -265,6 +280,14 @@ function layout(ctx, parsed, listingType, index, total) {
   const dividerY = y;
   y += 56;
   const descriptionY = y;
+
+  // Описание режем по тому месту, которое осталось до подвала, а не по
+  // постоянным шести строкам: у длинного заголовка их столько уже не помещается,
+  // и последние строки уходили под тёмную плашку.
+  ctx.font = `48px ${REGULAR}`;
+  const fits = Math.max(0, Math.floor((FOOTER_TOP - 40 - descriptionY) / LINE));
+  const description =
+    parsed.description && fits > 0 ? wrap(ctx, parsed.description, MAXW, Math.min(6, fits)) : [];
 
   return {
     accent: accentFor(parsed.category),
@@ -325,12 +348,13 @@ function drawListing(ctx, l, t, progress) {
   ctx.stroke();
   ctx.restore();
 
-  // Полоска прогресса вверху: в ленте она подсказывает, что ролик короткий и
-  // досмотреть его — секунды.
+  // Полоска прогресса: в ленте она подсказывает, что ролик короткий и
+  // досмотреть его — секунды. Лежит на верхней кромке шапки выпуска, а не
+  // кадра: у кромки её закрывала бы шапка Instagram.
   ctx.fillStyle = rgba(l.accent, 0.15);
-  ctx.fillRect(0, 0, DW, 10);
+  ctx.fillRect(0, SAFE_TOP - 10, DW, 10);
   ctx.fillStyle = l.accent;
-  ctx.fillRect(0, 0, DW * Math.min(1, progress), 10);
+  ctx.fillRect(0, SAFE_TOP - 10, DW * Math.min(1, progress), 10);
 
   // Шапка выпуска: «ВАКАНСИИ ДНЯ» слева, число справа. Рисуем её до наезда и
   // не трогаем зумом — она должна стоять неподвижно, как полоска прогресса:
@@ -343,20 +367,20 @@ function drawListing(ctx, l, t, progress) {
     ctx.globalAlpha = e;
     ctx.translate(0, (1 - e) * -24);
     ctx.fillStyle = rgba(l.accent, 0.1);
-    ctx.fillRect(0, 10, DW, 118);
+    ctx.fillRect(0, SAFE_TOP, DW, 118);
     ctx.fillStyle = rgba(l.accent, 0.28);
-    ctx.fillRect(0, 126, DW, 2);
+    ctx.fillRect(0, SAFE_TOP + 116, DW, 2);
 
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
     ctx.font = `44px ${BOLD}`;
     ctx.fillStyle = l.accent;
-    ctx.fillText(l.collection.toUpperCase(), PAD, 70);
+    ctx.fillText(l.collection.toUpperCase(), PAD, SAFE_TOP + 60);
 
     ctx.textAlign = 'right';
     ctx.font = `44px ${REGULAR}`;
     ctx.fillStyle = COLORS.muted;
-    ctx.fillText(l.day, DW - PAD, 70);
+    ctx.fillText(l.day, DW - PAD, SAFE_TOP + 60);
     ctx.restore();
   }
 
@@ -455,18 +479,18 @@ function drawListing(ctx, l, t, progress) {
   if (fp > 0) {
     const e = easeOut(fp);
     ctx.save();
-    ctx.translate(0, (1 - e) * 260);
+    ctx.translate(0, (1 - e) * FOOTER_H);
     ctx.fillStyle = COLORS.text;
-    ctx.fillRect(0, DH - 260, DW, 260);
+    ctx.fillRect(0, FOOTER_TOP, DW, FOOTER_H);
     // Кант цвета категории по верхней кромке подвала — он связывает тёмную
     // плашку с остальным кадром, иначе она выглядит приклеенной из другого макета.
     ctx.fillStyle = l.accent;
-    ctx.fillRect(0, DH - 260, DW, 6);
+    ctx.fillRect(0, FOOTER_TOP, DW, 6);
 
     const lp = at(t, 2.6, 0.6);
     if (lp > 0) {
       ctx.save();
-      ctx.translate(PAD + 66, DH - 260 + 130);
+      ctx.translate(PAD + 66, FOOTER_TOP + 130);
       ctx.scale(easeBack(lp), easeBack(lp));
       ctx.rotate((1 - easeOut(lp)) * -0.4);
       logo(ctx, -66, -66, 132, COLORS.red, COLORS.white);
@@ -476,12 +500,12 @@ function drawListing(ctx, l, t, progress) {
     const textX = PAD + 132 + 36;
     ctx.font = `64px ${BOLD}`;
     ctx.fillStyle = COLORS.white;
-    ctx.fillText('Шабашка', textX, DH - 190);
+    ctx.fillText('Шабашка', textX, FOOTER_TOP + 70);
     ctx.fillStyle = COLORS.red;
-    ctx.fillText('.com', textX + ctx.measureText('Шабашка').width, DH - 190);
+    ctx.fillText('.com', textX + ctx.measureText('Шабашка').width, FOOTER_TOP + 70);
     ctx.font = `38px ${REGULAR}`;
     ctx.fillStyle = COLORS.muted;
-    ctx.fillText('заказы и вакансии Кыргызстана', textX, DH - 104);
+    ctx.fillText('заказы и вакансии Кыргызстана', textX, FOOTER_TOP + 156);
     ctx.restore();
   }
 
@@ -490,7 +514,7 @@ function drawListing(ctx, l, t, progress) {
 
 // Концовка одинаковая для всех роликов: её задача не рассказать про заказ,
 // а оставить в голове адрес сайта. t здесь — время от начала перехода.
-function drawOutro(ctx, t) {
+function drawOutro(ctx, t, cta) {
   // Красный с подсветкой за логотипом вместо ровной заливки: центр кадра
   // становится светлее краёв, и взгляд сам идёт туда, где название сайта.
   ctx.fillStyle = '#d9312c';
@@ -551,7 +575,7 @@ function drawOutro(ctx, t) {
   if (cp > 0) {
     ctx.globalAlpha = easeOut(cp) * (0.78 + Math.sin(t * 3) * 0.18);
     ctx.font = `44px ${REGULAR}`;
-    ctx.fillText('заказы и вакансии по всему Кыргызстану', DW / 2, DH / 2 + 290);
+    ctx.fillText(cta, DW / 2, DH / 2 + 290);
     ctx.globalAlpha = 1;
   }
 }
@@ -571,14 +595,18 @@ function wipeIn(ctx, p, draw) {
 // одно за другим, каждое своей карточкой, и общая концовка в конце. Холст один
 // на всю сборку и перерисовывается на месте: полтысячи отдельных канвасов по
 // 3,7 МБ бесплатный Render не переживёт.
-function createRenderer(items) {
+// opts — как назвать выпуск: { collection, day, cta }. Пустые поля берутся по
+// умолчанию («Заказы дня», сегодняшнее число), и обычному ролику передавать
+// ничего не нужно. Дайджест с сайта («Топ-5 вакансий · за 2 дня») подменяет все три.
+function createRenderer(items, opts = {}) {
   ensureFonts();
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
   // Заголовок выпуска берём по первому объявлению: пачка собирается из одного
   // типа (см. очереди в social/index.js), так что он общий на весь ролик.
-  const collection = collectionTitle(items[0] && items[0].listingType);
-  const day = dayLabel();
+  const collection = opts.collection || collectionTitle(items[0] && items[0].listingType);
+  const day = opts.day || dayLabel();
+  const cta = opts.cta || DEFAULT_CTA;
   const cards = items.map(({ parsed, listingType }, i) => ({
     ...layout(ctx, parsed, listingType, i, items.length),
     collection,
@@ -598,7 +626,7 @@ function createRenderer(items) {
       if (t >= outroAt) {
         // Под кругом остаётся застывший последний кадр карточки, а не пустота.
         drawListing(ctx, cards[cards.length - 1], CARD_SECONDS, progress);
-        wipeIn(ctx, at(t, outroAt, WIPE_SECONDS), () => drawOutro(ctx, t - outroAt));
+        wipeIn(ctx, at(t, outroAt, WIPE_SECONDS), () => drawOutro(ctx, t - outroAt, cta));
       } else {
         const idx = Math.floor(t / CARD_SECONDS);
         const local = t - idx * CARD_SECONDS;

@@ -8,6 +8,7 @@ const extract = require('./extract');
 const imports = require('./imports');
 const queue = require('./queue');
 const social = require('../social');
+const digestRepo = require('../digestRepo');
 const { money } = require('../money');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
 const EXPERIENCE_LEVELS = require('../experienceLevels');
@@ -243,12 +244,18 @@ social.onThreads(async ({ title, ctx, posted, reason, hardLimit, retryId }) => {
 // когда набралась тройка, поэтому перечисляем, что именно в него попало, —
 // иначе по сообщению не понять, за какие объявления оно отчитывается.
 async function reportReel(chatId, result) {
-  const collection = tg.esc(social.collectionTitle(result.listingType));
+  const collection = tg.esc(result.collection || social.collectionTitle(result.listingType));
   const titles = result.items.map(
     (item, i) => `${i + 1}. ${tg.esc(clamp(item.parsed.title || 'без заголовка', 80))}`
   );
 
   if (result.instagram.posted) {
+    // Дайджест админ заказал кнопкой и ждёт именно ролик — его отдаём и при
+    // удачной публикации. Обычный выпуск собирается сам, и слать его в чат
+    // каждый раз незачем: он уже в Instagram.
+    if (result.digest && result.buffer) {
+      await tg.sendVideo(chatId, result.buffer, clamp(result.caption, 1024)).catch(() => {});
+    }
     await tg
       .sendMessage(chatId, [`📸 Instagram — опубликовано, «${collection}»`, ...titles].join('\n'))
       .catch(() => {});
@@ -313,6 +320,73 @@ async function retrySocial(chatId, retryId) {
     chatId,
     lines.join('\n'),
     result.retryId ? retryKeyboard(result.retryId) : undefined
+  );
+}
+
+// Подборка с сайта: пять случайных объявлений за двое суток одним роликом.
+// Обычный выпуск собирается из того, что админ только что прислал, и в тихий
+// день его просто не из чего собрать — а лента при этом пустеет. Здесь наоборот:
+// берём то, что уже лежит на сайте, и зовём на сайт же концовкой.
+const DIGEST_TYPES = [
+  ['order', '🧰 Заказы'],
+  ['vacancy', '💼 Вакансии'],
+  ['board', '📌 Объявления'],
+];
+
+// Меньше трёх карточек — это не «Топ-5», а два объявления с громким заголовком.
+// Такой ролик лучше не выпускать вовсе: он тратит место в суточной квоте.
+const DIGEST_MIN = 3;
+
+function digestMenu() {
+  return {
+    reply_markup: {
+      inline_keyboard: [DIGEST_TYPES.map(([type, label]) => ({ text: label, callback_data: `dg:${type}` }))],
+    },
+  };
+}
+
+// Адрес объявления на сайте — тот же, что и в карточке после публикации:
+// у записки на доске своей страницы нет, ведём на доску с якорем.
+function listingLink(listingType, id) {
+  if (!SITE_URL) return '';
+  const path = listingType === 'board' ? `board#p${id}` : `${LISTING_PATHS[listingType]}/${id}`;
+  return prettyLink(`${SITE_URL}/${path}`);
+}
+
+async function makeDigest(chatId, listingType) {
+  const { items, total } = await digestRepo.pick(listingType);
+  const what = digestRepo.word(listingType, 5);
+
+  if (items.length < DIGEST_MIN) {
+    await tg.sendMessage(
+      chatId,
+      `🎬 За ${digestRepo.DAYS} дня набралось только ${items.length} — на подборку мало. Нужно хотя бы ${DIGEST_MIN}.`
+    );
+    return;
+  }
+
+  const collection = digestRepo.collectionTitle(listingType, items.length);
+  const started = social.shareDigest(
+    items.map((item) => ({ ...item, siteLink: listingLink(item.listingType, item.id) })),
+    {
+      collection,
+      day: digestRepo.windowLabel(),
+      cta: digestRepo.cta(listingType, items.length, total),
+    },
+    { chatId }
+  );
+
+  if (!started) {
+    await tg.sendMessage(chatId, '📸 Instagram не настроен — собирать подборку некуда.');
+    return;
+  }
+
+  await tg.sendMessage(
+    chatId,
+    [
+      `🎬 Собираю «${tg.esc(collection)}» — ${items.length} из ${total} ${tg.esc(what)} за ${digestRepo.DAYS} дня.`,
+      'Ролик пришлю сюда и выложу в Instagram — это минуты.',
+    ].join('\n')
   );
 }
 
@@ -552,6 +626,11 @@ async function onMessage(message) {
         'Пачку скриншотов можно кинуть разом: поставлю в очередь и разберу по одному',
         '(бесплатный Groq за минуту успевает примерно полтора скриншота).',
         '',
+        `/top — ролик-подборка с сайта: ${digestRepo.SIZE} случайных объявлений за ${digestRepo.DAYS} дня`,
+        '(«Топ-5 вакансий»), в конце — сколько их всего ждёт на сайте. Спрошу, что брать:',
+        'заказы, вакансии или объявления с доски. Пригодится в тихий день, когда новых',
+        'скриншотов нет, а лента не должна простаивать.',
+        '',
         '/stats — сколько опубликовано сегодня и сколько роликов ещё в работе',
       ].join('\n')
     );
@@ -560,6 +639,18 @@ async function onMessage(message) {
 
   if (text === '/stats') {
     await tg.sendMessage(chatId, await statsText());
+    return;
+  }
+
+  if (text === '/top') {
+    await tg.sendMessage(
+      chatId,
+      [
+        `🎬 Соберу ролик из ${digestRepo.SIZE} случайных объявлений с сайта за ${digestRepo.DAYS} дня`,
+        'и в конце позову на сайт. Что берём?',
+      ].join('\n'),
+      digestMenu()
+    );
     return;
   }
 
@@ -622,6 +713,21 @@ async function onCallback(query) {
     retrySocial(chatId, rawId).catch(async (err) => {
       console.error('Повтор публикации:', err);
       await tg.sendMessage(chatId, `⚠️ Повтор не вышел: ${tg.esc(err.message)}`).catch(() => {});
+    });
+    return;
+  }
+
+  if (action === 'dg') {
+    // Выборка из базы, сборка пяти карточек и загрузка на площадку — это минуты,
+    // а ответить Telegram надо в пару секунд. Кнопки убираем сразу: два нажатия
+    // подряд означали бы два ролика и два места в суточной квоте.
+    await tg.answerCallbackQuery(query.id, 'Собираю подборку');
+    await tg
+      .call('editMessageReplyMarkup', { chat_id: chatId, message_id: messageId })
+      .catch(() => {});
+    makeDigest(chatId, rawId).catch(async (err) => {
+      console.error('Подборка:', err);
+      await tg.sendMessage(chatId, `⚠️ Подборка не вышла: ${tg.esc(err.message)}`).catch(() => {});
     });
     return;
   }

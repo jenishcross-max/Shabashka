@@ -53,9 +53,10 @@ function render(args, renderer) {
 let chain = Promise.resolve();
 
 // items — [{ parsed, listingType }, ...]: в одном ролике едет несколько
-// объявлений подряд (см. CARD_SECONDS в card.js).
-function build(items) {
-  const next = chain.then(() => encode(items));
+// объявлений подряд (см. CARD_SECONDS в card.js). opts — название выпуска,
+// см. createRenderer в card.js.
+function build(items, opts) {
+  const next = chain.then(() => encode(items, opts));
   chain = next.catch(() => {}); // провал одной сборки не должен рвать очередь
   return next;
 }
@@ -63,11 +64,11 @@ function build(items) {
 // Возвращает { buffer, credit } — mp4 и строку об авторе трека для подписи к
 // посту. Файл кладём во временную папку и убираем за собой: на Render диск
 // эфемерный, но за время жизни процесса мусор бы копился.
-async function encode(items) {
+async function encode(items, opts) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'shabashka-reel-'));
   try {
     const out = path.join(dir, 'reel.mp4');
-    const renderer = card.createRenderer(items);
+    const renderer = card.createRenderer(items, opts);
     const track = music.pick();
 
     const args = [
@@ -137,9 +138,12 @@ function metaLine(parsed, listingType) {
 }
 
 // Сколько знаков описания оставляем каждому объявлению. У Instagram на всю
-// подпись 2200 знаков, а объявлений в ролике до трёх: без потолка одно
-// многословное съело бы место у двух остальных.
-const DESCRIPTION_LIMIT = 320;
+// подпись 2200 знаков: без потолка одно многословное объявление съело бы место
+// у остальных. Потолок зависит от того, сколько их в ролике — в дайджесте их
+// пять, и по 320 знаков на каждое подпись бы уже не влезла.
+function descriptionLimit(count) {
+  return count <= 3 ? 320 : Math.floor(900 / count);
+}
 
 function clampText(text, max) {
   if (text.length <= max) return text;
@@ -171,7 +175,7 @@ function captionBlock({ parsed, listingType, siteLink }, index, total) {
   // Телефон в подписи обязателен, если он есть: ссылки в Instagram не работают,
   // и без номера откликнуться прямо из ленты нечем.
   if (parsed.phone) lines.push(`📞 ${parsed.phone}`);
-  if (parsed.description) lines.push(clampText(parsed.description, DESCRIPTION_LIMIT));
+  if (parsed.description) lines.push(clampText(parsed.description, descriptionLimit(total)));
   if (siteLink) lines.push(siteLink);
 
   return lines.join('\n');
@@ -179,15 +183,22 @@ function captionBlock({ parsed, listingType, siteLink }, index, total) {
 
 // Подпись под постом. items — [{ parsed, listingType, siteLink }, ...], те же
 // объявления и в том же порядке, что и карточки в ролике.
-function caption(items, credit) {
+function caption(items, credit, opts = {}) {
   // Шапка та же, что и на кадре: «Заказы дня · 31 июля». В ленте подпись видна
   // раньше, чем досмотрен ролик, и она должна называть выпуск так же.
   const lines = [
-    `📋 ${card.collectionTitle(items[0] && items[0].listingType)} · ${card.dayLabel()}`,
+    `📋 ${opts.collection || card.collectionTitle(items[0] && items[0].listingType)} · ${opts.day || card.dayLabel()}`,
     '',
   ];
   lines.push(items.map((item, i) => captionBlock(item, i, items.length)).join('\n\n'));
-  lines.push('', 'Откликнуться — на Шабашка.com, ссылка в шапке профиля.');
+  // Призыв тот же, что и на концовке ролика: у дайджеста он называет, сколько
+  // всего объявлений ждёт на сайте, у обычного выпуска — просто зовёт откликнуться.
+  lines.push(
+    '',
+    opts.cta
+      ? `${opts.cta[0].toUpperCase()}${opts.cta.slice(1)} — Шабашка.com, ссылка в шапке профиля.`
+      : 'Откликнуться — на Шабашка.com, ссылка в шапке профиля.'
+  );
   // Автора трека называем обязательно: музыка в фонотеке под Creative Commons,
   // и указание автора — условие, на котором её вообще можно использовать.
   if (credit) lines.push('', credit);
