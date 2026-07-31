@@ -16,11 +16,20 @@ const H = 1280;
 const SCALE = W / DW;
 
 const FPS = 30;
-const TOTAL_SECONDS = 9;
+// В один ролик кладём несколько объявлений: у Instagram квота 25 публикаций в
+// сутки на аккаунт, и она считается по постам, а не по объявлениям — три
+// карточки в ролике втрое поднимают дневную пропускную способность, ничего не
+// обходя. Времени на карточку столько, чтобы к её концу всё было не только
+// нарисовано (последняя анимация заканчивается к 3,3 с), но и прочитано.
+const CARD_SECONDS = 5.6;
+const OUTRO_SECONDS = 2.8;
 // Красный круг из центра закрывает объявление и открывает концовку — переход
-// заметный, но дешёвый: одна дуга в клипе вместо второго слоя кадров.
-const WIPE_AT = 6.2;
+// заметный, но дешёвый: одна дуга в клипе вместо второго слоя кадров. Тем же
+// кругом карточки сменяют друг друга: своя повадка у каждого перехода читалась
+// бы как склейка разных роликов.
 const WIPE_SECONDS = 0.55;
+
+const totalSeconds = (count) => count * CARD_SECONDS + OUTRO_SECONDS;
 // С какой секунды Instagram берёт картинку для сетки профиля. По умолчанию он
 // взял бы первый кадр, а там объявление ещё не выехало — в профиле висел бы
 // пустой кремовый прямоугольник. К 3.6 с нарисовано уже всё, включая подвал.
@@ -170,7 +179,7 @@ function rise(ctx, text, x, y, p, shift = 44) {
 
 // Разметку считаем один раз на ролик: измерять текст на каждом из 270 кадров
 // незачем, координаты от времени не зависят — от него зависит только подача.
-function layout(ctx, parsed, listingType) {
+function layout(ctx, parsed, listingType, index, total) {
   const isVacancy = listingType === 'vacancy';
 
   ctx.font = `40px ${BOLD}`;
@@ -229,6 +238,7 @@ function layout(ctx, parsed, listingType) {
 
   return {
     accent: accentFor(parsed.category),
+    index, total,
     badge, badgeWidth, badgeAccent, badgeY,
     title, titleY,
     meta, metaY,
@@ -250,7 +260,9 @@ function glow(ctx, x, y, r, color, alpha) {
   ctx.fillRect(x - r, y - r, r * 2, r * 2);
 }
 
-function drawListing(ctx, l, t) {
+// t — время от начала своей карточки, progress — доля всего ролика: полоска
+// вверху показывает, сколько осталось до конца видео, а не до конца карточки.
+function drawListing(ctx, l, t, progress) {
   ctx.fillStyle = COLORS.bg;
   ctx.fillRect(0, 0, DW, DH);
 
@@ -288,11 +300,11 @@ function drawListing(ctx, l, t) {
   ctx.fillStyle = rgba(l.accent, 0.15);
   ctx.fillRect(0, 0, DW, 10);
   ctx.fillStyle = l.accent;
-  ctx.fillRect(0, 0, DW * Math.min(1, t / TOTAL_SECONDS), 10);
+  ctx.fillRect(0, 0, DW * Math.min(1, progress), 10);
 
   // Медленный наезд на весь кадр: движение есть, а читать не мешает.
   ctx.save();
-  const zoom = 1 + 0.035 * easeInOut(Math.min(1, t / WIPE_AT));
+  const zoom = 1 + 0.035 * easeInOut(Math.min(1, t / CARD_SECONDS));
   ctx.translate(DW / 2, DH / 2);
   ctx.scale(zoom, zoom);
   ctx.translate(-DW / 2, -DH / 2);
@@ -311,6 +323,18 @@ function drawListing(ctx, l, t) {
     ctx.font = `40px ${BOLD}`;
     ctx.fillText(l.badge, PAD - (1 - e) * (PAD + l.badgeWidth) + 32, l.badgeY + 22);
     ctx.globalAlpha = 1;
+
+    // «1 / 3» на другом краю той же строки. Без счётчика зритель не знает, что
+    // за первым объявлением будет ещё два, и уходит с ролика на середине.
+    if (l.total > 1) {
+      ctx.save();
+      ctx.globalAlpha = e;
+      ctx.textAlign = 'right';
+      ctx.font = `40px ${BOLD}`;
+      ctx.fillStyle = COLORS.muted;
+      ctx.fillText(`${l.index + 1} / ${l.total}`, DW - PAD, l.badgeY + 22);
+      ctx.restore();
+    }
   }
 
   // Заголовок — строка за строкой, а не разом: взгляд успевает зацепиться
@@ -474,28 +498,54 @@ function drawOutro(ctx, t) {
   }
 }
 
-// Отдаёт кадры одного ролика. Холст один на всю сборку и перерисовывается на
-// месте: 270 отдельных канвасов по 3,7 МБ бесплатный Render не переживёт.
-function createRenderer(parsed, listingType) {
+// Круг из центра, которым одна сцена съедает другую. Всё, что нарисует draw,
+// видно только внутри круга — то, что было на холсте, остаётся по краям.
+function wipeIn(ctx, p, draw) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(DW / 2, DH / 2, easeInOut(p) * Math.hypot(DW, DH) * 0.53, 0, Math.PI * 2);
+  ctx.clip();
+  draw();
+  ctx.restore();
+}
+
+// Отдаёт кадры ролика. items — [{ parsed, listingType }, ...]: объявления идут
+// одно за другим, каждое своей карточкой, и общая концовка в конце. Холст один
+// на всю сборку и перерисовывается на месте: полтысячи отдельных канвасов по
+// 3,7 МБ бесплатный Render не переживёт.
+function createRenderer(items) {
   ensureFonts();
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
-  const l = layout(ctx, parsed, listingType);
+  const cards = items.map(({ parsed, listingType }, i) =>
+    layout(ctx, parsed, listingType, i, items.length)
+  );
+
+  const outroAt = cards.length * CARD_SECONDS;
+  const seconds = totalSeconds(cards.length);
 
   return {
-    frames: Math.round(TOTAL_SECONDS * FPS),
+    seconds,
+    frames: Math.round(seconds * FPS),
     frame(t) {
       ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
-      drawListing(ctx, l, t);
+      const progress = Math.min(1, t / seconds);
 
-      const wipe = at(t, WIPE_AT, WIPE_SECONDS);
-      if (wipe > 0) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(DW / 2, DH / 2, easeInOut(wipe) * Math.hypot(DW, DH) * 0.53, 0, Math.PI * 2);
-        ctx.clip();
-        drawOutro(ctx, t - WIPE_AT);
-        ctx.restore();
+      if (t >= outroAt) {
+        // Под кругом остаётся застывший последний кадр карточки, а не пустота.
+        drawListing(ctx, cards[cards.length - 1], CARD_SECONDS, progress);
+        wipeIn(ctx, at(t, outroAt, WIPE_SECONDS), () => drawOutro(ctx, t - outroAt));
+      } else {
+        const idx = Math.floor(t / CARD_SECONDS);
+        const local = t - idx * CARD_SECONDS;
+        if (idx > 0 && local < WIPE_SECONDS) {
+          // Переход между объявлениями: предыдущее ещё на экране, новое
+          // проступает изнутри и там же начинает свои появления с нуля.
+          drawListing(ctx, cards[idx - 1], CARD_SECONDS, progress);
+          wipeIn(ctx, local / WIPE_SECONDS, () => drawListing(ctx, cards[idx], local, progress));
+        } else {
+          drawListing(ctx, cards[idx], local, progress);
+        }
       }
 
       // data() отдаёт вид на пиксели самого холста, а поток пишет буфер не
@@ -505,4 +555,4 @@ function createRenderer(parsed, listingType) {
   };
 }
 
-module.exports = { createRenderer, W, H, FPS, TOTAL_SECONDS, COVER_AT };
+module.exports = { createRenderer, totalSeconds, W, H, FPS, COVER_AT };

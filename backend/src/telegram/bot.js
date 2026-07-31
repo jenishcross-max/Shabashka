@@ -182,56 +182,108 @@ function scheduleAutoRetry(chatId, retryId, attempt = 0) {
   }, AUTO_RETRY_DELAYS[attempt]);
 }
 
+// Ни одна площадка больше не отвечает сразу: в Threads объявление уходит по
+// одному, но не залпом (его антиспам ловит частоту), а в Instagram — пачкой по
+// три (квота считает посты, а не объявления). Поэтому здесь только расписка о
+// приёме: что куда встало в очередь. Чем кончилось, скажут отдельные сообщения
+// из social.onThreads и social.onReel ниже.
 async function shareToSocial(chatId, parsed, listingType, siteLink) {
   try {
-    const result = await social.shareListing(parsed, listingType, siteLink);
-    const { sites, failed, lines } = socialReport(result);
-
-    if (sites.length && !failed.length && !result.reason) {
-      // «Опубликовано», а не «ролик опубликован»: в Threads уходит текстовый
-      // пост, и он может оказаться единственной площадкой в отчёте.
-      // Если рядом есть ненастроенная площадка, короткой фразы мало — она бы
-      // умолчала как раз о том, чего не хватает, поэтому идёт полный отчёт.
-      await tg.sendMessage(
-        chatId,
-        (result.skipped || []).length
-          ? lines.join('\n')
-          : `${sites.map((n) => SITE_LABELS[n]).join(' и ')} — опубликовано`
-      );
-      return;
-    }
-
-    // Хоть где-то не вышло — отдаём готовый mp4 с подписью, чтобы можно было
-    // выложить руками, и говорим, где именно не сработало. Ролик при этом
-    // остаётся в памяти: бот сам повторит попытку через несколько минут, а
-    // кнопкой можно поторопить его прямо сейчас.
-    // Ролика может не быть совсем, если сорвалась сборка — тогда в чат отдавать
-    // нечего, но объявление уже на сайте и в Telegram, и повтор соберёт его заново.
-    if (result.buffer) await tg.sendVideo(chatId, result.buffer, result.caption);
+    const result = await social.shareListing(parsed, listingType, siteLink, { chatId });
+    const lines = [];
     if (result.reason) lines.push(`🎬 ${tg.esc(result.reason)}`);
-    const stuck = result.retryId && hasHardLimit(result, failed);
-    if (result.retryId) {
+    for (const name of result.skipped || []) lines.push(`${SITE_LABELS[name]}: не настроен`);
+
+    if (result.threadsQueued) {
       lines.push(
-        stuck
-          ? 'Упёрлись в лимит площадки, само за часы не пройдёт — ролик выше, можно опубликовать вручную.'
-          : result.buffer
-          ? 'Бот попробует ещё раз сам. Ролик выше — можно опубликовать и вручную.'
-          : 'Бот соберёт ролик заново и попробует опубликовать сам.'
+        result.threadsWaiting <= 1
+          ? '🧵 Threads: публикую'
+          : `🧵 Threads: ${result.threadsWaiting}-й в очереди, посты идут раз в ${social.THREADS_INTERVAL_MIN} мин`
       );
     }
-    await tg.sendMessage(
-      chatId,
-      lines.join('\n'),
-      result.retryId ? retryKeyboard(result.retryId) : undefined
-    );
-    // Каскад автопопыток не имеет смысла запускать, если причина — квота или
-    // антиспам-блокировка: они сами не пройдут за те же 5-60 минут. Кнопка
-    // ниже остаётся — админ решит сам, когда попробовать снова.
-    if (result.retryId && !stuck) scheduleAutoRetry(chatId, result.retryId);
+
+    if (result.queued) {
+      lines.push(
+        result.waiting === 0
+          ? `🎬 Набралась пачка из ${social.BATCH_SIZE} — собираю ролик`
+          : `🎬 В очереди на ролик: ${result.waiting} из ${social.BATCH_SIZE}`
+      );
+    }
+
+    if (lines.length) await tg.sendMessage(chatId, lines.join('\n'));
   } catch (err) {
-    await tg.sendMessage(chatId, `⚠️ Ролик не собрался: ${tg.esc(err.message)}`);
+    await tg.sendMessage(chatId, `⚠️ Соцсети: ${tg.esc(err.message)}`);
   }
 }
+
+// Отчёт по посту в Threads. Как и у ролика, приходит не в ответ на объявление,
+// а когда до поста дошла очередь, — поэтому называем заголовок, иначе непонятно,
+// за какое из объявлений оно отчитывается.
+social.onThreads(async ({ title, ctx, posted, reason, hardLimit, retryId }) => {
+  const chatId = ctx && ctx.chatId;
+  if (!chatId) return;
+  const what = tg.esc(clamp(title || 'без заголовка', 80));
+
+  if (posted) {
+    await tg.sendMessage(chatId, `🧵 Threads — опубликовано: ${what}`).catch(() => {});
+    return;
+  }
+
+  const lines = [`🧵 Threads: ${tg.esc(reason)}`, what];
+  if (hardLimit) {
+    lines.push('Упёрлись в антиспам Threads, само за часы не пройдёт — можно выложить вручную.');
+  }
+  await tg
+    .sendMessage(chatId, lines.join('\n'), retryId ? retryKeyboard(retryId) : undefined)
+    .catch(() => {});
+  if (retryId && !hardLimit) scheduleAutoRetry(chatId, retryId);
+});
+
+// Отчёт по уехавшему ролику. Приходит не в ответ на конкретное объявление, а
+// когда набралась тройка, поэтому перечисляем, что именно в него попало, —
+// иначе по сообщению не понять, за какие объявления оно отчитывается.
+async function reportReel(chatId, result) {
+  const titles = result.items.map(
+    (item, i) => `${i + 1}. ${tg.esc(clamp(item.parsed.title || 'без заголовка', 80))}`
+  );
+
+  if (result.instagram.posted) {
+    await tg.sendMessage(chatId, ['📸 Instagram — опубликовано', ...titles].join('\n')).catch(() => {});
+    return;
+  }
+
+  // Не вышло — отдаём готовый mp4 с подписью, чтобы можно было выложить
+  // руками. Ролика может не быть совсем, если сорвалась сборка: тогда в чат
+  // отдавать нечего, но объявления уже на сайте, в Telegram и в Threads.
+  // Подпись у Telegram влезает в 1024 знака, а на три объявления она длиннее —
+  // в Instagram уходит полная, здесь показываем начало.
+  if (result.buffer) {
+    await tg.sendVideo(chatId, result.buffer, clamp(result.caption, 1024)).catch(() => {});
+  }
+
+  const stuck = result.retryId && result.instagram.hardLimit;
+  const lines = [`📸 Instagram: ${tg.esc(result.instagram.reason)}`, ...titles];
+  if (result.retryId) {
+    lines.push(
+      stuck
+        ? 'Упёрлись в лимит площадки, само за часы не пройдёт — ролик выше, можно опубликовать вручную.'
+        : result.buffer
+        ? 'Бот попробует ещё раз сам. Ролик выше — можно опубликовать и вручную.'
+        : 'Бот соберёт ролик заново и попробует опубликовать сам.'
+    );
+  }
+  await tg
+    .sendMessage(chatId, lines.join('\n'), result.retryId ? retryKeyboard(result.retryId) : undefined)
+    .catch(() => {});
+  if (result.retryId && !stuck) scheduleAutoRetry(chatId, result.retryId);
+}
+
+// Куда слать отчёт, решаем по самим объявлениям, а не по настройкам: пачка
+// собирается из того, что присылали в чат, и отчёт должен вернуться туда же.
+social.onReel(async (result) => {
+  const chats = [...new Set((result.contexts || []).map((c) => c && c.chatId).filter(Boolean))];
+  for (const chatId of chats) await reportReel(chatId, result);
+});
 
 // Повтор по кнопке. Ролик уже собран и лежит в памяти процесса, заново кодировать
 // его не надо — попытка занимает столько, сколько площадка обрабатывает видео.
@@ -266,7 +318,15 @@ async function retrySocial(chatId, retryId) {
 // честно нулевое, потому что вместе с процессом умирают и сами сборки.
 async function statsText() {
   const today = await imports.countToday();
-  return `📊 Сегодня опубликовано: ${today}\n🎬 Роликов в работе: ${social.pending()}`;
+  return [
+    `📊 Сегодня опубликовано: ${today}`,
+    `🎬 Роликов в работе: ${social.pending()}`,
+    `⏳ Ждут ролика: ${social.queued()} из ${social.BATCH_SIZE}`,
+    `🧵 Ждут очереди в Threads: ${social.threadsQueued()}`,
+    // Счётчик обнуляется при перезапуске процесса, поэтому он не гарантия, а
+    // подсказка: настоящую квоту Instagram считает у себя (25 за сутки).
+    `📸 Публикаций в Instagram за сутки: ${social.quota.used()} из ${social.quota.DAILY_LIMIT}`,
+  ].join('\n');
 }
 
 // Публикует объявление сразу, ничего не переспрашивая. Недостающие поля
@@ -464,6 +524,11 @@ async function onMessage(message) {
         'и пишу об этом в ответе. В ответ присылаю текст объявления целиком,',
         'как он ушёл на сайт, и кнопку 🗑 «Удалить с сайта» — прочитал, и если',
         'в разбор попало лишнее, сразу убрал.',
+        '',
+        'В соцсети объявление уходит не мгновенно, и это нарочно: в Threads —',
+        `по одному, но не чаще раза в ${social.THREADS_INTERVAL_MIN} минут (иначе он ловит антиспам),`,
+        `в Instagram — пачкой по ${social.BATCH_SIZE} в одном ролике (там квота считает посты,`,
+        'а не объявления). Про каждое напишу отдельно, когда дойдёт очередь.',
         '',
         'Если ролик не ушёл в Instagram или Threads (у Meta часто рвётся соединение),',
         'пришлю сам ролик и кнопку 🔁 «Попробовать опубликовать ещё раз» —',

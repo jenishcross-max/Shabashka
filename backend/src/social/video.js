@@ -52,8 +52,10 @@ function render(args, renderer) {
 // а ждать тут нечего, ролик собирается за секунды.
 let chain = Promise.resolve();
 
-function build(parsed, listingType) {
-  const next = chain.then(() => encode(parsed, listingType));
+// items — [{ parsed, listingType }, ...]: в одном ролике едет несколько
+// объявлений подряд (см. CARD_SECONDS в card.js).
+function build(items) {
+  const next = chain.then(() => encode(items));
   chain = next.catch(() => {}); // провал одной сборки не должен рвать очередь
   return next;
 }
@@ -61,11 +63,11 @@ function build(parsed, listingType) {
 // Возвращает { buffer, credit } — mp4 и строку об авторе трека для подписи к
 // посту. Файл кладём во временную папку и убираем за собой: на Render диск
 // эфемерный, но за время жизни процесса мусор бы копился.
-async function encode(parsed, listingType) {
+async function encode(items) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'shabashka-reel-'));
   try {
     const out = path.join(dir, 'reel.mp4');
-    const renderer = card.createRenderer(parsed, listingType);
+    const renderer = card.createRenderer(items);
     const track = music.pick();
 
     const args = [
@@ -80,7 +82,7 @@ async function encode(parsed, listingType) {
       args.push('-stream_loop', '-1', '-i', track.file);
     } else {
       // Instagram отклоняет ролики без звуковой дорожки, поэтому подкладываем тишину
-      args.push('-f', 'lavfi', '-t', String(card.TOTAL_SECONDS),
+      args.push('-f', 'lavfi', '-t', String(renderer.seconds),
         '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
     }
 
@@ -100,7 +102,7 @@ async function encode(parsed, listingType) {
       // Голоса в ролике нет, перекрывать музыке нечего — стоит она заметно
       // громче типичного фона. Треки в фонотеке уже выровнены по громкости при
       // нарезке, поэтому одного общего множителя хватает на всю папку.
-      args.push('-af', `volume=0.8,afade=t=in:st=0:d=0.8,afade=t=out:st=${card.TOTAL_SECONDS - 1.2}:d=1.2`);
+      args.push('-af', `volume=0.8,afade=t=in:st=0:d=0.8,afade=t=out:st=${renderer.seconds - 1.2}:d=1.2`);
     }
 
     args.push(out);
@@ -134,12 +136,41 @@ function metaLine(parsed, listingType) {
   return [listingType === 'board' ? '' : parsed.category, parsed.city].filter(Boolean).join(' · ');
 }
 
-// Подпись под постом. Ссылку Instagram кликабельной не делает ни в подписи, ни
-// в комментариях — поэтому и зовём в шапку профиля, но сам адрес всё равно даём:
-// его набирают руками, а без него из ленты не найти именно это объявление.
-function caption(parsed, listingType, credit, siteLink) {
+// Сколько знаков описания оставляем каждому объявлению. У Instagram на всю
+// подпись 2200 знаков, а объявлений в ролике до трёх: без потолка одно
+// многословное съело бы место у двух остальных.
+const DESCRIPTION_LIMIT = 320;
+
+function clampText(text, max) {
+  if (text.length <= max) return text;
+  return `${text.slice(0, max).replace(/\s+\S*$/, '')}…`;
+}
+
+function plural(n) {
+  const ten = n % 10;
+  const hundred = n % 100;
+  if (ten === 1 && hundred !== 11) return 'объявление';
+  if (ten >= 2 && ten <= 4 && (hundred < 12 || hundred > 14)) return 'объявления';
+  return 'объявлений';
+}
+
+// Хэштеги — объединение по всем типам в ролике: в одной пачке может ехать и
+// вакансия, и запись с доски, и теги только по первой привели бы не тех людей.
+function hashtagsFor(items) {
+  const tags = new Set();
+  for (const { listingType } of items) {
+    for (const tag of (HASHTAGS[listingType] || HASHTAGS.order).split(' ')) tags.add(tag);
+  }
+  return [...tags].join(' ');
+}
+
+// Блок одного объявления в подписи. Адрес даём прямо здесь: ссылку Instagram
+// кликабельной не делает ни в подписи, ни в комментариях, её набирают руками —
+// а без адреса из ленты не найти именно это объявление среди трёх.
+function captionBlock({ parsed, listingType, siteLink }, index, total) {
   const isVacancy = listingType === 'vacancy';
-  const lines = [`${label(listingType)}: ${parsed.title || ''}`.trim()];
+  const number = total > 1 ? `${index + 1}. ` : '';
+  const lines = [`${number}${label(listingType)}: ${parsed.title || ''}`.trim()];
 
   const meta = metaLine(parsed, listingType);
   if (meta) lines.push(meta);
@@ -147,18 +178,25 @@ function caption(parsed, listingType, credit, siteLink) {
   // Телефон в подписи обязателен, если он есть: ссылки в Instagram не работают,
   // и без номера откликнуться прямо из ленты нечем.
   if (parsed.phone) lines.push(`📞 ${parsed.phone}`);
-  if (parsed.description) lines.push('', parsed.description);
+  if (parsed.description) lines.push(clampText(parsed.description, DESCRIPTION_LIMIT));
+  if (siteLink) lines.push(siteLink);
 
-  lines.push(
-    '',
-    siteLink
-      ? `Подробности и отклик: ${siteLink} (ссылка на сайт — в шапке профиля).`
-      : 'Откликнуться — на Шабашка.com, ссылка в шапке профиля.'
-  );
+  return lines.join('\n');
+}
+
+// Подпись под постом. items — [{ parsed, listingType, siteLink }, ...], те же
+// объявления и в том же порядке, что и карточки в ролике.
+function caption(items, credit) {
+  const lines = [];
+  if (items.length > 1) {
+    lines.push(`📋 ${items.length} ${plural(items.length)} в одном ролике`, '');
+  }
+  lines.push(items.map((item, i) => captionBlock(item, i, items.length)).join('\n\n'));
+  lines.push('', 'Откликнуться — на Шабашка.com, ссылка в шапке профиля.');
   // Автора трека называем обязательно: музыка в фонотеке под Creative Commons,
   // и указание автора — условие, на котором её вообще можно использовать.
   if (credit) lines.push('', credit);
-  lines.push('', HASHTAGS[listingType] || HASHTAGS.order);
+  lines.push('', hashtagsFor(items));
 
   return lines.join('\n');
 }
