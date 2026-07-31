@@ -113,7 +113,15 @@ function rgba(hex, alpha) {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
-const PAD = 96;
+// Объявление лежит не прямо на фоне, а на белой карточке с тенью: фон можно
+// сделать сколь угодно цветным и живым, а текст всё равно читается — он на
+// белом. Заодно кадр перестаёт быть плоской заливкой с буквами и выглядит как
+// вещь, которую положили на стол.
+const CARD_X = 56;
+const CARD_W = DW - CARD_X * 2;
+const CARD_R = 56;
+
+const PAD = 112;
 const MAXW = DW - PAD * 2;
 
 // Instagram кладёт поверх ролика свои кнопки: сверху — имя аккаунта и «...»,
@@ -126,8 +134,11 @@ const SAFE_TOP = 250;
 // сайта виден целиком, а полоса у кромки выглядит задуманной, а не срезанной.
 const FOOTER_H = 440;
 const FOOTER_TOP = DH - FOOTER_H;
-// Откуда начинается само объявление: сразу под шапкой выпуска.
-const BODY_TOP = 448;
+// Белая карточка: от шапки выпуска до подвала, с воздухом по краям.
+const CARD_TOP = 400;
+const CARD_BOTTOM = FOOTER_TOP - 44;
+// Откуда начинается само объявление — внутри карточки, с её же отступом.
+const BODY_TOP = CARD_TOP + 72;
 const LINE = 66;
 
 let fontsReady = false;
@@ -285,7 +296,7 @@ function layout(ctx, parsed, listingType, index, total) {
   // постоянным шести строкам: у длинного заголовка их столько уже не помещается,
   // и последние строки уходили под тёмную плашку.
   ctx.font = `48px ${REGULAR}`;
-  const fits = Math.max(0, Math.floor((FOOTER_TOP - 40 - descriptionY) / LINE));
+  const fits = Math.max(0, Math.floor((CARD_BOTTOM - 56 - descriptionY) / LINE));
   const description =
     parsed.description && fits > 0 ? wrap(ctx, parsed.description, MAXW, Math.min(6, fits)) : [];
 
@@ -323,17 +334,18 @@ function drawListing(ctx, l, t, progress) {
   // подкрашенный. Кадр перестаёт быть плоским, а текст поверх не страдает:
   // максимум насыщенности здесь 12%.
   const wash = ctx.createLinearGradient(DW, 0, 0, DH);
-  wash.addColorStop(0, rgba(COLORS.white, 0.7));
-  wash.addColorStop(0.5, rgba(l.accent, 0.03));
-  wash.addColorStop(1, rgba(l.accent, 0.12));
+  wash.addColorStop(0, rgba(COLORS.white, 0.55));
+  wash.addColorStop(0.45, rgba(l.accent, 0.14));
+  wash.addColorStop(1, rgba(l.accent, 0.38));
   ctx.fillStyle = wash;
   ctx.fillRect(0, 0, DW, DH);
 
   // Три пятна медленно плывут по фону. Без них девять секунд неподвижного
   // поля в ленте читаются как зависшая картинка.
-  glow(ctx, 180 + Math.sin(t * 0.5) * 60, 300 + Math.cos(t * 0.4) * 50, 420, l.accent, 0.16);
-  glow(ctx, 920 + Math.cos(t * 0.45) * 70, 1180 + Math.sin(t * 0.55) * 60, 380, l.accent, 0.13);
-  glow(ctx, 620 + Math.sin(t * 0.3 + 2) * 90, 1750 + Math.cos(t * 0.35) * 40, 340, COLORS.red, 0.08);
+  glow(ctx, 180 + Math.sin(t * 0.5) * 60, 300 + Math.cos(t * 0.4) * 50, 460, l.accent, 0.34);
+  glow(ctx, 920 + Math.cos(t * 0.45) * 70, 1180 + Math.sin(t * 0.55) * 60, 420, l.accent, 0.26);
+  glow(ctx, 620 + Math.sin(t * 0.3 + 2) * 90, 1750 + Math.cos(t * 0.35) * 40, 380, COLORS.red, 0.14);
+  glow(ctx, 940 + Math.sin(t * 0.4) * 40, 220 + Math.cos(t * 0.5) * 30, 300, COLORS.white, 0.5);
 
   // Два тонких кольца крутятся вокруг кадра — движение, которое видно боковым
   // зрением и не мешает читать.
@@ -351,10 +363,10 @@ function drawListing(ctx, l, t, progress) {
   // Полоска прогресса: в ленте она подсказывает, что ролик короткий и
   // досмотреть его — секунды. Лежит на верхней кромке шапки выпуска, а не
   // кадра: у кромки её закрывала бы шапка Instagram.
-  ctx.fillStyle = rgba(l.accent, 0.15);
-  ctx.fillRect(0, SAFE_TOP - 10, DW, 10);
+  ctx.fillStyle = rgba(COLORS.white, 0.55);
+  roundRect(ctx, CARD_X, CARD_TOP - 30, CARD_W, 10, 5);
   ctx.fillStyle = l.accent;
-  ctx.fillRect(0, SAFE_TOP - 10, DW * Math.min(1, progress), 10);
+  roundRect(ctx, CARD_X, CARD_TOP - 30, Math.max(10, CARD_W * Math.min(1, progress)), 10, 5);
 
   // Шапка выпуска: «ВАКАНСИИ ДНЯ» слева, число справа. Рисуем её до наезда и
   // не трогаем зумом — она должна стоять неподвижно, как полоска прогресса:
@@ -366,21 +378,23 @@ function drawListing(ctx, l, t, progress) {
     ctx.save();
     ctx.globalAlpha = e;
     ctx.translate(0, (1 - e) * -24);
-    ctx.fillStyle = rgba(l.accent, 0.1);
-    ctx.fillRect(0, SAFE_TOP, DW, 118);
-    ctx.fillStyle = rgba(l.accent, 0.28);
-    ctx.fillRect(0, SAFE_TOP + 116, DW, 2);
-
+    // Название выпуска — белым по цветной плашке, а не текстом по фону: на
+    // цветном градиенте цветные же буквы тонули, а плашка держит кадр сверху
+    // так же, как подвал держит его снизу.
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-    ctx.font = `44px ${BOLD}`;
+    ctx.font = `46px ${BOLD}`;
+    const title = l.collection.toUpperCase();
+    const tw = ctx.measureText(title).width;
     ctx.fillStyle = l.accent;
-    ctx.fillText(l.collection.toUpperCase(), PAD, SAFE_TOP + 60);
+    roundRect(ctx, CARD_X, SAFE_TOP, tw + 76, 92, 46);
+    ctx.fillStyle = COLORS.white;
+    ctx.fillText(title, CARD_X + 38, SAFE_TOP + 48);
 
     ctx.textAlign = 'right';
-    ctx.font = `44px ${REGULAR}`;
-    ctx.fillStyle = COLORS.muted;
-    ctx.fillText(l.day, DW - PAD, SAFE_TOP + 60);
+    ctx.font = `44px ${BOLD}`;
+    ctx.fillStyle = rgba(COLORS.text, 0.6);
+    ctx.fillText(l.day, DW - CARD_X, SAFE_TOP + 48);
     ctx.restore();
   }
 
@@ -390,6 +404,31 @@ function drawListing(ctx, l, t, progress) {
   ctx.translate(DW / 2, DH / 2);
   ctx.scale(zoom, zoom);
   ctx.translate(-DW / 2, -DH / 2);
+
+  // Сама карточка: белый лист с мягкой тенью цвета категории. Тень цветная, а
+  // не серая, — серая на кремовом фоне выглядит грязью, цветная читается как
+  // свет. Рисуем её внутри наезда, чтобы лист жил вместе с содержимым.
+  // Тень собрана из трёх расходящихся прямоугольников, а не сделана shadowBlur:
+  // размытие на 70 точек считается для каждого из девятисот кадров и удваивало
+  // время сборки ролика — на бесплатном Render это заметно, а разницу в кадре
+  // видно только если поставить два варианта рядом.
+  const cardH = CARD_BOTTOM - CARD_TOP;
+  for (let i = 3; i > 0; i -= 1) {
+    ctx.fillStyle = rgba(l.accent, 0.06);
+    roundRect(ctx, CARD_X - i * 6, CARD_TOP + i * 6, CARD_W + i * 12, cardH + i * 6, CARD_R + i * 6);
+  }
+  ctx.fillStyle = COLORS.white;
+  roundRect(ctx, CARD_X, CARD_TOP, CARD_W, cardH, CARD_R);
+
+  // Номер объявления водяным знаком в углу листа: он говорит, где мы в ролике,
+  // и заполняет пустоту у коротких объявлений, не мешая читать длинные.
+  ctx.save();
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = `280px ${BOLD}`;
+  ctx.fillStyle = rgba(l.accent, 0.045);
+  ctx.fillText(String(l.index + 1).padStart(2, '0'), CARD_X + CARD_W - 40, CARD_BOTTOM - 32);
+  ctx.restore();
 
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
