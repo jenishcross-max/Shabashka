@@ -144,13 +144,31 @@ const FOOTER_H = 440;
 const FOOTER_TOP = DH - FOOTER_H;
 
 // Вертикаль полосы: капс-строка, жирная линейка, заголовок — и дальше по тексту.
-const META_TOP = 452;
-const RULE_Y = 520;
-const BODY_TOP = 570;
-const TITLE_LINE = 114;
-const LINE = 66;
-// Докуда можно опускать описание, чтобы оно не влезло в подвал.
-const TEXT_BOTTOM = FOOTER_TOP - 40;
+const META_TOP = 430;
+const RULE_Y = 500;
+const BODY_TOP = 548;
+// Докуда можно опускать описание, чтобы оно не влезло в подвал. Подвал начинает
+// рисовать с FOOTER_TOP + 40, так что до его линейки остаётся ещё полстроки.
+const TEXT_BOTTOM = FOOTER_TOP - 12;
+
+// Объявления приходят из WhatsApp, а не из формы: заголовок бывает в одно слово,
+// бывает в двадцать, описание — от строки до абзаца. Один жёсткий кегль под
+// такой разброс не подобрать, поэтому подбираем его на каждое объявление:
+// сначала пробуем крупный, и только если текст не влезает — берём следующий.
+// Ниже последнего не опускаемся, там уже нечитаемо; такое описание обрезается.
+const TITLE_STEPS = [104, 94, 86, 78];
+const DESC_STEPS = [48, 44, 41, 38];
+// Интерлиньяж от кегля: у заголовка плотный, у описания просторный.
+const titleLeading = (size) => Math.round(size * 1.1);
+const descLeading = (size) => Math.round(size * 1.375);
+// Сколько вертикали отдаём заголовку. Больше — и ценник уезжает из квадрата 4:5,
+// который Instagram вырезает для сетки профиля.
+const TITLE_BOX = 460;
+// Ниже описание превращается в стену текста, которую в ленте всё равно не читают.
+const DESC_MAX_LINES = 9;
+// Высота рамки ценника: постоянная, даже когда кегль внутри уменьшился, — иначе
+// полоса прыгала бы по вертикали от объявления к объявлению.
+const PRICE_H = 150;
 
 let fontsReady = false;
 function ensureFonts() {
@@ -199,9 +217,9 @@ const easeBack = (p) => 1 + 2.70158 * (p - 1) ** 3 + 1.70158 * (p - 1) ** 2;
 // приходится пересчитывать глазами.
 const { money } = require('../money');
 
-// Переносы считаем по словам с реальной шириной глифов. Если текст не помещается
-// в maxLines — обрезаем последнюю строку многоточием, а не даём ей уехать за край.
-function wrap(ctx, text, maxWidth, maxLines) {
+// Переносы считаем по словам с реальной шириной глифов — столько строк, сколько
+// получится. Обрезать решает уже вёрстка: сначала она пробует уменьшить кегль.
+function wrapAll(ctx, text, maxWidth) {
   const words = String(text || '').split(/\s+/).filter(Boolean);
   const lines = [];
   let line = '';
@@ -214,19 +232,22 @@ function wrap(ctx, text, maxWidth, maxLines) {
     }
     lines.push(line);
     line = word;
-    if (lines.length === maxLines) break;
   }
-  if (lines.length < maxLines && line) lines.push(line);
-
-  const overflow = lines.length === maxLines && words.length > lines.join(' ').split(/\s+/).length;
-  if (overflow) {
-    let last = lines[lines.length - 1];
-    while (last && ctx.measureText(`${last}…`).width > maxWidth) {
-      last = last.slice(0, -1).trimEnd();
-    }
-    lines[lines.length - 1] = `${last}…`;
-  }
+  if (line) lines.push(line);
   return lines;
+}
+
+// Последнее средство: текст не влез даже мелким кеглем — обрезаем последнюю
+// строку многоточием, а не даём ей уехать за край.
+function clamp(ctx, lines, maxWidth, maxLines) {
+  if (lines.length <= maxLines) return lines;
+  const kept = lines.slice(0, maxLines);
+  let last = kept[maxLines - 1];
+  while (last && ctx.measureText(`${last}…`).width > maxWidth) {
+    last = last.slice(0, -1).trimEnd();
+  }
+  kept[maxLines - 1] = `${last}…`;
+  return kept;
 }
 
 function roundRect(ctx, x, y, w, h, r, stroke) {
@@ -286,19 +307,40 @@ function layout(ctx, parsed, listingType, index, total) {
   // переставала влезать категория. У доски наоборот: категорию не показываем
   // (там продают дом и сдают квартиру, а категории у нас про работу), и номер
   // доски остаётся единственным, что объясняет, куда кликать на сайте.
-  ctx.font = `36px ${SEMI}`;
   const metaParts = [isBoard ? badge : parsed.category, parsed.city].filter(Boolean);
   let meta = metaParts.join(' · ').toUpperCase();
-  // Если рубрика с разрядкой не влезает — выкидываем среднюю часть целиком, а не
-  // режем многоточием: обрубок капса выглядит как сбой вёрстки. Справа от неё
-  // ещё стоит счётчик, поэтому меряем не по всей ширине полосы.
-  while (metaParts.length > 1 && trackedWidth(ctx, meta, 5) > MAXW - 170) {
+  // Длинную рубрику («СТРОИТЕЛЬСТВО · ДЖАЛАЛ-АБАД») сначала мельчим, и только
+  // если не помогло — выкидываем среднюю часть целиком, а не режем многоточием:
+  // обрубок капса выглядит как сбой вёрстки. Справа от рубрики ещё стоит
+  // счётчик, поэтому меряем не по всей ширине полосы.
+  let metaSize = 36;
+  ctx.font = `${metaSize}px ${SEMI}`;
+  while (trackedWidth(ctx, meta, 5) > MAXW - 170) {
+    if (metaSize > 28) {
+      metaSize -= 2;
+      ctx.font = `${metaSize}px ${SEMI}`;
+      continue;
+    }
+    if (metaParts.length < 2) break;
     metaParts.splice(-2, 1);
     meta = metaParts.join(' · ').toUpperCase();
   }
 
-  ctx.font = `104px ${BOLD}`;
-  const title = wrap(ctx, parsed.title, MAXW, 4);
+  // Заголовок: берём самый крупный кегль, при котором он влезает в отведённую
+  // ему высоту целиком. Раньше кегль был один, и длинный заголовок либо
+  // обрывался многоточием, либо съедал место у описания.
+  let titleSize = TITLE_STEPS[TITLE_STEPS.length - 1];
+  let title = [];
+  for (const size of TITLE_STEPS) {
+    ctx.font = `${size}px ${BOLD}`;
+    const lines = wrapAll(ctx, parsed.title, MAXW);
+    titleSize = size;
+    title = lines;
+    if (lines.length * titleLeading(size) <= TITLE_BOX) break;
+  }
+  const titleLine = titleLeading(titleSize);
+  ctx.font = `${titleSize}px ${BOLD}`;
+  title = clamp(ctx, title, MAXW, Math.max(1, Math.floor(TITLE_BOX / titleLine)));
 
   // Цена — самое заметное на кадре: по ней в ленте решают, читать ли дальше.
   // У вакансии в этом поле нижняя граница зарплаты, поэтому и подпись другая.
@@ -310,9 +352,15 @@ function layout(ctx, parsed, listingType, index, total) {
   const priceFallback = isVacancy ? 'З/п договорная' : 'Цена договорная';
 
   // Рамку ценника меряем по конечной сумме и держим неподвижной: цифры на кадре
-  // досчитываются, и рамка по ширине текста дёргалась бы все полсекунды.
-  ctx.font = `104px ${BOLD}`;
+  // досчитываются, и рамка по ширине текста дёргалась бы все полсекунды. Кегль
+  // тоже подбираем: «от 1 500 000 сом» тем же 104-м вылезала за поля полосы.
   const priceFinal = amount ? `${pricePrefix}${money(amount)} сом` : priceFallback;
+  let priceSize = 104;
+  ctx.font = `${priceSize}px ${BOLD}`;
+  while (priceSize > 60 && ctx.measureText(priceFinal).width + 72 > MAXW) {
+    priceSize -= 6;
+    ctx.font = `${priceSize}px ${BOLD}`;
+  }
   const priceWidth = Math.min(MAXW, ctx.measureText(priceFinal).width + 72);
 
   // Вертикаль полосы. Заголовок стоит сразу под жирной линейкой, дальше ценник,
@@ -320,25 +368,40 @@ function layout(ctx, parsed, listingType, index, total) {
   // центру, срезая сверху и снизу по 285 точек) в кадр попадают заголовок и цена
   // — то есть ровно то, по чему объявление и выбирают.
   const titleY = BODY_TOP;
-  const priceY = titleY + TITLE_LINE * title.length + 40;
-  const dividerY = priceY + 190;
+  const priceY = titleY + titleLine * title.length + 40;
+  const dividerY = priceY + PRICE_H + 40;
   const descriptionY = dividerY + 40;
 
-  // Описание режем по тому месту, которое осталось до подвала, а не по
-  // постоянным шести строкам: у длинного заголовка их столько уже не помещается.
-  ctx.font = `48px ${REGULAR}`;
-  const fits = Math.max(0, Math.floor((TEXT_BOTTOM - descriptionY) / LINE));
-  const description =
-    parsed.description && fits > 0 ? wrap(ctx, parsed.description, MAXW, Math.min(6, fits)) : [];
+  // Описание тоже подбирается по кеглю: сначала пробуем крупный, и если абзац в
+  // остаток полосы не влезает — мельчим, пока не влезет целиком. Обрываем
+  // многоточием, только когда не помогает и самый мелкий: дочитать объявление
+  // в ролике важнее, чем держать один кегль на всех.
+  const room = TEXT_BOTTOM - descriptionY;
+  let descSize = DESC_STEPS[DESC_STEPS.length - 1];
+  let description = [];
+  if (parsed.description && room > 0) {
+    for (const size of DESC_STEPS) {
+      ctx.font = `${size}px ${REGULAR}`;
+      const lines = wrapAll(ctx, parsed.description, MAXW);
+      descSize = size;
+      description = lines;
+      const fits = Math.min(DESC_MAX_LINES, Math.floor(room / descLeading(size)));
+      if (lines.length <= fits) break;
+    }
+    ctx.font = `${descSize}px ${REGULAR}`;
+    const fits = Math.min(DESC_MAX_LINES, Math.floor(room / descLeading(descSize)));
+    description = fits > 0 ? clamp(ctx, description, MAXW, fits) : [];
+  }
+  const descLine = descLeading(descSize);
 
   return {
     accent,
     index, total,
-    meta,
-    title, titleY,
-    amount, pricePrefix, priceFallback, priceWidth, priceY,
+    meta, metaSize,
+    title, titleY, titleSize, titleLine,
+    amount, pricePrefix, priceFallback, priceWidth, priceY, priceSize,
     dividerY,
-    description, descriptionY,
+    description, descriptionY, descSize, descLine,
   };
 }
 
@@ -434,13 +497,14 @@ function drawListing(ctx, l, t, progress) {
     const e = easeOut(bp);
     ctx.save();
     ctx.globalAlpha = e;
-    ctx.font = `36px ${SEMI}`;
+    ctx.font = `${l.metaSize}px ${SEMI}`;
     ctx.fillStyle = l.accent;
     tracked(ctx, l.meta, PAD, META_TOP + (1 - e) * 20, 5);
 
     // «1 / 3» на другом краю той же строки. Без счётчика зритель не знает, что
     // за первым объявлением будет ещё два, и уходит с ролика на середине.
     if (l.total > 1) {
+      ctx.font = `36px ${SEMI}`;
       ctx.textAlign = 'right';
       ctx.fillStyle = rgba(COLORS.text, 0.35);
       ctx.fillText(`${l.index + 1} / ${l.total}`, DW - PAD, META_TOP + (1 - e) * 20);
@@ -457,10 +521,10 @@ function drawListing(ctx, l, t, progress) {
   }
 
   // Заголовок — строка за строкой, а не разом: взгляд успевает зацепиться
-  ctx.font = `104px ${BOLD}`;
+  ctx.font = `${l.titleSize}px ${BOLD}`;
   ctx.fillStyle = COLORS.text;
   l.title.forEach((line, i) =>
-    rise(ctx, line, PAD, l.titleY + i * TITLE_LINE, at(t, 0.45 + i * 0.12, 0.5)));
+    rise(ctx, line, PAD, l.titleY + i * l.titleLine, at(t, 0.45 + i * 0.12, 0.5)));
 
   // Цена в контурной рамке и досчитывается до своей суммы — на этом кадре
   // взгляд и должен остановиться. Рамка вместо заливки: на бумажной полосе
@@ -476,15 +540,15 @@ function drawListing(ctx, l, t, progress) {
     ctx.globalAlpha = Math.min(1, pp * 2);
     // Масштабируем от левого края рамки, а не от её середины: иначе на выезде
     // текст уезжал бы за поля полосы.
-    ctx.translate(PAD, l.priceY + 75);
+    ctx.translate(PAD, l.priceY + PRICE_H / 2);
     const s = 0.82 + easeBack(pp) * 0.18;
     ctx.scale(s, s);
     // «Цена договорная» — не сумма, и держать её тем же плотным контуром
     // нельзя: она кричала бы громче заголовка.
     ctx.strokeStyle = l.amount ? COLORS.text : rgba(COLORS.text, 0.3);
     ctx.lineWidth = 6;
-    roundRect(ctx, 0, -75, l.priceWidth, 150, 0, true);
-    ctx.font = `104px ${BOLD}`;
+    roundRect(ctx, 0, -PRICE_H / 2, l.priceWidth, PRICE_H, 0, true);
+    ctx.font = `${l.priceSize}px ${BOLD}`;
     ctx.fillStyle = l.amount ? COLORS.text : rgba(COLORS.text, 0.5);
     ctx.textBaseline = 'middle';
     ctx.fillText(price, 36, 2);
@@ -498,10 +562,10 @@ function drawListing(ctx, l, t, progress) {
     ctx.fillRect(PAD, l.dividerY, MAXW * easeOut(dp), 2);
   }
 
-  ctx.font = `48px ${REGULAR}`;
+  ctx.font = `${l.descSize}px ${REGULAR}`;
   ctx.fillStyle = COLORS.body;
   l.description.forEach((line, i) =>
-    rise(ctx, line, PAD, l.descriptionY + i * 66, at(t, 1.75 + i * 0.09, 0.45), 30)
+    rise(ctx, line, PAD, l.descriptionY + i * l.descLine, at(t, 1.75 + i * 0.07, 0.45), 30)
   );
 
   // Подвал прибит к низу кадра, а не к концу текста: у объявлений разная длина,
