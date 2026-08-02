@@ -93,7 +93,23 @@ const COLLECTIONS = {
   board: 'Объявления дня',
 };
 
-const collectionTitle = (listingType) => COLLECTIONS[listingType] || COLLECTIONS.order;
+// Выпуск из одного объявления админ выпускает руками (/now), и «Вакансии дня»
+// над единственной карточкой читались бы как обещание, которого ролик не
+// выполняет. Отдельный список, а не склейка окончаний: слова разного рода, и
+// правило вышло бы длиннее самих трёх строк.
+const COLLECTIONS_ONE = {
+  vacancy: 'Вакансия дня',
+  order: 'Заказ дня',
+  board: 'Объявление дня',
+};
+
+// count по умолчанию нулевой, то есть множественное: зовут эту функцию и там,
+// где карточек ещё нет, — например, чтобы назвать очередь, которая только
+// копится («Вакансии дня: 2 из 5»).
+const collectionTitle = (listingType, count = 0) => {
+  const set = count === 1 ? COLLECTIONS_ONE : COLLECTIONS;
+  return set[listingType] || set.order;
+};
 
 const MONTHS = [
   'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
@@ -718,7 +734,8 @@ function createRenderer(items, opts = {}) {
   const ctx = canvas.getContext('2d');
   // Заголовок выпуска берём по первому объявлению: пачка собирается из одного
   // типа (см. очереди в social/index.js), так что он общий на весь ролик.
-  const collection = opts.collection || collectionTitle(items[0] && items[0].listingType);
+  const collection =
+    opts.collection || collectionTitle(items[0] && items[0].listingType, items.length);
   const day = opts.day || dayLabel();
   const cta = opts.cta || DEFAULT_CTA;
   const cards = items.map(({ parsed, listingType }, i) => ({

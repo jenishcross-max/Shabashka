@@ -262,7 +262,7 @@ async function runBatch(entries, opts = {}) {
   const job = {
     items: entries.map(({ ctx, ...item }) => item),
     listingType: entries[0].listingType,
-    collection: opts.collection || card.collectionTitle(entries[0].listingType),
+    collection: opts.collection || card.collectionTitle(entries[0].listingType, entries.length),
     day: opts.day,
     cta: opts.cta,
     digest: Boolean(opts.digest),
@@ -289,6 +289,25 @@ function flush(listingType) {
   if (q.length < BATCH_SIZE) return;
   const entries = q.splice(0, BATCH_SIZE);
   runBatch(entries).catch((err) => console.error('Автопостинг (ролик):', err));
+}
+
+// Выпускает ролик из того, что уже стоит в очереди, не дожидаясь полной пачки.
+// Обычно ролик ждёт BATCH_SIZE, и это правильная экономия: суточную квоту
+// Instagram тратит пост, а не объявление. Но у ожидания нет конца — тип, который
+// приходит по одному в день, не доедет до Instagram никогда. Здесь админ говорит
+// «выпускай что есть» и сам платит за это местом в квоте.
+//
+// Возвращает, сколько объявлений уехало, — 0 значит «очередь этого типа пуста».
+function flushNow(listingType) {
+  const q = queueFor(listingType);
+  if (!q.length) return 0;
+  // Больше пачки не берём даже по команде: BATCH_SIZE — это не только квота, но
+  // и длина ролика, а лишнее пусть дожидается своего выпуска.
+  const entries = q.splice(0, BATCH_SIZE);
+  // Намеренно без await, как и в flush: сборка и обработка на стороне Meta —
+  // это минуты, а ответить на команду надо сразу.
+  runBatch(entries).catch((err) => console.error('Автопостинг (ролик по команде):', err));
+  return entries.length;
 }
 
 // Ролик-дайджест: подборка уже опубликованного с сайта (см. digestRepo), а не
@@ -361,6 +380,7 @@ async function shareListing(parsed, listingType, siteLink, ctx) {
 module.exports = {
   shareListing,
   shareDigest,
+  flushNow,
   retry,
   onReel,
   onThreads,

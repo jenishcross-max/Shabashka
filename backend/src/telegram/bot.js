@@ -337,6 +337,11 @@ const DIGEST_TYPES = [
 // Такой ролик лучше не выпускать вовсе: он тратит место в суточной квоте.
 const DIGEST_MIN = 3;
 
+// Слова-синонимы /now. Набор нарочно короткий и без «давай» с «поехали»: чем
+// шире список, тем выше шанс, что обычная фраза случайно выпустит ролик и
+// потратит место в суточной квоте Instagram.
+const FLUSH_WORDS = new Set(['выпусти', 'выпускай', 'публикуй']);
+
 function digestMenu() {
   return {
     reply_markup: {
@@ -388,6 +393,67 @@ async function makeDigest(chatId, listingType) {
       'Ролик пришлю сюда и выложу в Instagram — это минуты.',
     ].join('\n')
   );
+}
+
+// Подписи типов для кнопок — те же, что и у подборки: пусть в боте один тип
+// всегда выглядит одинаково, каким бы способом его ни выбирали.
+const TYPE_LABELS = Object.fromEntries(DIGEST_TYPES);
+
+function flushMenu(byType) {
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        byType.map((q) => ({
+          // Число на кнопке — не украшение: от него зависит, стоит ли выпускать
+          // сейчас, и без него пришлось бы держать в голове ответ /stats.
+          text: `${TYPE_LABELS[q.listingType] || q.listingType} ${q.count}`,
+          callback_data: `fl:${q.listingType}`,
+        })),
+      ],
+    },
+  };
+}
+
+// Досрочный выпуск: собрать ролик из того, что уже ждёт в очереди, не дожидаясь
+// полной пачки. Обычно объявление стоит, пока не наберётся social.BATCH_SIZE
+// того же типа, — а если тип приходит по одному в день, ждать оно будет вечно.
+async function flushQueue(chatId, listingType) {
+  const sent = social.flushNow(listingType);
+  if (!sent) {
+    // Между показом кнопок и нажатием очередь могла уехать сама, набрав пачку.
+    await tg.sendMessage(chatId, '🎬 Очередь уже пуста — видимо, ролик уехал сам.');
+    return;
+  }
+
+  const collection = social.collectionTitle(listingType, sent);
+  await tg.sendMessage(
+    chatId,
+    [
+      `🎬 Собираю «${tg.esc(collection)}» — ${sent} ${tg.esc(digestRepo.word(listingType, sent))},`,
+      `не дожидаясь ${social.BATCH_SIZE}. Ролик пришлю сюда и выложу в Instagram.`,
+    ].join('\n')
+  );
+}
+
+// Что выпускать, спрашиваем только когда ждёт больше одного типа: очередь у
+// каждого типа своя, и ролик собирается из объявлений одного типа.
+async function onFlushCommand(chatId) {
+  const byType = social.queuedByType();
+
+  if (!byType.length) {
+    await tg.sendMessage(
+      chatId,
+      '🎬 Ролика никто не ждёт — очередь пуста. Пришлите скриншот или соберите подборку с сайта: /top'
+    );
+    return;
+  }
+
+  if (byType.length === 1) {
+    await flushQueue(chatId, byType[0].listingType);
+    return;
+  }
+
+  await tg.sendMessage(chatId, '🎬 Ролика ждут объявления разных типов. Что выпускаем?', flushMenu(byType));
 }
 
 // Итог дня: сколько ушло на сайт и сколько роликов ещё едет на площадки.
@@ -619,6 +685,12 @@ async function onMessage(message) {
         `Значит, вакансия ждёт ещё двух вакансий: пока их не ${social.BATCH_SIZE}, ролик не поедет.`,
         'Сколько чего накопилось — в /stats. Про каждое напишу отдельно, когда дойдёт очередь.',
         '',
+        '/now — не ждать: собрать ролик из того, что уже в очереди, хоть из одного',
+        'объявления. Ролик из одного так и называется — «Вакансия дня», в единственном',
+        'числе. Работает и словом: напишите «выпусти», «выпускай» или «публикуй».',
+        'Ждут разные типы — спрошу, какой выпускать. Учтите цену: Instagram считает',
+        `посты, и ролик из одного объявления займёт в квоте столько же, сколько из ${social.BATCH_SIZE}.`,
+        '',
         'Если ролик не ушёл в Instagram или Threads (у Meta часто рвётся соединение),',
         'пришлю сам ролик и кнопку 🔁 «Попробовать опубликовать ещё раз» —',
         'нажал, и он поедет заново, без пересборки.',
@@ -639,6 +711,14 @@ async function onMessage(message) {
 
   if (text === '/stats') {
     await tg.sendMessage(chatId, await statsText());
+    return;
+  }
+
+  // «Выпускай» словом — потому что команду эту дают на бегу, и вспоминать её
+  // имя в такой момент не хочется. Короткие слова до этой проверки всё равно
+  // ни во что не превращались: объявлением текст становится только с 15 знаков.
+  if (text === '/now' || FLUSH_WORDS.has(text.toLowerCase())) {
+    await onFlushCommand(chatId);
     return;
   }
 
@@ -728,6 +808,20 @@ async function onCallback(query) {
     makeDigest(chatId, rawId).catch(async (err) => {
       console.error('Подборка:', err);
       await tg.sendMessage(chatId, `⚠️ Подборка не вышла: ${tg.esc(err.message)}`).catch(() => {});
+    });
+    return;
+  }
+
+  if (action === 'fl') {
+    // Кнопки убираем сразу: второе нажатие выпустило бы второй ролик — уже
+    // пустой, но место в суточной квоте Instagram он бы занял.
+    await tg.answerCallbackQuery(query.id, 'Собираю ролик');
+    await tg
+      .call('editMessageReplyMarkup', { chat_id: chatId, message_id: messageId })
+      .catch(() => {});
+    flushQueue(chatId, rawId).catch(async (err) => {
+      console.error('Досрочный выпуск:', err);
+      await tg.sendMessage(chatId, `⚠️ Выпустить не вышло: ${tg.esc(err.message)}`).catch(() => {});
     });
     return;
   }
