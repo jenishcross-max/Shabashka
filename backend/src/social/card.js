@@ -52,7 +52,9 @@ const SEMI = 'GolosCyrSemi, GolosExtSemi, GolosLatSemi';
 const BOLD = 'GolosCyrBold, GolosExtBold, GolosLatBold';
 
 const COLORS = {
-  bg: '#fbf7f6',
+  // Тёплая бумага, а не белый лист: на белом кремовый колонтитул и чёрная
+  // типографика выглядят распечаткой, на бумаге — журнальной полосой.
+  bg: '#f4f1ec',
   text: '#241a19',
   muted: '#7a6b69',
   body: '#4a3f3d',
@@ -122,33 +124,33 @@ function rgba(hex, alpha) {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
-// Объявление лежит не прямо на фоне, а на белой карточке с тенью: фон можно
-// сделать сколь угодно цветным и живым, а текст всё равно читается — он на
-// белом. Заодно кадр перестаёт быть плоской заливкой с буквами и выглядит как
-// вещь, которую положили на стол.
-const CARD_X = 56;
-const CARD_W = DW - CARD_X * 2;
-const CARD_R = 56;
-
-const PAD = 112;
+// Кадр набран как журнальная полоса: объявление лежит прямо на бумаге, а не на
+// карточке поверх цветного фона. Держат его не плашки, а типографика и линейки —
+// цветной колонтитул во всю ширину сверху, жирная линейка под шапкой, ценник в
+// рамке, номер выпуска гигантом на полях. Так кадр читается как страница, а не
+// как слайд из конструктора, и цвет остаётся акцентом, а не заливкой.
+const PAD = 88;
 const MAXW = DW - PAD * 2;
 
 // Instagram кладёт поверх ролика свои кнопки: сверху — имя аккаунта и «...»,
-// снизу — подпись, лайки, «Подписаться». Раньше шапка выпуска стояла у самой
-// кромки кадра, и в ленте «ТОП-5 ВАКАНСИЙ» просто не было видно — её закрывало.
-// Всё, что должно читаться, теперь живёт между этими полосами.
+// снизу — подпись, лайки, «Подписаться». Всё, что должно читаться, живёт между
+// этими полосами: колонтитул начинается не у кромки кадра, а на SAFE_TOP.
 const SAFE_TOP = 250;
-// Подвал делаем выше, чем сама плашка с логотипом (260): нижние 180 точек
-// уходят под подпись Instagram, и там остаётся просто тёмное поле. Так адрес
-// сайта виден целиком, а полоса у кромки выглядит задуманной, а не срезанной.
+const HEAD_H = 104;
+const HEAD_BOTTOM = SAFE_TOP + HEAD_H;
+// Ниже FOOTER_TOP — подвал с адресом сайта; его нижние 180 точек уходят под
+// подпись Instagram, поэтому логотип и строки прижаты к его верхнему краю.
 const FOOTER_H = 440;
 const FOOTER_TOP = DH - FOOTER_H;
-// Белая карточка: от шапки выпуска до подвала, с воздухом по краям.
-const CARD_TOP = 400;
-const CARD_BOTTOM = FOOTER_TOP - 44;
-// Откуда начинается само объявление — внутри карточки, с её же отступом.
-const BODY_TOP = CARD_TOP + 72;
+
+// Вертикаль полосы: капс-строка, жирная линейка, заголовок — и дальше по тексту.
+const META_TOP = 452;
+const RULE_Y = 520;
+const BODY_TOP = 570;
+const TITLE_LINE = 114;
 const LINE = 66;
+// Докуда можно опускать описание, чтобы оно не влезло в подвал.
+const TEXT_BOTTOM = FOOTER_TOP - 40;
 
 let fontsReady = false;
 function ensureFonts() {
@@ -227,7 +229,7 @@ function wrap(ctx, text, maxWidth, maxLines) {
   return lines;
 }
 
-function roundRect(ctx, x, y, w, h, r) {
+function roundRect(ctx, x, y, w, h, r, stroke) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
   ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -235,8 +237,23 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r);
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
-  ctx.fill();
+  if (stroke) ctx.stroke();
+  else ctx.fill();
 }
+
+// Капс без разрядки слипается в сплошной забор, и «ВАКАНСИЯ · ТРАНСПОРТ ·
+// БИШКЕК» читается одним длинным словом. Канвас межбуквенного интервала не
+// умеет, поэтому строку рисуем по букве.
+function tracked(ctx, text, x, y, extra) {
+  let cx = x;
+  for (const ch of text) {
+    ctx.fillText(ch, cx, y);
+    cx += ctx.measureText(ch).width + extra;
+  }
+}
+
+const trackedWidth = (ctx, text, extra) =>
+  [...text].reduce((w, ch) => w + ctx.measureText(ch).width + extra, 0) - extra;
 
 // Строка выезжает снизу и проявляется. Одна и та же повадка у заголовка,
 // описания и подписей — разнобой в мелочах выглядел бы как сбой, а не как стиль.
@@ -252,79 +269,74 @@ function rise(ctx, text, x, y, p, shift = 44) {
 // незачем, координаты от времени не зависят — от него зависит только подача.
 function layout(ctx, parsed, listingType, index, total) {
   const isVacancy = listingType === 'vacancy';
-
-  ctx.font = `40px ${SEMI}`;
   // То, что не заказ и не вакансия, — продажа, аренда, свои услуги — уходит на
-  // доску №6. Плашка называет её по номеру, а не словом «объявление»: так короче
-  // и сразу понятно, куда кликать на сайте.
+  // доску №6. Называем её по номеру, а не словом «объявление»: так короче и
+  // сразу понятно, куда кликать на сайте.
   const isBoard = listingType === 'board';
   const badge = isVacancy ? 'ВАКАНСИЯ' : isBoard ? 'ДОСКА №6' : 'ЗАКАЗ';
-  const badgeWidth = ctx.measureText(badge).width + 64;
-  // У доски свой синий цвет вместо категорийного акцента — на ней вперемешку
-  // жильё, техника и услуги без общей категории, и плашка не должна прыгать по
-  // цвету от объявления к объявлению.
-  const badgeAccent = isBoard ? '#2563eb' : null;
 
-  ctx.font = `84px ${BOLD}`;
+  // У доски свой синий вместо категорийного акцента: там вперемешку жильё,
+  // техника и услуги без общей категории, и кадр не должен прыгать по цвету от
+  // объявления к объявлению.
+  const accent = isBoard ? '#2563eb' : accentFor(parsed.category);
+
+  // Категория и город — одной капс-строкой над заголовком, как рубрика в
+  // журнале. Тип объявления в неё не берём: «ВАКАНСИЯ» под колонтитулом
+  // «ТОП-5 ВАКАНСИЙ» — это одно и то же слово дважды, и из-за него в строку
+  // переставала влезать категория. У доски наоборот: категорию не показываем
+  // (там продают дом и сдают квартиру, а категории у нас про работу), и номер
+  // доски остаётся единственным, что объясняет, куда кликать на сайте.
+  ctx.font = `36px ${SEMI}`;
+  const metaParts = [isBoard ? badge : parsed.category, parsed.city].filter(Boolean);
+  let meta = metaParts.join(' · ').toUpperCase();
+  // Если рубрика с разрядкой не влезает — выкидываем среднюю часть целиком, а не
+  // режем многоточием: обрубок капса выглядит как сбой вёрстки. Справа от неё
+  // ещё стоит счётчик, поэтому меряем не по всей ширине полосы.
+  while (metaParts.length > 1 && trackedWidth(ctx, meta, 5) > MAXW - 170) {
+    metaParts.splice(-2, 1);
+    meta = metaParts.join(' · ').toUpperCase();
+  }
+
+  ctx.font = `104px ${BOLD}`;
   const title = wrap(ctx, parsed.title, MAXW, 4);
-
-  ctx.font = `46px ${REGULAR}`;
-  // Категорию у доски не показываем: там продают дом и сдают квартиру, а категории
-  // у нас про работу — «Другое · Бишкек» на кадре только сбивало бы с толку.
-  const metaText = [listingType === 'board' ? '' : parsed.category, parsed.city]
-    .filter(Boolean)
-    .join(' · ');
-  const meta = metaText ? wrap(ctx, metaText, MAXW, 1)[0] : '';
 
   // Цена — самое заметное на кадре: по ней в ленте решают, читать ли дальше.
   // У вакансии в этом поле нижняя граница зарплаты, поэтому и подпись другая.
   const amount = Number(String(parsed.budget || '').replace(/[^\d]/g, '')) || 0;
   const pricePrefix = isVacancy ? 'от ' : '';
-  // «Зарплата договорная» набранная 92-м кеглем шире карточки: плашка упиралась
-  // в её край, а текст вылезал наружу. Сокращаем — «з/п» на объявлении о работе
-  // читается однозначно.
+  // «Зарплата договорная» набранная крупным кеглем шире полосы, и рамка
+  // упиралась в поля. Сокращаем — «з/п» на объявлении о работе читается
+  // однозначно.
   const priceFallback = isVacancy ? 'З/п договорная' : 'Цена договорная';
 
-  // Плашку под ценой меряем по конечной сумме и держим неподвижной: цифры на
-  // кадре досчитываются, и плашка по ширине текста дёргалась бы все полсекунды.
-  ctx.font = `92px ${BOLD}`;
+  // Рамку ценника меряем по конечной сумме и держим неподвижной: цифры на кадре
+  // досчитываются, и рамка по ширине текста дёргалась бы все полсекунды.
+  ctx.font = `104px ${BOLD}`;
   const priceFinal = amount ? `${pricePrefix}${money(amount)} сом` : priceFallback;
-  const priceWidth = Math.min(MAXW, ctx.measureText(priceFinal).width + 64);
+  const priceWidth = Math.min(MAXW, ctx.measureText(priceFinal).width + 72);
 
-  // Блок начинается под шапкой выпуска: и она не закрывает плашку «ЗАКАЗ», и в
-  // сетке профиля (Instagram берёт из кадра 4:5 по центру, срезая сверху и снизу
-  // по 285 точек) объявление видно целиком.
-  let y = BODY_TOP;
-  const badgeY = y;
-  y += 84 + 64;
-  const titleY = y;
-  y += 104 * title.length + 28;
-  const metaY = y;
-  if (meta) y += 76;
-  const priceY = y;
-  y += 156;
-  const dividerY = y;
-  y += 56;
-  const descriptionY = y;
+  // Вертикаль полосы. Заголовок стоит сразу под жирной линейкой, дальше ценник,
+  // тонкая линейка и текст. В сетке профиля (Instagram берёт из кадра 4:5 по
+  // центру, срезая сверху и снизу по 285 точек) в кадр попадают заголовок и цена
+  // — то есть ровно то, по чему объявление и выбирают.
+  const titleY = BODY_TOP;
+  const priceY = titleY + TITLE_LINE * title.length + 40;
+  const dividerY = priceY + 190;
+  const descriptionY = dividerY + 40;
 
   // Описание режем по тому месту, которое осталось до подвала, а не по
-  // постоянным шести строкам: у длинного заголовка их столько уже не помещается,
-  // и последние строки уходили под тёмную плашку.
+  // постоянным шести строкам: у длинного заголовка их столько уже не помещается.
   ctx.font = `48px ${REGULAR}`;
-  // Отступ снизу держим в пол-строки: на 56 точках последняя строка описания
-  // обрывалась многоточием при пустой нижней трети листа.
-  const fits = Math.max(0, Math.floor((CARD_BOTTOM - 28 - descriptionY) / LINE));
+  const fits = Math.max(0, Math.floor((TEXT_BOTTOM - descriptionY) / LINE));
   const description =
     parsed.description && fits > 0 ? wrap(ctx, parsed.description, MAXW, Math.min(6, fits)) : [];
 
   return {
-    accent: accentFor(parsed.category),
+    accent,
     index, total,
-    badge, badgeWidth, badgeAccent, badgeY,
+    meta,
     title, titleY,
-    meta, metaY,
-    amount, pricePrefix, priceFallback, priceWidth,
-    priceY,
+    amount, pricePrefix, priceFallback, priceWidth, priceY,
     dividerY,
     description, descriptionY,
   };
@@ -349,156 +361,111 @@ function glow(ctx, x, y, r, color, alpha) {
 // t — время от начала своей карточки, progress — доля всего ролика: полоска
 // вверху показывает, сколько осталось до конца видео, а не до конца карточки.
 function drawListing(ctx, l, t, progress) {
+  // Бумага. Ровный кремовый, а не градиент во всю высоту: цвет в этом макете —
+  // акцент (колонтитул, рубрика), и если залить им же фон, акценту негде
+  // прозвучать. Подкраска остаётся, но еле слышная — она только снимает
+  // ощущение белого листа из принтера.
   ctx.fillStyle = COLORS.bg;
   ctx.fillRect(0, 0, DW, DH);
+  glow(ctx, 980 + Math.cos(t * 0.4) * 60, 240 + Math.sin(t * 0.35) * 40, 620, l.accent, 0.1);
+  glow(ctx, 80 + Math.sin(t * 0.3) * 50, 1620 + Math.cos(t * 0.32) * 40, 560, l.accent, 0.07);
 
-  // Фон уводим по диагонали в цвет категории — сверху почти белый, внизу
-  // подкрашенный. Кадр перестаёт быть плоским, а текст поверх не страдает:
-  // максимум насыщенности здесь 12%.
-  const wash = ctx.createLinearGradient(DW, 0, 0, DH);
-  wash.addColorStop(0, rgba(COLORS.white, 0.55));
-  wash.addColorStop(0.45, rgba(l.accent, 0.14));
-  wash.addColorStop(1, rgba(l.accent, 0.38));
-  ctx.fillStyle = wash;
-  ctx.fillRect(0, 0, DW, DH);
-
-  // Три пятна медленно плывут по фону. Без них девять секунд неподвижного
-  // поля в ленте читаются как зависшая картинка.
-  glow(ctx, 180 + Math.sin(t * 0.5) * 60, 300 + Math.cos(t * 0.4) * 50, 460, l.accent, 0.34);
-  glow(ctx, 920 + Math.cos(t * 0.45) * 70, 1180 + Math.sin(t * 0.55) * 60, 420, l.accent, 0.26);
-  glow(ctx, 620 + Math.sin(t * 0.3 + 2) * 90, 1750 + Math.cos(t * 0.35) * 40, 380, COLORS.red, 0.14);
-  glow(ctx, 940 + Math.sin(t * 0.4) * 40, 220 + Math.cos(t * 0.5) * 30, 300, COLORS.white, 0.5);
-
-  // Два тонких кольца крутятся вокруг кадра — движение, которое видно боковым
-  // зрением и не мешает читать.
-  ctx.save();
-  ctx.strokeStyle = rgba(l.accent, 0.14);
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(940 + Math.cos(t * 0.6) * 40, 620 + Math.sin(t * 0.6) * 40, 300, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(120 + Math.sin(t * 0.5) * 50, 1480 + Math.cos(t * 0.5) * 50, 240, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.restore();
-
-  // Полоска прогресса: в ленте она подсказывает, что ролик короткий и
-  // досмотреть его — секунды. Лежит на верхней кромке шапки выпуска, а не
-  // кадра: у кромки её закрывала бы шапка Instagram.
-  ctx.fillStyle = rgba(COLORS.white, 0.55);
-  roundRect(ctx, CARD_X, CARD_TOP - 30, CARD_W, 10, 5);
-  ctx.fillStyle = l.accent;
-  roundRect(ctx, CARD_X, CARD_TOP - 30, Math.max(10, CARD_W * Math.min(1, progress)), 10, 5);
-
-  // Шапка выпуска: «ВАКАНСИИ ДНЯ» слева, число справа. Рисуем её до наезда и
-  // не трогаем зумом — она должна стоять неподвижно, как полоска прогресса:
-  // это рамка ролика, а не часть карточки. По той же причине она переживает
-  // смену карточек без анимации появления, только с общим проявлением в начале.
-  const hp = at(t, 0.05, 0.5);
+  // Колонтитул: цветная полоса во всю ширину кадра. Она держит верх так же, как
+  // в журнале — шмуцтитул: под ней начинается полоса с объявлением. Рисуем её
+  // до наезда и не трогаем зумом — это рамка ролика, а не часть объявления,
+  // поэтому она стоит неподвижно и переживает смену карточек без анимации.
+  const hp = at(t, 0.05, 0.55);
   if (hp > 0) {
     const e = easeOut(hp);
     ctx.save();
-    ctx.globalAlpha = e;
-    ctx.translate(0, (1 - e) * -24);
-    // Название выпуска — белым по цветной плашке, а не текстом по фону: на
-    // цветном градиенте цветные же буквы тонули, а плашка держит кадр сверху
-    // так же, как подвал держит его снизу.
+    // Полоса раскрывается слева направо, а не проявляется: в ленте это первое
+    // движение кадра, и оно должно читаться как «начали», а не как загрузка.
+    ctx.fillStyle = l.accent;
+    ctx.fillRect(0, SAFE_TOP, DW * e, HEAD_H);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, SAFE_TOP, DW * e, HEAD_H);
+    ctx.clip();
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-    ctx.font = `46px ${BOLD}`;
-    const title = l.collection.toUpperCase();
-    const tw = ctx.measureText(title).width;
-    ctx.fillStyle = l.accent;
-    roundRect(ctx, CARD_X, SAFE_TOP, tw + 76, 92, 46);
+    ctx.font = `40px ${BOLD}`;
     ctx.fillStyle = COLORS.white;
-    ctx.fillText(title, CARD_X + 38, SAFE_TOP + 48);
+    tracked(ctx, l.collection.toUpperCase(), PAD, SAFE_TOP + HEAD_H / 2, 5);
+    ctx.textAlign = 'right';
+    ctx.font = `40px ${SEMI}`;
+    ctx.fillStyle = rgba(COLORS.white, 0.85);
+    ctx.fillText(l.day, DW - PAD, SAFE_TOP + HEAD_H / 2);
+    ctx.restore();
 
-    // Дату кладём на светлую плашку, а не пишем прямо по фону: серые буквы по
-    // цветному градиенту читались хуже всего в кадре, а пара плашек по краям
-    // держит шапку как строку, а не как два случайно поставленных слова.
-    ctx.font = `44px ${SEMI}`;
-    const dw = ctx.measureText(l.day).width + 60;
-    ctx.fillStyle = rgba(COLORS.white, 0.72);
-    roundRect(ctx, DW - CARD_X - dw, SAFE_TOP + 6, dw, 80, 40);
-    ctx.fillStyle = rgba(COLORS.text, 0.72);
-    ctx.fillText(l.day, DW - CARD_X - dw + 30, SAFE_TOP + 48);
+    // Прогресс ролика — светлой линией по нижней кромке колонтитула. Отдельной
+    // полоски больше нет: в этом макете она была бы третьей горизонталью подряд.
+    ctx.globalAlpha = e;
+    ctx.fillStyle = rgba(COLORS.white, 0.85);
+    ctx.fillRect(0, HEAD_BOTTOM - 7, DW * Math.min(1, progress), 7);
     ctx.restore();
   }
 
-  // Медленный наезд на весь кадр: движение есть, а читать не мешает.
+  // Медленный наезд на полосу: движение есть, а читать не мешает. Колонтитул
+  // остался снаружи и не едет — иначе цветная полоса лезла бы за край кадра.
   ctx.save();
-  const zoom = 1 + 0.035 * easeInOut(Math.min(1, t / CARD_SECONDS));
+  const zoom = 1 + 0.022 * easeInOut(Math.min(1, t / CARD_SECONDS));
   ctx.translate(DW / 2, DH / 2);
   ctx.scale(zoom, zoom);
   ctx.translate(-DW / 2, -DH / 2);
 
-  // Сама карточка: белый лист с мягкой тенью цвета категории. Тень цветная, а
-  // не серая, — серая на кремовом фоне выглядит грязью, цветная читается как
-  // свет. Рисуем её внутри наезда, чтобы лист жил вместе с содержимым.
-  // Тень собрана из трёх расходящихся прямоугольников, а не сделана shadowBlur:
-  // размытие на 70 точек считается для каждого из девятисот кадров и удваивало
-  // время сборки ролика — на бесплатном Render это заметно, а разницу в кадре
-  // видно только если поставить два варианта рядом.
-  const cardH = CARD_BOTTOM - CARD_TOP;
-  for (let i = 3; i > 0; i -= 1) {
-    ctx.fillStyle = rgba(l.accent, 0.06);
-    roundRect(ctx, CARD_X - i * 6, CARD_TOP + i * 6, CARD_W + i * 12, cardH + i * 6, CARD_R + i * 6);
-  }
-  ctx.fillStyle = COLORS.white;
-  roundRect(ctx, CARD_X, CARD_TOP, CARD_W, cardH, CARD_R);
-
-  // Номер объявления водяным знаком в углу листа: он говорит, где мы в ролике,
-  // и заполняет пустоту у коротких объявлений, не мешая читать длинные.
+  // Номер объявления гигантом на полях — как номер страницы в журнале. Он
+  // говорит, где мы в ролике, и заполняет низ полосы у коротких объявлений.
+  // Рисуем до текста и совсем бледным: это фактура бумаги, а не сообщение.
   ctx.save();
   ctx.textAlign = 'right';
   ctx.textBaseline = 'alphabetic';
-  ctx.font = `280px ${BOLD}`;
-  ctx.fillStyle = rgba(l.accent, 0.045);
-  ctx.fillText(String(l.index + 1).padStart(2, '0'), CARD_X + CARD_W - 40, CARD_BOTTOM - 32);
+  ctx.font = `420px ${BOLD}`;
+  ctx.fillStyle = rgba(COLORS.text, 0.04);
+  ctx.fillText(String(l.index + 1).padStart(2, '0'), DW - 40, TEXT_BOTTOM + 20);
   ctx.restore();
 
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
 
-  // Плашка типа объявления выезжает слева за край кадра
+  // Рубрика: «ВАКАНСИЯ · ТРАНСПОРТ · БИШКЕК» цветным капсом в разрядку. Она
+  // заменила цветную плашку — на полосе плашка спорила бы с колонтитулом.
   const bp = at(t, 0.15, 0.5);
   if (bp > 0) {
     const e = easeOut(bp);
+    ctx.save();
     ctx.globalAlpha = e;
-    ctx.fillStyle = l.badgeAccent || l.accent;
-    roundRect(ctx, PAD - (1 - e) * (PAD + l.badgeWidth), l.badgeY, l.badgeWidth, 84, 42);
-    ctx.fillStyle = COLORS.white;
-    ctx.font = `40px ${SEMI}`;
-    ctx.fillText(l.badge, PAD - (1 - e) * (PAD + l.badgeWidth) + 32, l.badgeY + 22);
-    ctx.globalAlpha = 1;
+    ctx.font = `36px ${SEMI}`;
+    ctx.fillStyle = l.accent;
+    tracked(ctx, l.meta, PAD, META_TOP + (1 - e) * 20, 5);
 
     // «1 / 3» на другом краю той же строки. Без счётчика зритель не знает, что
     // за первым объявлением будет ещё два, и уходит с ролика на середине.
     if (l.total > 1) {
-      ctx.save();
-      ctx.globalAlpha = e;
       ctx.textAlign = 'right';
-      ctx.font = `40px ${SEMI}`;
-      ctx.fillStyle = COLORS.muted;
-      ctx.fillText(`${l.index + 1} / ${l.total}`, DW - PAD, l.badgeY + 22);
-      ctx.restore();
+      ctx.fillStyle = rgba(COLORS.text, 0.35);
+      ctx.fillText(`${l.index + 1} / ${l.total}`, DW - PAD, META_TOP + (1 - e) * 20);
     }
+    ctx.restore();
+  }
+
+  // Жирная линейка под рубрикой — тот самый журнальный приём, который держит
+  // всю полосу. Прочерчивается слева направо вслед за колонтитулом.
+  const rp = at(t, 0.3, 0.5);
+  if (rp > 0) {
+    ctx.fillStyle = COLORS.text;
+    ctx.fillRect(PAD, RULE_Y, MAXW * easeOut(rp), 6);
   }
 
   // Заголовок — строка за строкой, а не разом: взгляд успевает зацепиться
-  ctx.font = `84px ${BOLD}`;
+  ctx.font = `104px ${BOLD}`;
   ctx.fillStyle = COLORS.text;
-  l.title.forEach((line, i) => rise(ctx, line, PAD, l.titleY + i * 104, at(t, 0.45 + i * 0.12, 0.5)));
+  l.title.forEach((line, i) =>
+    rise(ctx, line, PAD, l.titleY + i * TITLE_LINE, at(t, 0.45 + i * 0.12, 0.5)));
 
-  if (l.meta) {
-    ctx.font = `46px ${REGULAR}`;
-    ctx.fillStyle = COLORS.muted;
-    rise(ctx, l.meta, PAD, l.metaY, at(t, 0.95, 0.5));
-  }
-
-  // Цена выскакивает и досчитывается до своей суммы — на этом кадре взгляд
-  // и должен остановиться. Поэтому она лежит на плашке цвета категории:
-  // белым по цветному она заметна даже в превью размером с ноготь.
+  // Цена в контурной рамке и досчитывается до своей суммы — на этом кадре
+  // взгляд и должен остановиться. Рамка вместо заливки: на бумажной полосе
+  // ценник в рамке читается как ценник на витрине, а цветная плашка — как
+  // кнопка из интерфейса.
   const pp = at(t, 1.15, 0.6);
   if (pp > 0) {
     const count = easeOut(at(t, 1.15, 0.9));
@@ -507,30 +474,28 @@ function drawListing(ctx, l, t, progress) {
       : l.priceFallback;
     ctx.save();
     ctx.globalAlpha = Math.min(1, pp * 2);
-    // Масштабируем от левого края плашки, а не от её середины: иначе на выезде
-    // текст уезжал бы за отступ кадра.
-    ctx.translate(PAD, l.priceY + 62);
-    const s = 0.75 + easeBack(pp) * 0.25;
+    // Масштабируем от левого края рамки, а не от её середины: иначе на выезде
+    // текст уезжал бы за поля полосы.
+    ctx.translate(PAD, l.priceY + 75);
+    const s = 0.82 + easeBack(pp) * 0.18;
     ctx.scale(s, s);
-    // «Цена договорная» — не сумма, и заливать её тем же плотным цветом нельзя:
-    // она кричала бы громче заголовка. Ей достаётся бледная плашка с цветным
-    // текстом, настоящей цене — сплошная с белым.
-    ctx.fillStyle = l.amount ? l.accent : rgba(l.accent, 0.12);
-    roundRect(ctx, 0, -62, l.priceWidth, 124, 30);
-    ctx.font = `92px ${BOLD}`;
-    ctx.fillStyle = l.amount ? COLORS.white : l.accent;
-    ctx.fillText(price, 32, -46);
+    // «Цена договорная» — не сумма, и держать её тем же плотным контуром
+    // нельзя: она кричала бы громче заголовка.
+    ctx.strokeStyle = l.amount ? COLORS.text : rgba(COLORS.text, 0.3);
+    ctx.lineWidth = 6;
+    roundRect(ctx, 0, -75, l.priceWidth, 150, 0, true);
+    ctx.font = `104px ${BOLD}`;
+    ctx.fillStyle = l.amount ? COLORS.text : rgba(COLORS.text, 0.5);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(price, 36, 2);
     ctx.restore();
   }
 
-  // Линейка прочерчивается слева направо и гаснет к правому краю
+  // Тонкая линейка перед текстом — пара к жирной сверху
   const dp = at(t, 1.5, 0.5);
   if (dp > 0) {
-    const line = ctx.createLinearGradient(PAD, 0, PAD + MAXW, 0);
-    line.addColorStop(0, rgba(l.accent, 0.55));
-    line.addColorStop(1, rgba(l.accent, 0));
-    ctx.fillStyle = line;
-    ctx.fillRect(PAD, l.dividerY, MAXW * easeOut(dp), 4);
+    ctx.fillStyle = rgba(COLORS.text, 0.2);
+    ctx.fillRect(PAD, l.dividerY, MAXW * easeOut(dp), 2);
   }
 
   ctx.font = `48px ${REGULAR}`;
@@ -540,38 +505,35 @@ function drawListing(ctx, l, t, progress) {
   );
 
   // Подвал прибит к низу кадра, а не к концу текста: у объявлений разная длина,
-  // и «плавающий» логотип в ленте выглядел бы как разные шаблоны.
+  // и «плавающий» логотип в ленте выглядел бы как разные шаблоны. Тёмной плашки
+  // больше нет — полосу закрывает та же жирная линейка, что открывает её сверху.
   const fp = at(t, 2.3, 0.6);
   if (fp > 0) {
     const e = easeOut(fp);
     ctx.save();
-    ctx.translate(0, (1 - e) * FOOTER_H);
+    ctx.globalAlpha = e;
     ctx.fillStyle = COLORS.text;
-    ctx.fillRect(0, FOOTER_TOP, DW, FOOTER_H);
-    // Кант цвета категории по верхней кромке подвала — он связывает тёмную
-    // плашку с остальным кадром, иначе она выглядит приклеенной из другого макета.
-    ctx.fillStyle = l.accent;
-    ctx.fillRect(0, FOOTER_TOP, DW, 6);
+    ctx.fillRect(PAD, FOOTER_TOP + 40, MAXW * e, 4);
 
     const lp = at(t, 2.6, 0.6);
     if (lp > 0) {
       ctx.save();
-      ctx.translate(PAD + 66, FOOTER_TOP + 130);
+      ctx.translate(PAD + 54, FOOTER_TOP + 144);
       ctx.scale(easeBack(lp), easeBack(lp));
       ctx.rotate((1 - easeOut(lp)) * -0.4);
-      logo(ctx, -66, -66, 132, COLORS.red, COLORS.white);
+      logo(ctx, -54, -54, 108, COLORS.red, COLORS.white);
       ctx.restore();
     }
 
-    const textX = PAD + 132 + 36;
-    ctx.font = `64px ${BOLD}`;
-    ctx.fillStyle = COLORS.white;
-    ctx.fillText('Шабашка', textX, FOOTER_TOP + 70);
+    const textX = PAD + 108 + 32;
+    ctx.font = `58px ${BOLD}`;
+    ctx.fillStyle = COLORS.text;
+    ctx.fillText('Шабашка', textX, FOOTER_TOP + 96);
     ctx.fillStyle = COLORS.red;
-    ctx.fillText('.com', textX + ctx.measureText('Шабашка').width, FOOTER_TOP + 70);
-    ctx.font = `38px ${REGULAR}`;
-    ctx.fillStyle = COLORS.muted;
-    ctx.fillText('заказы и вакансии Кыргызстана', textX, FOOTER_TOP + 156);
+    ctx.fillText('.com', textX + ctx.measureText('Шабашка').width, FOOTER_TOP + 96);
+    ctx.font = `34px ${REGULAR}`;
+    ctx.fillStyle = rgba(COLORS.text, 0.5);
+    ctx.fillText('заказы и вакансии Кыргызстана', textX, FOOTER_TOP + 166);
     ctx.restore();
   }
 
@@ -606,42 +568,64 @@ function drawOutro(ctx, t, cta) {
     ctx.fill();
   }
 
-  ctx.textAlign = 'center';
+  // Концовка набрана по тем же правилам, что и полоса с объявлением: левый край,
+  // жирные линейки, капс в разрядку. Центрированная композиция досталась от
+  // прежнего макета и после пересборки читалась как кадр из другого ролика.
+  ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
 
-  const float = Math.sin(t * 1.8) * 12;
+  const float = Math.sin(t * 1.8) * 10;
 
   const lp = at(t, 0.2, 0.7);
   if (lp > 0) {
     ctx.save();
-    ctx.translate(DW / 2, DH / 2 - 380 + float);
+    ctx.translate(PAD + 90, 620 + float);
     ctx.scale(easeBack(lp), easeBack(lp));
     ctx.rotate((1 - easeOut(lp)) * 0.5);
     ctx.globalAlpha = Math.min(1, lp * 2);
-    logo(ctx, -130, -130, 260, COLORS.white, COLORS.red);
+    logo(ctx, -90, -90, 180, COLORS.white, COLORS.red);
     ctx.restore();
   }
 
-  ctx.fillStyle = COLORS.white;
-  ctx.font = `120px ${BOLD}`;
-  rise(ctx, 'Шабашка.com', DW / 2, DH / 2 - 40 + float * 0.4, at(t, 0.5, 0.6));
-
-  ctx.font = `76px ${REGULAR}`;
-  rise(ctx, 'найди работу', DW / 2, DH / 2 + 90, at(t, 0.7, 0.6));
-
-  const up = at(t, 0.9, 0.6);
+  // Линейка над названием — та же, что открывает полосу с объявлением
+  const up = at(t, 0.45, 0.6);
   if (up > 0) {
-    const w = 520 * easeOut(up);
-    roundRect(ctx, DW / 2 - w / 2, DH / 2 + 200, w, 8, 4);
+    ctx.fillStyle = COLORS.white;
+    ctx.fillRect(PAD, 830, MAXW * easeOut(up), 8);
   }
+
+  ctx.fillStyle = COLORS.white;
+  // 124-м «Шабашка.com» встаёт ровно в поля полосы; на 132-м хвост «.com»
+  // подходил к правому краю ближе, чем отступ слева, и строка выглядела съехавшей.
+  ctx.font = `124px ${BOLD}`;
+  rise(ctx, 'Шабашка', PAD, 950 + float * 0.4, at(t, 0.5, 0.6));
+  const nameWidth = ctx.measureText('Шабашка').width;
+  ctx.fillStyle = rgba(COLORS.white, 0.6);
+  rise(ctx, '.com', PAD + nameWidth, 950 + float * 0.4, at(t, 0.6, 0.6));
+
+  ctx.font = `70px ${REGULAR}`;
+  ctx.fillStyle = rgba(COLORS.white, 0.9);
+  rise(ctx, 'найди работу', PAD, 1070, at(t, 0.7, 0.6));
 
   // Строка снизу тихо пульсирует — единственный призыв к действию в ролике,
   // и он должен доживать до конца кадра, а не потеряться в красном поле.
   const cp = at(t, 1.1, 0.6);
   if (cp > 0) {
+    ctx.fillStyle = rgba(COLORS.white, 0.35);
+    ctx.fillRect(PAD, 1180, MAXW * easeOut(cp), 2);
     ctx.globalAlpha = easeOut(cp) * (0.78 + Math.sin(t * 3) * 0.18);
-    ctx.font = `44px ${REGULAR}`;
-    ctx.fillText(cta, DW / 2, DH / 2 + 290);
+    ctx.fillStyle = COLORS.white;
+    // Капс с разрядкой держит строку только пока она короткая. У дайджеста это
+    // «и ещё 37 вакансий на сайте», а у обычного выпуска — «заказы и вакансии по
+    // всему Кыргызстану», и она в капсе за поля не влезает: тогда набираем её
+    // обычным строчным, без разрядки.
+    ctx.font = `44px ${SEMI}`;
+    if (trackedWidth(ctx, cta.toUpperCase(), 4) <= MAXW) {
+      tracked(ctx, cta.toUpperCase(), PAD, 1250, 4);
+    } else {
+      ctx.font = `44px ${REGULAR}`;
+      ctx.fillText(cta, PAD, 1250);
+    }
     ctx.globalAlpha = 1;
   }
 }
