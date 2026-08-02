@@ -35,12 +35,21 @@ const totalSeconds = (count) => count * CARD_SECONDS + OUTRO_SECONDS;
 // пустой кремовый прямоугольник. К 3.6 с нарисовано уже всё, включая подвал.
 const COVER_AT = 3.6;
 
-// @fontsource режет Roboto на subset-файлы, и в одну строку объявления попадают
+// Golos Text вместо Roboto. Roboto — системный шрифт Android, и кадр с ним
+// выглядит не свёрстанным, а собранным по умолчанию. Golos рисовали под русский
+// и кириллицу, у него плотнее очко и есть 800-й вес: заголовок объявления при
+// том же кегле весит заметно больше. Из кириллических бесплатных он единственный
+// из проверенных (Onest, Manrope) закрывает кыргызские ө, ү и ң целиком.
+//
+// @fontsource режет шрифт на subset-файлы, и в одну строку объявления попадают
 // сразу три: латиница («Шабашка.com»), базовая кириллица и cyrillic-ext, где
-// лежат кыргызские ө, ү, ң. Без последнего половина кыргызских слов — квадраты,
+// эти самые ө, ү, ң и лежат. Без последнего половина кыргызских слов — квадраты,
 // поэтому шрифт всегда задаём списком, а не одним именем.
-const REGULAR = 'RobotoCyr, RobotoCyrExt, RobotoLat';
-const BOLD = 'RobotoCyrBold, RobotoCyrExtBold, RobotoLatBold';
+const REGULAR = 'GolosCyr, GolosExt, GolosLat';
+// Полужирный — для мелких строк вроде плашки «ВАКАНСИЯ» и счётчика: 800-й вес
+// на 40-м кегле слипается в пятно.
+const SEMI = 'GolosCyrSemi, GolosExtSemi, GolosLatSemi';
+const BOLD = 'GolosCyrBold, GolosExtBold, GolosLatBold';
 
 const COLORS = {
   bg: '#fbf7f6',
@@ -144,13 +153,16 @@ const LINE = 66;
 let fontsReady = false;
 function ensureFonts() {
   if (fontsReady) return;
-  const dir = path.join(path.dirname(require.resolve('@fontsource/roboto/package.json')), 'files');
-  GlobalFonts.registerFromPath(path.join(dir, 'roboto-cyrillic-400-normal.woff2'), 'RobotoCyr');
-  GlobalFonts.registerFromPath(path.join(dir, 'roboto-cyrillic-ext-400-normal.woff2'), 'RobotoCyrExt');
-  GlobalFonts.registerFromPath(path.join(dir, 'roboto-latin-400-normal.woff2'), 'RobotoLat');
-  GlobalFonts.registerFromPath(path.join(dir, 'roboto-cyrillic-700-normal.woff2'), 'RobotoCyrBold');
-  GlobalFonts.registerFromPath(path.join(dir, 'roboto-cyrillic-ext-700-normal.woff2'), 'RobotoCyrExtBold');
-  GlobalFonts.registerFromPath(path.join(dir, 'roboto-latin-700-normal.woff2'), 'RobotoLatBold');
+  const dir = path.join(
+    path.dirname(require.resolve('@fontsource/golos-text/package.json')), 'files');
+  const weights = { 400: '', 600: 'Semi', 800: 'Bold' };
+  const subsets = { cyrillic: 'GolosCyr', 'cyrillic-ext': 'GolosExt', latin: 'GolosLat' };
+  for (const [subset, family] of Object.entries(subsets)) {
+    for (const [weight, suffix] of Object.entries(weights)) {
+      GlobalFonts.registerFromPath(
+        path.join(dir, `golos-text-${subset}-${weight}-normal.woff2`), family + suffix);
+    }
+  }
   fontsReady = true;
 }
 
@@ -241,7 +253,7 @@ function rise(ctx, text, x, y, p, shift = 44) {
 function layout(ctx, parsed, listingType, index, total) {
   const isVacancy = listingType === 'vacancy';
 
-  ctx.font = `40px ${BOLD}`;
+  ctx.font = `40px ${SEMI}`;
   // То, что не заказ и не вакансия, — продажа, аренда, свои услуги — уходит на
   // доску №6. Плашка называет её по номеру, а не словом «объявление»: так короче
   // и сразу понятно, куда кликать на сайте.
@@ -299,7 +311,9 @@ function layout(ctx, parsed, listingType, index, total) {
   // постоянным шести строкам: у длинного заголовка их столько уже не помещается,
   // и последние строки уходили под тёмную плашку.
   ctx.font = `48px ${REGULAR}`;
-  const fits = Math.max(0, Math.floor((CARD_BOTTOM - 56 - descriptionY) / LINE));
+  // Отступ снизу держим в пол-строки: на 56 точках последняя строка описания
+  // обрывалась многоточием при пустой нижней трети листа.
+  const fits = Math.max(0, Math.floor((CARD_BOTTOM - 28 - descriptionY) / LINE));
   const description =
     parsed.description && fits > 0 ? wrap(ctx, parsed.description, MAXW, Math.min(6, fits)) : [];
 
@@ -315,6 +329,11 @@ function layout(ctx, parsed, listingType, index, total) {
     description, descriptionY,
   };
 }
+
+// Зерно поверх фона тут пробовали — плёночный шум обычно снимает «нарисованность»
+// ровного градиента. Не прижилось: на 720p после h264 его не видно вовсе, а
+// заливка кадра паттерном стоила 29 лишних секунд на ролик (41,6 против 12,7).
+// Если возвращать — только вместе с ростом разрешения.
 
 // Мягкое пятно света: радиальный градиент вместо плоского круга. Круг с
 // globalAlpha давал заметную границу — на кремовом фоне она читалась как
@@ -394,10 +413,15 @@ function drawListing(ctx, l, t, progress) {
     ctx.fillStyle = COLORS.white;
     ctx.fillText(title, CARD_X + 38, SAFE_TOP + 48);
 
-    ctx.textAlign = 'right';
-    ctx.font = `44px ${BOLD}`;
-    ctx.fillStyle = rgba(COLORS.text, 0.6);
-    ctx.fillText(l.day, DW - CARD_X, SAFE_TOP + 48);
+    // Дату кладём на светлую плашку, а не пишем прямо по фону: серые буквы по
+    // цветному градиенту читались хуже всего в кадре, а пара плашек по краям
+    // держит шапку как строку, а не как два случайно поставленных слова.
+    ctx.font = `44px ${SEMI}`;
+    const dw = ctx.measureText(l.day).width + 60;
+    ctx.fillStyle = rgba(COLORS.white, 0.72);
+    roundRect(ctx, DW - CARD_X - dw, SAFE_TOP + 6, dw, 80, 40);
+    ctx.fillStyle = rgba(COLORS.text, 0.72);
+    ctx.fillText(l.day, DW - CARD_X - dw + 30, SAFE_TOP + 48);
     ctx.restore();
   }
 
@@ -444,7 +468,7 @@ function drawListing(ctx, l, t, progress) {
     ctx.fillStyle = l.badgeAccent || l.accent;
     roundRect(ctx, PAD - (1 - e) * (PAD + l.badgeWidth), l.badgeY, l.badgeWidth, 84, 42);
     ctx.fillStyle = COLORS.white;
-    ctx.font = `40px ${BOLD}`;
+    ctx.font = `40px ${SEMI}`;
     ctx.fillText(l.badge, PAD - (1 - e) * (PAD + l.badgeWidth) + 32, l.badgeY + 22);
     ctx.globalAlpha = 1;
 
@@ -454,7 +478,7 @@ function drawListing(ctx, l, t, progress) {
       ctx.save();
       ctx.globalAlpha = e;
       ctx.textAlign = 'right';
-      ctx.font = `40px ${BOLD}`;
+      ctx.font = `40px ${SEMI}`;
       ctx.fillStyle = COLORS.muted;
       ctx.fillText(`${l.index + 1} / ${l.total}`, DW - PAD, l.badgeY + 22);
       ctx.restore();
