@@ -97,10 +97,22 @@ function init() {
       await pool.query('ALTER TABLE board_posts ALTER COLUMN user_id DROP NOT NULL');
       await pool.query('CREATE INDEX IF NOT EXISTS idx_board_posts_guest ON board_posts(guest_id)');
 
+      // Доска живёт сутки, а не шесть часов, как в первой версии. У таблицы,
+      // которая создалась до этого, в DEFAULT остались те шесть — меняем его.
+      // Заодно продлеваем записки, которые ещё живы: иначе после выката доска
+      // разом наполовину опустеет, хотя объявлениям всего пару часов. Условие по
+      // created_at делает запрос идемпотентным — новые строки под него не
+      // попадают, потому что у них срок уже суточный.
+      await pool.query(
+        "ALTER TABLE board_posts ALTER COLUMN expires_at SET DEFAULT NOW() + INTERVAL '24 hours'");
+      await pool.query(
+        `UPDATE board_posts SET expires_at = created_at + INTERVAL '24 hours'
+          WHERE expires_at > NOW() AND expires_at < created_at + INTERVAL '24 hours'`);
+
       // Бот публикует на доску то, что не заказ и не вакансия (продажа, аренда,
       // свои услуги). Ссылку на записку держим без REFERENCES: доска чистит себя
       // сама, и внешний ключ пришлось бы дублировать каскадом ради строки, которая
-      // и так живёт шесть часов.
+      // и так живёт сутки.
       await pool.query('ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS board_post_id INTEGER');
 
       // Модерация доски: закрепить объявление или скрыть его без удаления

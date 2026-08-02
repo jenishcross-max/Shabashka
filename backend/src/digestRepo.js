@@ -56,7 +56,7 @@ const PICKS = {
   vacancy: `SELECT id, title, description, category, city, salary_min AS budget, whatsapp_phone AS phone
               FROM vacancies
              WHERE status = 'open' AND created_at > NOW() - INTERVAL '${DAYS} days'`,
-  // Записка на доске живёт шесть часов, так что окно в двое суток её не
+  // Записка на доске живёт сутки, так что окно в двое суток её не
   // ограничивает — ограничивает expires_at. Оставляем условие всё равно: оно
   // описывает выпуск («за два дня»), а не срок хранения.
   board: `SELECT id, text, city, whatsapp_phone AS phone
