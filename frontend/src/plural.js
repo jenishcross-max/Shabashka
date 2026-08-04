@@ -13,3 +13,4 @@ export function plural(n, one, few, many) {
 export const orderWord = (n) => plural(n, 'заказ', 'заказа', 'заказов');
 export const vacancyWord = (n) => plural(n, 'вакансия', 'вакансии', 'вакансий');
 export const viewWord = (n) => plural(n, 'просмотр', 'просмотра', 'просмотров');
+export const followerWord = (n) => plural(n, 'подписчик', 'подписчика', 'подписчиков');

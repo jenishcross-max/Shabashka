@@ -27,9 +27,6 @@ export default function Footer() {
             <li>
               <Link to="/favorites">Избранное</Link>
             </li>
-            <li>
-              <Link to="/#how">Как это работает</Link>
-            </li>
           </ul>
         </div>
         <div>

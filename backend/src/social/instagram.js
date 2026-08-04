@@ -110,4 +110,14 @@ async function publishReel(videoUrl, caption, thumbOffsetMs) {
   return publishContainer(id);
 }
 
-module.exports = { isConfigured, publishReel };
+// Число подписчиков — для бейджа на главной. Тот же токен и тот же часовой
+// лимит Graph API, что и у публикации, поэтому вызывать часто нельзя — кэш
+// на стороне вызывающего кода должен быть в десятки минут, не в секунды.
+async function followers() {
+  const { followers_count } = await safeCall('подписчики', 'GET', USER_ID, {
+    fields: 'followers_count',
+  });
+  return followers_count;
+}
+
+module.exports = { isConfigured, publishReel, followers };

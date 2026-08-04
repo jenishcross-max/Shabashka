@@ -77,31 +77,6 @@ export function SkeletonOrderCard() {
   );
 }
 
-export function SkeletonHomeCategoryTile() {
-  return (
-    <div className="category-tile skeleton-row">
-      <SkeletonBox width={44} height={44} style={{ borderRadius: 12, flex: 'none' }} />
-      <span style={{ flex: 1, minWidth: 0 }}>
-        <SkeletonBox width="70%" height={16} />
-        <SkeletonBox width="45%" height={13} style={{ marginTop: 7 }} />
-      </span>
-    </div>
-  );
-}
-
-export function SkeletonStatsBar() {
-  return (
-    <section className="stats-bar skeleton-row">
-      {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i}>
-          <SkeletonBox width="55%" height={32} style={{ margin: '0 auto' }} />
-          <SkeletonBox width="70%" height={14} style={{ marginTop: 8 }} />
-        </div>
-      ))}
-    </section>
-  );
-}
-
 export function SkeletonCityPills({ count = 10 }) {
   return (
     <div className="city-pills skeleton-row">

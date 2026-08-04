@@ -1,31 +1,25 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { api } from '../api';
 import OrderCard from '../components/OrderCard';
 import VacancyCard from '../components/VacancyCard';
-import CategoryIcon from '../components/CategoryIcon';
 import FormatIcon from '../components/FormatIcon';
 import CityAutocomplete from '../components/CityAutocomplete';
 import { useFavorites } from '../context/FavoritesContext';
-import { orderWord } from '../plural';
-import {
-  SkeletonOrderCard,
-  SkeletonHomeCategoryTile,
-  SkeletonStatsBar,
-  SkeletonCityPills,
-} from '../components/Skeleton';
+import { followerWord } from '../plural';
+import { SkeletonOrderCard, SkeletonCityPills } from '../components/Skeleton';
+
+const INSTAGRAM_URL = 'https://www.instagram.com/shabashka.com_/';
+const TELEGRAM_URL = 'https://t.me/Shabashkacom';
 
 export default function Home() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { keys: favoriteKeys } = useFavorites();
   const [cities, setCities] = useState([]);
   const [orders, setOrders] = useState([]);
   const [vacancies, setVacancies] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [counts, setCounts] = useState({});
   const [cityCounts, setCityCounts] = useState([]);
-  const [stats, setStats] = useState(null);
+  const [instagramFollowers, setInstagramFollowers] = useState(null);
   const [qInput, setQInput] = useState('');
   const [cityInput, setCityInput] = useState('');
   const [loading, setLoading] = useState(true);
@@ -37,10 +31,8 @@ export default function Home() {
     api
       .home()
       .then((data) => {
-        setCategories(data.categories);
-        setCounts(data.counts);
         setCityCounts(data.cityCounts);
-        setStats(data.stats);
+        setInstagramFollowers(data.instagramFollowers);
         setOrders(data.orders);
         setVacancies(data.vacancies);
         setCities(data.cities);
@@ -48,12 +40,6 @@ export default function Home() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
-
-  useEffect(() => {
-    if (location.hash === '#how') {
-      document.getElementById('how')?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [location.hash]);
 
   function submitSearch(e) {
     e.preventDefault();
@@ -105,30 +91,24 @@ export default function Home() {
             ★ Избранное ({favoriteKeys.length})
           </Link>
         )}
+        <div className="hero-social">
+          <a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer me" className="hero-social-link">
+            📸 Instagram
+            {instagramFollowers != null && (
+              <span className="hero-social-count">
+                {instagramFollowers.toLocaleString('ru')} {followerWord(instagramFollowers)}
+              </span>
+            )}
+          </a>
+          <a href={TELEGRAM_URL} target="_blank" rel="noopener noreferrer me" className="hero-social-link">
+            ✈️ Telegram-канал
+          </a>
+        </div>
       </section>
 
-      <section className="section">
-        <div className="section-head">
-          <h2>Категории</h2>
-        </div>
-        <div className="category-grid">
-          {loading &&
-            Array.from({ length: 8 }).map((_, i) => <SkeletonHomeCategoryTile key={i} />)}
-          {categories.map((c) => (
-            <Link key={c} to={`/orders?category=${encodeURIComponent(c)}`} className="category-tile">
-              <span className="category-icon">
-                <CategoryIcon name={c} />
-              </span>
-              <span>
-                <span className="category-name">{c}</span>
-                <span className="category-count">
-                  {counts[c] || 0} {orderWord(counts[c] || 0)}
-                </span>
-              </span>
-            </Link>
-          ))}
-        </div>
-      </section>
+      {/* Ни плитки категорий, ни полосы со счётчиками: до объявлений человек
+          доходил через два экрана выбора, а пришёл он смотреть объявления.
+          Категории остались фильтром на /orders — там их ищут осознанно. */}
 
       <section className="section">
         <div className="section-head">
@@ -142,7 +122,7 @@ export default function Home() {
         )}
 
         <div className="order-grid">
-          {loading && Array.from({ length: 6 }).map((_, i) => <SkeletonOrderCard key={i} />)}
+          {loading && Array.from({ length: 12 }).map((_, i) => <SkeletonOrderCard key={i} />)}
           {orders.map((order) => (
             <OrderCard key={order.id} order={order} />
           ))}
@@ -155,7 +135,7 @@ export default function Home() {
             <h2>Свежие вакансии</h2>
           </div>
           <div className="order-grid">
-            {Array.from({ length: 3 }).map((_, i) => (
+            {Array.from({ length: 6 }).map((_, i) => (
               <SkeletonOrderCard key={i} />
             ))}
           </div>
@@ -172,29 +152,6 @@ export default function Home() {
             {vacancies.map((v) => (
               <VacancyCard key={v.id} vacancy={v} />
             ))}
-          </div>
-        </section>
-      )}
-
-      {loading && <SkeletonStatsBar />}
-
-      {stats && (
-        <section className="stats-bar">
-          <div>
-            <div className="stat-value">{stats.usersCount}+</div>
-            <div className="stat-label">пользователей</div>
-          </div>
-          <div>
-            <div className="stat-value">{stats.activeOrders}+</div>
-            <div className="stat-label">активных заказов</div>
-          </div>
-          <div>
-            <div className="stat-value">{stats.citiesCount}</div>
-            <div className="stat-label">городов Кыргызстана</div>
-          </div>
-          <div>
-            <div className="stat-value">0%</div>
-            <div className="stat-label">комиссия сайта</div>
           </div>
         </section>
       )}
@@ -223,31 +180,10 @@ export default function Home() {
         </section>
       )}
 
-      <section className="how-it-works" id="how">
-        <h2>Как это работает</h2>
-        <div className="how-grid">
-          <div className="how-step">
-            <div className="how-step-num">1</div>
-            <h3>Разместите заказ</h3>
-            <p>Опишите задачу, укажите город и бюджет. Займёт пару минут.</p>
-          </div>
-          <div className="how-step">
-            <div className="how-step-num">2</div>
-            <h3>Исполнитель находит вас</h3>
-            <p>Мастера видят заказ и пишут вам в WhatsApp или в сообщениях на сайте.</p>
-          </div>
-          <div className="how-step">
-            <div className="how-step-num">3</div>
-            <h3>Договариваетесь</h3>
-            <p>Обсуждаете цену и сроки напрямую. Сайт не берёт комиссию.</p>
-          </div>
-        </div>
-      </section>
-
       <section className="cta-banner">
-        <h2>Ищете подработку?</h2>
-        <p>Смотрите свежие заказы и пишите заказчикам в WhatsApp или в сообщениях на сайте.</p>
-        <Link to="/orders">Найти работу →</Link>
+        <h2>Хотите найти ещё?</h2>
+        <p>Новые заказы и вакансии появляются каждый день — заходите почаще.</p>
+        <Link to="/orders">Смотреть все заказы →</Link>
       </section>
     </div>
   );
