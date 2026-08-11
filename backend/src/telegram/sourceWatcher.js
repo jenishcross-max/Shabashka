@@ -152,9 +152,14 @@ async function start() {
 
   // Временная диагностика: показывает вообще все входящие апдейты, чтобы
   // понять, доходят ли посты канала до клиента, даже если NewMessage их
-  // почему-то не подхватывает.
+  // почему-то не подхватывает. Служебные апдейты (статус соединения, "в сети")
+  // логируем коротко, остальные — целиком, с меткой времени для сверки с
+  // моментом отправки тестового сообщения.
+  const NOISY = new Set(['UpdateConnectionState', 'UpdateUserStatus']);
   client.addEventHandler((update) => {
-    console.log(`[источник][raw] ${update.className || update.constructor?.name}`);
+    const name = update.className || update.constructor?.name;
+    if (NOISY.has(name)) return;
+    console.log(`[источник][raw] ${new Date().toISOString()} ${name}`, JSON.stringify(update, null, 0).slice(0, 500));
   }, new Raw({}));
 
   // NewMessage сам резолвит username/id в сущность — передавать сюда уже
@@ -163,7 +168,9 @@ async function start() {
   // [object Object]", роняя весь процесс.
   client.addEventHandler((event) => handleNewMessage(client, event), new NewMessage({ chats: SOURCES }));
 
-  console.log(`Автоимпорт из канала включён: ${SOURCES.join(', ')} → только ${FORCE_TYPE === 'all' ? 'все объявления' : FORCE_TYPE}`);
+  console.log(
+    `Автоимпорт из канала включён: ${SOURCES.join(', ')} → только ${FORCE_TYPE === 'all' ? 'все объявления' : FORCE_TYPE} (SOURCE_CHANNEL="${process.env.SOURCE_CHANNEL}")`
+  );
 }
 
 module.exports = { start, isConfigured };
