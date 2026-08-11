@@ -51,11 +51,21 @@ const MIN_TEXT_LENGTH = 15;
 
 async function handleNewMessage(client, event) {
   const message = event.message;
-  if (!message) return;
+  if (!message) {
+    console.log('[источник] апдейт без message — пропускаю');
+    return;
+  }
 
   const text = String(message.message || '').trim();
   const hasPhoto = Boolean(message.photo);
-  if (!hasPhoto && text.length < MIN_TEXT_LENGTH) return;
+  console.log(
+    `[источник] новое сообщение: ${hasPhoto ? 'фото' : `текст (${text.length} симв.)`} — "${text.slice(0, 60)}"`
+  );
+
+  if (!hasPhoto && text.length < MIN_TEXT_LENGTH) {
+    console.log('[источник] короче порога — пропускаю без разбора');
+    return;
+  }
 
   // В общую очередь разбора (backend/src/telegram/queue.js) — она же держит
   // темп для скриншотов из личных сообщений и не даёт улететь в лимит Groq,
@@ -66,13 +76,23 @@ async function handleNewMessage(client, event) {
         ? await extract.fromImage(await client.downloadMedia(message, {}), 'image/jpeg')
         : await extract.fromText(text);
 
+      console.log(
+        `[источник] Groq разобрал: ${listings
+          .map((p) => `is_listing=${p.is_listing} type=${p.listing_type}`)
+          .join('; ') || 'пусто'}`
+      );
+
       const filtered =
         FORCE_TYPE === 'all'
           ? listings.filter((p) => p.is_listing && p.listing_type !== 'other')
           : listings.filter((p) => p.is_listing && p.listing_type === FORCE_TYPE);
 
-      if (!filtered.length) return;
+      if (!filtered.length) {
+        console.log(`[источник] после фильтра "${FORCE_TYPE}" не осталось ни одного — не публикую`);
+        return;
+      }
 
+      console.log(`[источник] публикую ${filtered.length} объявление(й)`);
       await bot.ingestFromSource(REPORT_CHAT_ID, filtered, {
         source: 'channel',
         rawText: text || null,
@@ -98,12 +118,31 @@ async function start() {
   // вообще не используется.
   const { TelegramClient } = require('telegram');
   const { StringSession } = require('telegram/sessions');
-  const { NewMessage } = require('telegram/events');
+  const { NewMessage, Raw } = require('telegram/events');
 
   client = new TelegramClient(new StringSession(SESSION_STRING), API_ID, API_HASH, {
     connectionRetries: 5,
   });
   await client.connect();
+
+  // Заранее резолвим канал и заносим его в кэш сущностей сессии — без этого
+  // при первом же посте после рестарта NewMessage может не опознать чат по
+  // username (сравнение идёт по уже закэшированным сущностям).
+  for (const s of SOURCES) {
+    try {
+      const entity = await client.getEntity(s);
+      console.log(`[источник] канал найден: ${s} → id ${entity.id}`);
+    } catch (err) {
+      console.error(`[источник] не смог найти канал "${s}": ${err.message}`);
+    }
+  }
+
+  // Временная диагностика: показывает вообще все входящие апдейты, чтобы
+  // понять, доходят ли посты канала до клиента, даже если NewMessage их
+  // почему-то не подхватывает.
+  client.addEventHandler((update) => {
+    console.log(`[источник][raw] ${update.className || update.constructor?.name}`);
+  }, new Raw({}));
 
   // NewMessage сам резолвит username/id в сущность — передавать сюда уже
   // готовый объект (client.getEntity(...)) нельзя: внутренний _getEntityFromString
