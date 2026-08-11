@@ -14,6 +14,7 @@ const homeRoutes = require('./routes/home');
 const conversationRoutes = require('./routes/conversations');
 const adminRoutes = require('./routes/admin');
 const telegram = require('./telegram');
+const sourceWatcher = require('./telegram/sourceWatcher');
 const social = require('./social');
 const metaRoutes = require('./meta');
 const keepalive = require('./keepalive');
@@ -81,6 +82,9 @@ async function bootstrap() {
   });
   // Бот не должен ронять сервер: сайт работает и без импорта объявлений
   telegram.start().catch((err) => console.error('Telegram-бот не запустился:', err));
+  // Автоимпорт из канала-источника — тоже необязательный шаг: без него всё
+  // работает как раньше, просто объявления публикует только сам админ.
+  sourceWatcher.start().catch((err) => console.error('Автоимпорт из канала не запустился:', err));
   keepalive.start();
 }
 

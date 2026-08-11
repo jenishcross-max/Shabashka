@@ -866,4 +866,11 @@ async function handleUpdate(update) {
   }
 }
 
-module.exports = { handleUpdate, isConfigured: () => tg.hasToken() && ADMIN_IDS.size > 0 };
+module.exports = {
+  handleUpdate,
+  isConfigured: () => tg.hasToken() && ADMIN_IDS.size > 0,
+  // Тот же путь публикации, которым идут скриншоты из личных сообщений —
+  // используется автоимпортом из чужого канала (см. sourceWatcher.js), чтобы
+  // не заводить вторую копию логики очереди/дедупа/публикации/отчётов.
+  ingestFromSource: handleParsed,
+};
