@@ -105,8 +105,11 @@ async function start() {
   });
   await client.connect();
 
-  const entities = await Promise.all(SOURCES.map((s) => client.getEntity(s)));
-  client.addEventHandler((event) => handleNewMessage(client, event), new NewMessage({ chats: entities }));
+  // NewMessage сам резолвит username/id в сущность — передавать сюда уже
+  // готовый объект (client.getEntity(...)) нельзя: внутренний _getEntityFromString
+  // не понимает такой тип и падает с "Cannot find any entity corresponding to
+  // [object Object]", роняя весь процесс.
+  client.addEventHandler((event) => handleNewMessage(client, event), new NewMessage({ chats: SOURCES }));
 
   console.log(`Автоимпорт из канала включён: ${SOURCES.join(', ')} → только ${FORCE_TYPE === 'all' ? 'все объявления' : FORCE_TYPE}`);
 }
