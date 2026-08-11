@@ -38,11 +38,14 @@ const SOURCES = String(process.env.SOURCE_CHANNEL || '')
   .map((s) => s.trim())
   .filter(Boolean);
 
-// По умолчанию публикуем всё, что распознала модель (вакансии, заказы,
-// объявления) — только явный мусор (listing_type = other) отсеивается.
-// SOURCE_LISTING_TYPE=vacancy (или order/announcement) сузит до одного типа,
-// если понадобится.
-const FORCE_TYPE = (process.env.SOURCE_LISTING_TYPE || 'all').trim();
+// По умолчанию публикуем вакансии и заказы, доску объявлений (board) — нет:
+// в задаче стоят именно эти два типа. Список через запятую (vacancy,order,board),
+// либо all — снять фильтр совсем, кроме явного мусора (listing_type = other).
+const FORCE_TYPES = String(process.env.SOURCE_LISTING_TYPE || 'vacancy,order')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+const FORCE_ALL = FORCE_TYPES.includes('all');
 
 // Отчёт о публикации (тот же формат, что и у ручных скриншотов: карточка,
 // кнопка удаления, статус по соцсетям) уходит в личку админу — по умолчанию
@@ -92,13 +95,12 @@ async function handleMessage(client, message) {
           .join('; ') || 'пусто'}`
       );
 
-      const filtered =
-        FORCE_TYPE === 'all'
-          ? listings.filter((p) => p.is_listing && p.listing_type !== 'other')
-          : listings.filter((p) => p.is_listing && p.listing_type === FORCE_TYPE);
+      const filtered = FORCE_ALL
+        ? listings.filter((p) => p.is_listing && p.listing_type !== 'other')
+        : listings.filter((p) => p.is_listing && FORCE_TYPES.includes(p.listing_type));
 
       if (!filtered.length) {
-        console.log(`[источник] после фильтра "${FORCE_TYPE}" не осталось ни одного — не публикую`);
+        console.log(`[источник] после фильтра "${FORCE_TYPES.join(',')}" не осталось ни одного — не публикую`);
         return;
       }
 
