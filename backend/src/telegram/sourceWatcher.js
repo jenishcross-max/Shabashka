@@ -4,11 +4,19 @@
 // пересланное сообщение. Канал-источник — чужой (админ там просто подписчик),
 // а Bot API не даёт читать посты в канале, где бот не администратор. Поэтому
 // здесь не бот, а юзер-сессия (MTProto, библиотека GramJS) — то же самое, что
-// открытый Telegram на телефоне админа, только без интерфейса. Она видит
-// каждый новый пост в канале и сама отдаёт его в тот же разбор и ту же
-// публикацию, которыми идут скриншоты из личных сообщений (bot.ingestFromSource
-// = handleParsed из bot.js) — очередь, дедуп, отчёт в чат, retry соцсетей,
-// всё общее, копии логики нет.
+// открытый Telegram на телефоне админа, только без интерфейса. Она читает
+// новые посты и сама отдаёт их в тот же разбор и ту же публикацию, которыми
+// идут скриншоты из личных сообщений (bot.ingestFromSource = handleParsed из
+// bot.js) — очередь, дедуп, отчёт в чат, retry соцсетей, всё общее, копии
+// логики нет.
+//
+// Читаем опросом, а не подпиской на события. Подписка (NewMessage/Raw) не
+// заработала: сессия видела по группе служебные апдейты (кто печатает,
+// удаление, отметки о прочтении), а UpdateNewChannelMessage не приходил
+// вообще — у каналов и супергрупп своя последовательность обновлений, и
+// сервер её этому клиенту просто не пушил, сколько ни грей кэш сущностей и
+// getDialogs. Опрос от этого не зависит: раз в минуту спрашиваем «что нового
+// с прошлого раза» и получаем ровно то, что видно в самом Telegram.
 //
 // Юзер-сессию нельзя завести программно — Telegram присылает код входа в само
 // приложение, и его вводит живой человек один раз. Для этого есть отдельный
@@ -41,6 +49,14 @@ const FORCE_TYPE = (process.env.SOURCE_LISTING_TYPE || 'vacancy').trim();
 // первому из TELEGRAM_ADMIN_IDS, если отдельный чат не задан явно.
 const REPORT_CHAT_ID = process.env.SOURCE_REPORT_CHAT_ID || [...ADMIN_IDS][0] || null;
 
+// Минута — компромисс: объявление доезжает почти сразу, а запросов к Telegram
+// за сутки меньше полутора тысяч, это ничтожно мало.
+const POLL_MS = Number(process.env.SOURCE_POLL_SECONDS || 60) * 1000;
+
+// Сколько сообщений забираем за один опрос. Если в группе за минуту написали
+// больше — остальное подберётся следующим опросом.
+const BATCH = 30;
+
 function isConfigured() {
   return Boolean(API_ID && API_HASH && SESSION_STRING && SOURCES.length && REPORT_CHAT_ID);
 }
@@ -49,17 +65,11 @@ function isConfigured() {
 // гонять на них Groq — пустой перевод квоты. Тот же порог, что и в bot.js.
 const MIN_TEXT_LENGTH = 15;
 
-async function handleNewMessage(client, event) {
-  const message = event.message;
-  if (!message) {
-    console.log('[источник] апдейт без message — пропускаю');
-    return;
-  }
-
+async function handleMessage(client, message) {
   const text = String(message.message || '').trim();
   const hasPhoto = Boolean(message.photo);
   console.log(
-    `[источник] новое сообщение: ${hasPhoto ? 'фото' : `текст (${text.length} симв.)`} — "${text.slice(0, 60)}"`
+    `[источник] сообщение ${message.id}: ${hasPhoto ? 'фото' : `текст (${text.length} симв.)`} — "${text.slice(0, 60)}"`
   );
 
   if (!hasPhoto && text.length < MIN_TEXT_LENGTH) {
@@ -103,6 +113,44 @@ async function handleNewMessage(client, event) {
   });
 }
 
+// Что уже видели: ключ — источник как он записан в SOURCE_CHANNEL, значение —
+// id последнего разобранного сообщения. Живёт в памяти: после перезапуска
+// отсчёт начинается заново от самого свежего поста, и старое не переезжает на
+// сайт повторно — при рестарте на Render это как раз то, что нужно.
+const lastSeen = new Map();
+
+async function pollSource(client, source) {
+  const since = lastSeen.get(source);
+  // Без точки отсчёта опрашивать нельзя: с reverse и пустым minId Telegram
+  // отдаст начало истории группы, и всё это уедет на сайт как «новое».
+  // Пробуем взять точку заново — источник мог быть недоступен на старте.
+  if (!since) {
+    const [latest] = await client.getMessages(source, { limit: 1 });
+    if (latest) {
+      lastSeen.set(source, latest.id);
+      console.log(`[источник] ${source}: точка отсчёта восстановлена на ${latest.id}`);
+    }
+    return;
+  }
+
+  // minId с reverse работает как offsetId и не включает само сообщение, так
+  // что своё же последнее второй раз не придёт. reverse — чтобы разбирать в
+  // порядке публикации.
+  const messages = await client.getMessages(source, {
+    limit: BATCH,
+    minId: since,
+    reverse: true,
+  });
+
+  if (!messages.length) return;
+
+  console.log(`[источник] ${source}: новых сообщений ${messages.length}`);
+  for (const message of messages) {
+    lastSeen.set(source, Math.max(lastSeen.get(source) || 0, message.id));
+    await handleMessage(client, message);
+  }
+}
+
 let client = null;
 
 async function start() {
@@ -118,58 +166,41 @@ async function start() {
   // вообще не используется.
   const { TelegramClient } = require('telegram');
   const { StringSession } = require('telegram/sessions');
-  const { NewMessage, Raw } = require('telegram/events');
 
   client = new TelegramClient(new StringSession(SESSION_STRING), API_ID, API_HASH, {
     connectionRetries: 5,
   });
   await client.connect();
 
-  // Заранее резолвим канал и заносим его в кэш сущностей сессии — без этого
-  // при первом же посте после рестарта NewMessage может не опознать чат по
-  // username (сравнение идёт по уже закэшированным сущностям).
-  for (const s of SOURCES) {
+  // Точка отсчёта — самый свежий пост на момент запуска. Без неё первый же
+  // опрос вытащил бы всю доступную историю группы и попытался опубликовать её
+  // целиком.
+  for (const source of SOURCES) {
     try {
-      const entity = await client.getEntity(s);
-      console.log(`[источник] канал найден: ${s} → id ${entity.id}`);
+      const [latest] = await client.getMessages(source, { limit: 1 });
+      if (latest) lastSeen.set(source, latest.id);
+      console.log(`[источник] ${source}: старт с сообщения ${latest ? latest.id : '—'}`);
     } catch (err) {
-      console.error(`[источник] не смог найти канал "${s}": ${err.message}`);
+      console.error(`[источник] не смог открыть "${source}": ${err.message}`);
     }
   }
 
-  // У каналов и супергрупп своя последовательность обновлений (pts), отдельная
-  // от обычных чатов, и сервер начинает пушить в реальном времени только те
-  // каналы, для которых у клиента уже есть начальное состояние. getDialogs()
-  // разом подтягивает список диалогов (и тем самым состояние каждого канала) —
-  // без этого шага сессия, ни разу не открывавшая канал, может вообще не
-  // получать по нему живые апдейты, только пассивные (прочитано/не прочитано).
-  try {
-    const dialogs = await client.getDialogs({ limit: 200 });
-    console.log(`[источник] диалоги подтянуты: ${dialogs.length}`);
-  } catch (err) {
-    console.error('[источник] не смог подтянуть диалоги:', err.message);
-  }
-
-  // Временная диагностика: показывает вообще все входящие апдейты, чтобы
-  // понять, доходят ли посты канала до клиента, даже если NewMessage их
-  // почему-то не подхватывает. Служебные апдейты (статус соединения, "в сети")
-  // логируем коротко, остальные — целиком, с меткой времени для сверки с
-  // моментом отправки тестового сообщения.
-  const NOISY = new Set(['UpdateConnectionState', 'UpdateUserStatus']);
-  client.addEventHandler((update) => {
-    const name = update.className || update.constructor?.name;
-    if (NOISY.has(name)) return;
-    console.log(`[источник][raw] ${new Date().toISOString()} ${name}`, JSON.stringify(update, null, 0).slice(0, 500));
-  }, new Raw({}));
-
-  // NewMessage сам резолвит username/id в сущность — передавать сюда уже
-  // готовый объект (client.getEntity(...)) нельзя: внутренний _getEntityFromString
-  // не понимает такой тип и падает с "Cannot find any entity corresponding to
-  // [object Object]", роняя весь процесс.
-  client.addEventHandler((event) => handleNewMessage(client, event), new NewMessage({ chats: SOURCES }));
+  // Опрос по кругу, а не setInterval: пока идёт разбор, следующий заход не
+  // стартует и запросы не накладываются друг на друга.
+  const loop = async () => {
+    for (const source of SOURCES) {
+      try {
+        await pollSource(client, source);
+      } catch (err) {
+        console.error(`[источник] опрос "${source}":`, err.message);
+      }
+    }
+    setTimeout(loop, POLL_MS);
+  };
+  setTimeout(loop, POLL_MS);
 
   console.log(
-    `Автоимпорт из канала включён: ${SOURCES.join(', ')} → только ${FORCE_TYPE === 'all' ? 'все объявления' : FORCE_TYPE} (SOURCE_CHANNEL="${process.env.SOURCE_CHANNEL}")`
+    `Автоимпорт из канала включён: ${SOURCES.join(', ')} → только ${FORCE_TYPE === 'all' ? 'все объявления' : FORCE_TYPE}, опрос раз в ${POLL_MS / 1000} с`
   );
 }
 
