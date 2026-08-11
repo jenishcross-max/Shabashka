@@ -38,11 +38,11 @@ const SOURCES = String(process.env.SOURCE_CHANNEL || '')
   .map((s) => s.trim())
   .filter(Boolean);
 
-// Канал читает подписчик, а не владелец, и контент там смешанный (не только
-// вакансии). Раз в задаче стоит именно «вакансии», по умолчанию публикуем
-// только listing_type = vacancy, остальное из этого источника молча пропускаем —
-// SOURCE_LISTING_TYPE=all снимает фильтр, если понадобится всё подряд.
-const FORCE_TYPE = (process.env.SOURCE_LISTING_TYPE || 'vacancy').trim();
+// По умолчанию публикуем всё, что распознала модель (вакансии, заказы,
+// объявления) — только явный мусор (listing_type = other) отсеивается.
+// SOURCE_LISTING_TYPE=vacancy (или order/announcement) сузит до одного типа,
+// если понадобится.
+const FORCE_TYPE = (process.env.SOURCE_LISTING_TYPE || 'all').trim();
 
 // Отчёт о публикации (тот же формат, что и у ручных скриншотов: карточка,
 // кнопка удаления, статус по соцсетям) уходит в личку админу — по умолчанию
