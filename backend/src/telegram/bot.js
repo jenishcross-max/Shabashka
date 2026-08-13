@@ -483,8 +483,14 @@ async function statsText() {
     `⏳ Ждут ролика: ${waitingLine}`,
     `🧵 Ждут очереди в Threads: ${social.threadsQueued()}`,
     // Счётчик обнуляется при перезапуске процесса, поэтому он не гарантия, а
-    // подсказка: настоящую квоту Instagram считает у себя (25 за сутки).
-    `📸 Публикаций в Instagram за сутки: ${social.quota.used()} из ${social.quota.DAILY_LIMIT}`,
+    // подсказка: настоящую квоту Instagram считает у себя. Показываем тот
+    // потолок, под которым идём сейчас: после мягкого объявления уходят
+    // картинкой и добирают остаток до настоящего (см. quota.js).
+    `📸 Публикаций в Instagram за сутки: ${social.quota.used()} из ${
+      social.quota.used() >= social.quota.DAILY_LIMIT
+        ? `${social.quota.HARD_LIMIT} (ролики закончились, идут картинки)`
+        : social.quota.DAILY_LIMIT
+    }`,
   ].join('\n');
 }
 

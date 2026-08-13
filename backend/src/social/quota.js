@@ -3,6 +3,11 @@
 // Свой потолок держим ниже настоящего — остаток нужен на публикации руками из
 // самого приложения и на повторы, которые иначе упирались бы в стену.
 const DAILY_LIMIT = 22;
+// Настоящий потолок площадки. Между ним и DAILY_LIMIT — тот самый остаток, и
+// запасной ход с картинкой ему разрешено занимать: он нужен ровно тогда, когда
+// обычного места уже нет, а без него объявление не выйдет вовсе. Выше не лезем —
+// Meta ответит подкодом 2207042 и спишет попытку впустую.
+const HARD_LIMIT = 25;
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
 // Счётчик живёт в памяти процесса, своей таблицы под него не заводили. На
@@ -28,10 +33,12 @@ function left() {
 // Отмечаем попытку, а не успех: Instagram списывает единицу квоты за каждый
 // созданный контейнер, даже если публикация потом не прошла. Возвращает false,
 // если места в сутках уже нет — тогда к Meta лучше не ходить вовсе.
-function take() {
+// limit — под каким потолком считать: ролик идёт под мягким, картинка запасного
+// хода может дотянуться до HARD_LIMIT.
+function take(limit = DAILY_LIMIT) {
   const now = Date.now();
   sweep(now);
-  if (attempts.length >= DAILY_LIMIT) return false;
+  if (attempts.length >= limit) return false;
   attempts.push(now);
   return true;
 }
@@ -43,4 +50,4 @@ function freeAt() {
   return attempts.length >= DAILY_LIMIT ? new Date(attempts[0] + WINDOW_MS) : null;
 }
 
-module.exports = { take, used, left, freeAt, DAILY_LIMIT };
+module.exports = { take, used, left, freeAt, DAILY_LIMIT, HARD_LIMIT };
