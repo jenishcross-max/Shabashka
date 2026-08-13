@@ -110,6 +110,19 @@ async function publishReel(videoUrl, caption, thumbOffsetMs) {
   return publishContainer(id);
 }
 
+// Обычный пост картинкой — запасной ход, когда ролик не доехал (см.
+// withImageFallback в index.js). Шагов здесь два, а не три: кодировать нечего,
+// контейнер с картинкой Instagram отдаёт готовым, и опрашивать статус незачем.
+// Отсюда и весь смысл запасного хода — картинка проходит там, где ролик
+// спотыкается о сборку или обработку.
+async function publishImage(imageUrl, caption) {
+  const { id } = await safeCall('создание поста', 'POST', `${USER_ID}/media`, {
+    image_url: imageUrl,
+    caption,
+  });
+  return publishContainer(id);
+}
+
 // Число подписчиков — для бейджа на главной. Тот же токен и тот же часовой
 // лимит Graph API, что и у публикации, поэтому вызывать часто нельзя — кэш
 // на стороне вызывающего кода должен быть в десятки минут, не в секунды.
@@ -120,4 +133,4 @@ async function followers() {
   return followers_count;
 }
 
-module.exports = { isConfigured, publishReel, followers };
+module.exports = { isConfigured, publishReel, publishImage, followers };

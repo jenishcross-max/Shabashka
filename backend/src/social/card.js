@@ -1,5 +1,6 @@
 const { createCanvas, GlobalFonts, Path2D } = require('@napi-rs/canvas');
 const path = require('path');
+const crypto = require('crypto');
 
 // Кадры для Instagram рисуем на канвасе, а не через ffmpeg drawtext: там пришлось
 // бы экранировать чужой текст объявления (двоеточия, кавычки, проценты) и вручную
@@ -16,11 +17,10 @@ const H = 1280;
 const SCALE = W / DW;
 
 const FPS = 30;
-// В один ролик кладём несколько объявлений: у Instagram квота 25 публикаций в
-// сутки на аккаунт, и она считается по постам, а не по объявлениям — три
-// карточки в ролике втрое поднимают дневную пропускную способность, ничего не
-// обходя. Времени на карточку столько, чтобы к её концу всё было не только
-// нарисовано (последняя анимация заканчивается к 3,3 с), но и прочитано.
+// Ролик умеет показать несколько объявлений подряд (столько, сколько положили в
+// пачку — см. BATCH_SIZE в social/index.js). Времени на карточку столько, чтобы
+// к её концу всё было не только нарисовано (последняя анимация заканчивается к
+// 3,3 с), но и прочитано.
 const CARD_SECONDS = 5.6;
 const OUTRO_SECONDS = 2.8;
 // Красный круг из центра закрывает объявление и открывает концовку — переход
@@ -83,7 +83,7 @@ function accentFor(category) {
   return ACCENTS[hash % ACCENTS.length];
 }
 
-// Ролик — не случайная тройка объявлений, а выпуск за число: в одну пачку
+// Ролик — не случайный набор объявлений, а выпуск за число: в одну пачку
 // собираются объявления одного типа, и шапка называет их так, как назвал бы
 // человек. У доски в шапке «объявления», а не «доска №24»: номер доски объясняет,
 // куда кликать на сайте, и на плашке он к месту, а в заголовке выпуска — нет.
@@ -148,24 +148,41 @@ function rgba(hex, alpha) {
 const PAD = 88;
 const MAXW = DW - PAD * 2;
 
-// Instagram кладёт поверх ролика свои кнопки: сверху — имя аккаунта и «...»,
-// снизу — подпись, лайки, «Подписаться». Всё, что должно читаться, живёт между
-// этими полосами: колонтитул начинается не у кромки кадра, а на SAFE_TOP.
-const SAFE_TOP = 250;
 const HEAD_H = 104;
-const HEAD_BOTTOM = SAFE_TOP + HEAD_H;
-// Ниже FOOTER_TOP — подвал с адресом сайта; его нижние 180 точек уходят под
-// подпись Instagram, поэтому логотип и строки прижаты к его верхнему краю.
-const FOOTER_H = 440;
-const FOOTER_TOP = DH - FOOTER_H;
 
-// Вертикаль полосы: капс-строка, жирная линейка, заголовок — и дальше по тексту.
-const META_TOP = 430;
-const RULE_Y = 500;
-const BODY_TOP = 548;
-// Докуда можно опускать описание, чтобы оно не влезло в подвал. Подвал начинает
-// рисовать с FOOTER_TOP + 40, так что до его линейки остаётся ещё полстроки.
-const TEXT_BOTTOM = FOOTER_TOP - 12;
+// Вертикаль кадра целиком. Ролик и пост-картинка делят всю вёрстку — кегли,
+// поля полосы, подвал — и расходятся только здесь: у ролика 9:16 с полями под
+// интерфейс Instagram, у картинки 4:5 и без полей, потому что поверх статичного
+// поста площадка своих кнопок не кладёт.
+//
+// safeTop — где начинается колонтитул: в ролике сверху висят имя аккаунта и
+// «...», и упирать полосу в кромку нельзя. footerH — высота подвала с адресом
+// сайта; в ролике его нижние 180 точек уходят под подпись и лайки, поэтому там
+// он выше. Всё остальное считается от нижней кромки колонтитула — так полоса
+// набирается одинаково в обоих кадрах, какой бы высоты они ни были.
+function geometry(height, safeTop, footerH, zoom) {
+  const headBottom = safeTop + HEAD_H;
+  const footerTop = height - footerH;
+  return {
+    H: height,
+    SAFE_TOP: safeTop,
+    HEAD_BOTTOM: headBottom,
+    // Вертикаль полосы: капс-строка, жирная линейка, заголовок — и дальше по тексту.
+    META_TOP: headBottom + 76,
+    RULE_Y: headBottom + 146,
+    BODY_TOP: headBottom + 194,
+    FOOTER_TOP: footerTop,
+    // Докуда можно опускать описание, чтобы оно не влезло в подвал. Подвал
+    // начинает рисовать с FOOTER_TOP + 40, так что до его линейки остаётся ещё
+    // полстроки.
+    TEXT_BOTTOM: footerTop - 12,
+    // Медленный наезд — приём видео: на статичной картинке оживлять им нечего,
+    // а подвал он сдвинул бы за нижнюю кромку.
+    ZOOM: zoom,
+  };
+}
+
+const REEL = geometry(DH, 250, 440, true);
 
 // Объявления приходят из WhatsApp, а не из формы: заголовок бывает в одно слово,
 // бывает в двадцать, описание — от строки до абзаца. Один жёсткий кегль под
@@ -304,7 +321,7 @@ function rise(ctx, text, x, y, p, shift = 44) {
 
 // Разметку считаем один раз на ролик: измерять текст на каждом из 270 кадров
 // незачем, координаты от времени не зависят — от него зависит только подача.
-function layout(ctx, parsed, listingType, index, total) {
+function layout(ctx, parsed, listingType, index, total, g) {
   const isVacancy = listingType === 'vacancy';
   // То, что не заказ и не вакансия, — продажа, аренда, свои услуги — уходит на
   // доску №24. Называем её по номеру, а не словом «объявление»: так короче, и
@@ -383,7 +400,7 @@ function layout(ctx, parsed, listingType, index, total) {
   // тонкая линейка и текст. В сетке профиля (Instagram берёт из кадра 4:5 по
   // центру, срезая сверху и снизу по 285 точек) в кадр попадают заголовок и цена
   // — то есть ровно то, по чему объявление и выбирают.
-  const titleY = BODY_TOP;
+  const titleY = g.BODY_TOP;
   const priceY = titleY + titleLine * title.length + 40;
   const dividerY = priceY + PRICE_H + 40;
   const descriptionY = dividerY + 40;
@@ -392,7 +409,7 @@ function layout(ctx, parsed, listingType, index, total) {
   // остаток полосы не влезает — мельчим, пока не влезет целиком. Обрываем
   // многоточием, только когда не помогает и самый мелкий: дочитать объявление
   // в ролике важнее, чем держать один кегль на всех.
-  const room = TEXT_BOTTOM - descriptionY;
+  const room = g.TEXT_BOTTOM - descriptionY;
   let descSize = DESC_STEPS[DESC_STEPS.length - 1];
   let description = [];
   if (parsed.description && room > 0) {
@@ -411,6 +428,7 @@ function layout(ctx, parsed, listingType, index, total) {
   const descLine = descLeading(descSize);
 
   return {
+    g,
     accent,
     index, total,
     meta, metaSize,
@@ -440,14 +458,17 @@ function glow(ctx, x, y, r, color, alpha) {
 // t — время от начала своей карточки, progress — доля всего ролика: полоска
 // вверху показывает, сколько осталось до конца видео, а не до конца карточки.
 function drawListing(ctx, l, t, progress) {
+  const g = l.g;
   // Бумага. Ровный кремовый, а не градиент во всю высоту: цвет в этом макете —
   // акцент (колонтитул, рубрика), и если залить им же фон, акценту негде
   // прозвучать. Подкраска остаётся, но еле слышная — она только снимает
   // ощущение белого листа из принтера.
   ctx.fillStyle = COLORS.bg;
-  ctx.fillRect(0, 0, DW, DH);
-  glow(ctx, 980 + Math.cos(t * 0.4) * 60, 240 + Math.sin(t * 0.35) * 40, 620, l.accent, 0.1);
-  glow(ctx, 80 + Math.sin(t * 0.3) * 50, 1620 + Math.cos(t * 0.32) * 40, 560, l.accent, 0.07);
+  ctx.fillRect(0, 0, DW, g.H);
+  // Пятна света привязаны к долям высоты, а не к точкам: кадр поста ниже кадра
+  // ролика, и по абсолютным отметкам нижнее уехало бы за кромку.
+  glow(ctx, 980 + Math.cos(t * 0.4) * 60, g.H * 0.125 + Math.sin(t * 0.35) * 40, 620, l.accent, 0.1);
+  glow(ctx, 80 + Math.sin(t * 0.3) * 50, g.H * 0.844 + Math.cos(t * 0.32) * 40, 560, l.accent, 0.07);
 
   // Колонтитул: цветная полоса во всю ширину кадра. Она держит верх так же, как
   // в журнале — шмуцтитул: под ней начинается полоса с объявлением. Рисуем её
@@ -460,37 +481,39 @@ function drawListing(ctx, l, t, progress) {
     // Полоса раскрывается слева направо, а не проявляется: в ленте это первое
     // движение кадра, и оно должно читаться как «начали», а не как загрузка.
     ctx.fillStyle = l.accent;
-    ctx.fillRect(0, SAFE_TOP, DW * e, HEAD_H);
+    ctx.fillRect(0, g.SAFE_TOP, DW * e, HEAD_H);
     ctx.save();
     ctx.beginPath();
-    ctx.rect(0, SAFE_TOP, DW * e, HEAD_H);
+    ctx.rect(0, g.SAFE_TOP, DW * e, HEAD_H);
     ctx.clip();
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
     ctx.font = `40px ${BOLD}`;
     ctx.fillStyle = COLORS.white;
-    tracked(ctx, l.collection.toUpperCase(), PAD, SAFE_TOP + HEAD_H / 2, 5);
+    tracked(ctx, l.collection.toUpperCase(), PAD, g.SAFE_TOP + HEAD_H / 2, 5);
     ctx.textAlign = 'right';
     ctx.font = `40px ${SEMI}`;
     ctx.fillStyle = rgba(COLORS.white, 0.85);
-    ctx.fillText(l.day, DW - PAD, SAFE_TOP + HEAD_H / 2);
+    ctx.fillText(l.day, DW - PAD, g.SAFE_TOP + HEAD_H / 2);
     ctx.restore();
 
     // Прогресс ролика — светлой линией по нижней кромке колонтитула. Отдельной
     // полоски больше нет: в этом макете она была бы третьей горизонталью подряд.
+    // У поста progress нулевой, и линия не рисуется вовсе: показывать «сколько
+    // осталось» на картинке нечего.
     ctx.globalAlpha = e;
     ctx.fillStyle = rgba(COLORS.white, 0.85);
-    ctx.fillRect(0, HEAD_BOTTOM - 7, DW * Math.min(1, progress), 7);
+    ctx.fillRect(0, g.HEAD_BOTTOM - 7, DW * Math.min(1, progress), 7);
     ctx.restore();
   }
 
   // Медленный наезд на полосу: движение есть, а читать не мешает. Колонтитул
   // остался снаружи и не едет — иначе цветная полоса лезла бы за край кадра.
   ctx.save();
-  const zoom = 1 + 0.022 * easeInOut(Math.min(1, t / CARD_SECONDS));
-  ctx.translate(DW / 2, DH / 2);
+  const zoom = g.ZOOM ? 1 + 0.022 * easeInOut(Math.min(1, t / CARD_SECONDS)) : 1;
+  ctx.translate(DW / 2, g.H / 2);
   ctx.scale(zoom, zoom);
-  ctx.translate(-DW / 2, -DH / 2);
+  ctx.translate(-DW / 2, -g.H / 2);
 
   // Номер объявления гигантом на полях — как номер страницы в журнале. Он
   // говорит, где мы в ролике, и заполняет низ полосы у коротких объявлений.
@@ -500,7 +523,7 @@ function drawListing(ctx, l, t, progress) {
   ctx.textBaseline = 'alphabetic';
   ctx.font = `420px ${BOLD}`;
   ctx.fillStyle = rgba(COLORS.text, 0.04);
-  ctx.fillText(String(l.index + 1).padStart(2, '0'), DW - 40, TEXT_BOTTOM + 20);
+  ctx.fillText(String(l.index + 1).padStart(2, '0'), DW - 40, g.TEXT_BOTTOM + 20);
   ctx.restore();
 
   ctx.textAlign = 'left';
@@ -515,7 +538,7 @@ function drawListing(ctx, l, t, progress) {
     ctx.globalAlpha = e;
     ctx.font = `${l.metaSize}px ${SEMI}`;
     ctx.fillStyle = l.accent;
-    tracked(ctx, l.meta, PAD, META_TOP + (1 - e) * 20, 5);
+    tracked(ctx, l.meta, PAD, g.META_TOP + (1 - e) * 20, 5);
 
     // «1 / 3» на другом краю той же строки. Без счётчика зритель не знает, что
     // за первым объявлением будет ещё два, и уходит с ролика на середине.
@@ -523,7 +546,7 @@ function drawListing(ctx, l, t, progress) {
       ctx.font = `36px ${SEMI}`;
       ctx.textAlign = 'right';
       ctx.fillStyle = rgba(COLORS.text, 0.35);
-      ctx.fillText(`${l.index + 1} / ${l.total}`, DW - PAD, META_TOP + (1 - e) * 20);
+      ctx.fillText(`${l.index + 1} / ${l.total}`, DW - PAD, g.META_TOP + (1 - e) * 20);
     }
     ctx.restore();
   }
@@ -533,7 +556,7 @@ function drawListing(ctx, l, t, progress) {
   const rp = at(t, 0.3, 0.5);
   if (rp > 0) {
     ctx.fillStyle = COLORS.text;
-    ctx.fillRect(PAD, RULE_Y, MAXW * easeOut(rp), 6);
+    ctx.fillRect(PAD, g.RULE_Y, MAXW * easeOut(rp), 6);
   }
 
   // Заголовок — строка за строкой, а не разом: взгляд успевает зацепиться
@@ -593,12 +616,12 @@ function drawListing(ctx, l, t, progress) {
     ctx.save();
     ctx.globalAlpha = e;
     ctx.fillStyle = COLORS.text;
-    ctx.fillRect(PAD, FOOTER_TOP + 40, MAXW * e, 4);
+    ctx.fillRect(PAD, g.FOOTER_TOP + 40, MAXW * e, 4);
 
     const lp = at(t, 2.6, 0.6);
     if (lp > 0) {
       ctx.save();
-      ctx.translate(PAD + 54, FOOTER_TOP + 144);
+      ctx.translate(PAD + 54, g.FOOTER_TOP + 144);
       ctx.scale(easeBack(lp), easeBack(lp));
       ctx.rotate((1 - easeOut(lp)) * -0.4);
       logo(ctx, -54, -54, 108, COLORS.red, COLORS.white);
@@ -608,12 +631,12 @@ function drawListing(ctx, l, t, progress) {
     const textX = PAD + 108 + 32;
     ctx.font = `58px ${BOLD}`;
     ctx.fillStyle = COLORS.text;
-    ctx.fillText('Шабашка', textX, FOOTER_TOP + 96);
+    ctx.fillText('Шабашка', textX, g.FOOTER_TOP + 96);
     ctx.fillStyle = COLORS.red;
-    ctx.fillText('.com', textX + ctx.measureText('Шабашка').width, FOOTER_TOP + 96);
+    ctx.fillText('.com', textX + ctx.measureText('Шабашка').width, g.FOOTER_TOP + 96);
     ctx.font = `34px ${REGULAR}`;
     ctx.fillStyle = rgba(COLORS.text, 0.5);
-    ctx.fillText('заказы и вакансии Кыргызстана', textX, FOOTER_TOP + 166);
+    ctx.fillText('заказы и вакансии Кыргызстана', textX, g.FOOTER_TOP + 166);
     ctx.restore();
   }
 
@@ -739,7 +762,7 @@ function createRenderer(items, opts = {}) {
   const day = opts.day || dayLabel();
   const cta = opts.cta || DEFAULT_CTA;
   const cards = items.map(({ parsed, listingType }, i) => ({
-    ...layout(ctx, parsed, listingType, i, items.length),
+    ...layout(ctx, parsed, listingType, i, items.length, REEL),
     collection,
     day,
   }));
@@ -778,6 +801,43 @@ function createRenderer(items, opts = {}) {
   };
 }
 
+// Пост-картинка: то же объявление, тот же макет, но одним кадром. Нужна, когда
+// ролик до Instagram не доехал (см. withImageFallback в social/index.js): объявление
+// лучше показать картинкой, чем не показать вовсе. Картинке не нужны ни ffmpeg,
+// ни обработка на стороне Meta — то есть ровно то, на чём ролик и спотыкается.
+//
+// 4:5, а не 9:16: в ленту Instagram принимает картинки от 4:5 до 1.91:1, и кадр
+// ролика пришлось бы либо обрезать по центру (срезав и колонтитул, и подвал),
+// либо вписывать с полями. Вместо этого кадр набирается заново под свою высоту —
+// вёрстка от неё и так не зависит, а описание подберёт себе кегль под остаток
+// полосы, как и в ролике.
+const STILL_W = 1080;
+const STILL_H = 1350;
+const STILL = geometry(STILL_H, 40, 220, false);
+
+// Момент ролика, на котором всё уже нарисовано: последняя анимация подвала
+// заканчивается к 3,2 с. Он же COVER_AT — кадр, который Instagram берёт на
+// обложку ролика, так что в ленте пост и ролик выглядят одинаково.
+function renderStill({ parsed, listingType }, opts = {}) {
+  ensureFonts();
+  const canvas = createCanvas(STILL_W, STILL_H);
+  const ctx = canvas.getContext('2d');
+  const card = {
+    ...layout(ctx, parsed, listingType, 0, 1, STILL),
+    collection: opts.collection || collectionTitle(listingType, 1),
+    day: opts.day || dayLabel(),
+  };
+  // progress = 0: полоска «сколько осталось» на картинке не рисуется.
+  drawListing(ctx, card, COVER_AT, 0);
+  // JPEG, а не PNG: Instagram принимает в ленту только его.
+  return canvas.encode('jpeg', 92);
+}
+
+function stillName() {
+  return `${crypto.randomBytes(12).toString('hex')}.jpg`;
+}
+
 module.exports = {
-  createRenderer, totalSeconds, collectionTitle, dayLabel, W, H, FPS, COVER_AT,
+  createRenderer, renderStill, stillName,
+  totalSeconds, collectionTitle, dayLabel, W, H, FPS, COVER_AT,
 };

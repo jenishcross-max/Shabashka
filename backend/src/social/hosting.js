@@ -51,4 +51,19 @@ router.get('/video/:name', (req, res) => {
   return res.end(buffer);
 });
 
+// Картинка запасного поста (см. withImageFallback в index.js). Range здесь не
+// поддерживаем: за картинкой в полтораста килобайт загрузчик приходит один раз
+// и целиком, по кускам он качает только видео.
+router.get('/image/:name', (req, res) => {
+  const entry = files.get(req.params.name);
+  if (!entry || entry.expiresAt <= Date.now()) return res.sendStatus(404);
+
+  res.set({
+    'Content-Type': 'image/jpeg',
+    'Content-Length': entry.buffer.length,
+    'Cache-Control': 'no-store',
+  });
+  return res.end(entry.buffer);
+});
+
 module.exports = { put, router };
