@@ -114,4 +114,18 @@ async function publishText(text) {
   return publishContainer(id);
 }
 
-module.exports = { isConfigured, publishText };
+// Своя норма у Threads считается отдельно от инстаграмной и заметно щедрее —
+// 250 постов за скользящие сутки против сотни. Сюда ходим только по команде
+// /limits: коду это число не нужно, публикации в Threads в него не упираются.
+async function publishingLimit() {
+  const { data } = await safeCall('норма публикаций', 'GET', `${USER_ID}/threads_publishing_limit`, {
+    fields: 'quota_usage,config',
+  });
+  const row = (data && data[0]) || {};
+  return {
+    used: Number(row.quota_usage) || 0,
+    total: Number(row.config && row.config.quota_total) || 0,
+  };
+}
+
+module.exports = { isConfigured, publishText, publishingLimit };

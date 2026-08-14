@@ -123,6 +123,22 @@ async function publishImage(imageUrl, caption) {
   return publishContainer(id);
 }
 
+// Сколько публикаций за скользящие сутки уже потрачено и сколько их всего
+// положено. Считает это Instagram у себя и по аккаунту — вместе с постами,
+// сделанными руками из приложения, и вместе с неудачными попытками. Свой
+// счётчик в памяти процесса такого знать не может, поэтому число отсюда всегда
+// вернее (см. sync в quota.js).
+async function publishingLimit() {
+  const { data } = await safeCall('норма публикаций', 'GET', `${USER_ID}/content_publishing_limit`, {
+    fields: 'config,quota_usage',
+  });
+  const row = (data && data[0]) || {};
+  return {
+    used: Number(row.quota_usage) || 0,
+    total: Number(row.config && row.config.quota_total) || 0,
+  };
+}
+
 // Число подписчиков — для бейджа на главной. Тот же токен и тот же часовой
 // лимит Graph API, что и у публикации, поэтому вызывать часто нельзя — кэш
 // на стороне вызывающего кода должен быть в десятки минут, не в секунды.
@@ -133,4 +149,4 @@ async function followers() {
   return followers_count;
 }
 
-module.exports = { isConfigured, publishReel, publishImage, followers };
+module.exports = { isConfigured, publishReel, publishImage, publishingLimit, followers };

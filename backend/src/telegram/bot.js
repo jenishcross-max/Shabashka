@@ -468,6 +468,10 @@ async function onFlushCommand(chatId) {
 // честно нулевое, потому что вместе с процессом умирают и сами сборки.
 async function statsText() {
   const today = await imports.countToday();
+  // Перед показом подтягиваем настоящее число публикаций у Instagram: свой
+  // счётчик обнуляется вместе с процессом, а на бесплатном Render тот засыпает
+  // каждую ночь — без этого строка про квоту врала бы каждое утро.
+  await social.syncQuota();
   // Очередь на ролик — по типам: ролик выходит выпуском одного типа, и общее
   // число ничего не сказало бы о том, какой выпуск вот-вот наберётся, а какой
   // стоит с одним объявлением.
@@ -482,15 +486,38 @@ async function statsText() {
     `🎬 Роликов в работе: ${social.pending()}`,
     `⏳ Ждут ролика: ${waitingLine}`,
     `🧵 Ждут очереди в Threads: ${social.threadsQueued()}`,
-    // Счётчик обнуляется при перезапуске процесса, поэтому он не гарантия, а
-    // подсказка: настоящую квоту Instagram считает у себя. Показываем тот
-    // потолок, под которым идём сейчас: после мягкого объявления уходят
-    // картинкой и добирают остаток до настоящего (см. quota.js).
+    // Показываем тот потолок, под которым идём сейчас: после мягкого объявления
+    // уходят картинкой и добирают остаток до настоящего (см. quota.js).
     `📸 Публикаций в Instagram за сутки: ${social.quota.used()} из ${
-      social.quota.used() >= social.quota.DAILY_LIMIT
-        ? `${social.quota.HARD_LIMIT} (ролики закончились, идут картинки)`
-        : social.quota.DAILY_LIMIT
+      social.quota.used() >= social.quota.dailyLimit()
+        ? `${social.quota.hardLimit()} (ролики закончились, идут картинки)`
+        : social.quota.dailyLimit()
     }`,
+  ].join('\n');
+}
+
+// Настоящие суточные нормы площадок — числами от самой Meta, без наших догадок.
+// Нужна эта команда не каждый день, а когда объявления перестали уходить и надо
+// понять, упёрлись мы в потолок или сломалось что-то другое.
+async function limitsText() {
+  const { instagram: ig, threads: th } = await social.limits();
+
+  const line = (icon, name, limit, note) => {
+    if (!limit) return `${icon} ${name}: не настроен`;
+    // Площадка не ответила — говорим об этом прямо. Ноль вместо числа выглядел
+    // бы как «всё свободно», а это ровно противоположный вывод.
+    if (limit.error) return `${icon} ${name}: не спросить — ${tg.esc(limit.error)}`;
+    const free = Math.max(0, limit.total - limit.used);
+    return `${icon} ${name}: ${limit.used} из ${limit.total} за сутки, свободно ${free} ${note}`;
+  };
+
+  return [
+    line('📸', 'Instagram', ig, '(ролики, картинки и карусели — один общий счётчик)'),
+    line('🧵', 'Threads', th, '(посты)'),
+    '',
+    `Сутки скользящие: место освобождается через 24 часа после каждой публикации,`,
+    `а не в полночь. Последние ${social.quota.RESERVE} мест Instagram придержаны под картинки —`,
+    'ролики до них не дотягиваются.',
   ].join('\n');
 }
 
@@ -714,6 +741,9 @@ async function onMessage(message) {
         'скриншотов нет, а лента не должна простаивать.',
         '',
         '/stats — сколько опубликовано сегодня и сколько роликов ещё в работе',
+        '',
+        '/limits — суточные нормы Instagram и Threads числами от самой Meta:',
+        'сколько уже потрачено и сколько осталось.',
       ].join('\n')
     );
     return;
@@ -721,6 +751,11 @@ async function onMessage(message) {
 
   if (text === '/stats') {
     await tg.sendMessage(chatId, await statsText());
+    return;
+  }
+
+  if (text === '/limits') {
+    await tg.sendMessage(chatId, await limitsText());
     return;
   }
 

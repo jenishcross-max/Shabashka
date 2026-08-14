@@ -20,7 +20,7 @@ function backendUrl() {
 // которую платило каждое объявление: ролик не выезжал, пока не наберётся полная
 // пачка своего типа, и объявление, присланное первым, ждало ещё двух таких же.
 // Тип, которого приходит по одному в день, не доезжал до Instagram вовсе.
-// Теперь ролик уходит сразу, а потолок в 22 поста за сутки (см. quota.js) до
+// Теперь ролик уходит сразу, а суточный потолок площадки (см. quota.js) до
 // такого потока всё равно далеко.
 const BATCH_SIZE = 1;
 
@@ -185,9 +185,9 @@ function quotaFailure() {
   return {
     posted: false,
     reason:
-      used >= quota.HARD_LIMIT
-        ? `суточная норма Instagram выбрана целиком: ${used} из ${quota.HARD_LIMIT}${when}`
-        : `норма на ролики выбрана: ${used} из ${quota.DAILY_LIMIT}${when}`,
+      used >= quota.hardLimit()
+        ? `суточная норма Instagram выбрана целиком: ${used} из ${quota.hardLimit()}${when}`
+        : `норма на ролики выбрана: ${used} из ${quota.dailyLimit()}${when}`,
   };
 }
 
@@ -195,10 +195,16 @@ async function deliverInstagram(job) {
   const base = backendUrl();
   if (!base) return { posted: false, reason: 'не задан адрес бэкенда' };
 
+  // Сколько мест в сутках осталось на самом деле, знает Instagram: он считает и
+  // публикации руками из приложения, и всё, что мы сделали до перезапуска
+  // процесса. Спрашиваем перед каждым роликом — на фоне трёх десятков вызовов,
+  // которых стоит сам Reels, один лишний ничего не значит.
+  await quota.sync(instagram.publishingLimit);
+
   // Место в квоте сначала только смотрим, не занимая: если его нет, ролик и
   // собирать незачем — минута ffmpeg на бесплатном Render уйдёт впустую, — и
   // объявление сразу едет картинкой. Ей место найдётся: у картинки потолок выше
-  // (см. HARD_LIMIT в quota.js), а стоит она два вызова Graph API вместо трёх
+  // (см. hardLimit в quota.js), а стоит она два вызова Graph API вместо трёх
   // десятков.
   if (!quota.left()) return withImageFallback(job, quotaFailure());
 
@@ -254,7 +260,7 @@ async function withImageFallback(job, failure) {
   // считает именно контейнеры, и неудачная попытка списывает столько же, сколько
   // удачная. Потолок здесь настоящий, а не мягкий: запасной ход и нужен для
   // случая, когда обычного места уже не осталось.
-  if (!quota.take(quota.HARD_LIMIT)) return failure;
+  if (!quota.take(quota.hardLimit())) return failure;
 
   let image;
   try {
@@ -454,10 +460,35 @@ async function shareListing(parsed, listingType, siteLink, ctx) {
   return result;
 }
 
+// Настоящие суточные нормы обеих площадок — для команды /limits в боте. Числа
+// считает Meta, а не мы, и у каждой площадки они свои: у Instagram сотня на все
+// публикации разом (ролики, картинки, карусели — один общий счётчик), у Threads
+// двести пятьдесят только на посты. Ходим сюда по требованию: коду это не нужно,
+// нужно человеку.
+//
+// Отказ одной площадки не должен прятать числа другой, поэтому ошибку каждой
+// заворачиваем отдельно; ненастроенная площадка отдаёт null — про неё в отчёте
+// сказать нечего.
+// Подтянуть в счётчик настоящее число публикаций — для /stats. Показывать там
+// догадку, когда точное число стоит одного вызова, незачем; ошибку sync глотает
+// сам и оставляет прежний счётчик.
+const syncQuota = () => quota.sync(instagram.publishingLimit);
+
+async function limits() {
+  const ask = (platform) =>
+    platform.isConfigured()
+      ? platform.publishingLimit().catch((err) => ({ error: err.message }))
+      : null;
+  const [ig, th] = await Promise.all([ask(instagram), ask(threads)]);
+  return { instagram: ig, threads: th };
+}
+
 module.exports = {
   shareListing,
   shareDigest,
   flushNow,
+  limits,
+  syncQuota,
   retry,
   onReel,
   onThreads,
