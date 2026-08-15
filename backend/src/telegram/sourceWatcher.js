@@ -68,26 +68,85 @@ function isConfigured() {
 // гонять на них Groq — пустой перевод квоты. Тот же порог, что и в bot.js.
 const MIN_TEXT_LENGTH = 15;
 
+// Сколько часов объявление ещё имеет смысл публиковать. По длине очередь не
+// обрезаем: вакансия, написанная утром, вечером всё ещё живая, и выбрасывать её
+// только потому, что перед ней в очереди много других, — потеря на ровном
+// месте, она бы дождалась. Смотрим не на очередь, а на дату самого поста, и
+// проверяем перед разбором, а не при приёме: пока пост стоял в очереди, он мог
+// и протухнуть.
+//
+// Это же страхует от бесконечного роста очереди. Бесплатный Groq пропускает
+// около одного разбора картинки в минуту на ключ; если из групп приходит
+// больше, отставание упирается в этот порог и дальше не растёт — протухшая
+// голова очереди отбрасывается мгновенно, без запроса к модели.
+const MAX_AGE_MS = Number(process.env.SOURCE_MAX_AGE_HOURS || 12) * 3600 * 1000;
+
+// Пост с несколькими фотографиями Telegram присылает несколькими сообщениями с
+// общим grouped_id, и текст объявления стоит только у первого. Разбирать
+// остальные — это и лишние вызовы Groq, и три одинаковые карточки на сайте
+// вместо одной.
+const seenGroups = new Set();
+
+function firstInAlbum(message) {
+  if (!message.groupedId) return true;
+  const group = String(message.groupedId);
+  if (seenGroups.has(group)) return false;
+  seenGroups.add(group);
+  // Альбомы приходят подряд, поэтому помним только последние ключи.
+  if (seenGroups.size > 200) seenGroups.delete(seenGroups.values().next().value);
+  return true;
+}
+
 async function handleMessage(client, message) {
   const text = String(message.message || '').trim();
   const hasPhoto = Boolean(message.photo);
   console.log(
-    `[источник] сообщение ${message.id}: ${hasPhoto ? 'фото' : `текст (${text.length} симв.)`} — "${text.slice(0, 60)}"`
+    `[источник] сообщение ${message.id}: ${hasPhoto ? 'фото' : `текст (${text.length} симв.)`}, в очереди ${queue.size()} — "${text.slice(0, 60)}"`
   );
+
+  if (!firstInAlbum(message)) {
+    console.log('[источник] ещё одна картинка того же поста — пропускаю');
+    return;
+  }
 
   if (!hasPhoto && text.length < MIN_TEXT_LENGTH) {
     console.log('[источник] короче порога — пропускаю без разбора');
     return;
   }
 
+  // Без телефона объявление всё равно не опубликуется (откликнуться некуда —
+  // см. handleParsed в bot.js), так что разбирать его незачем. Проверяем только
+  // текст без картинки: на фотографии номер может быть нарисован.
+  if (!hasPhoto && !extract.hasPhone(text)) {
+    console.log('[источник] нет телефона — публиковать было бы нечего, пропускаю без разбора');
+    return;
+  }
+
+  // Подпись под картинкой чаще всего и есть само объявление. Если в ней есть
+  // телефон и она достаточно длинная — разбираем текстом: он втрое дешевле по
+  // минутному лимиту Groq и читается точнее, чем тот же текст с фотографии.
+  const captionIsAd = text.length >= MIN_TEXT_LENGTH && extract.hasPhone(text);
+
   // В общую очередь разбора (backend/src/telegram/queue.js) — она же держит
   // темп для скриншотов из личных сообщений и не даёт улететь в лимит Groq,
-  // если из канала и от админа в личку прилетело одновременно.
+  // если из канала и от админа в личку прилетело одновременно. Фоном: скриншот
+  // админа, присланный руками, должен обгонять поток из чужих групп.
   queue.add(async () => {
     try {
-      const listings = hasPhoto
-        ? await extract.fromImage(await client.downloadMedia(message, {}), 'image/jpeg')
-        : await extract.fromText(text);
+      // Пока пост стоял в очереди, перед ним разбирались другие — мог и
+      // устареть. Дата у Telegram в секундах; если её нет, считаем свежим.
+      const postedAt = Number(message.date || 0) * 1000;
+      const ageMs = postedAt ? Date.now() - postedAt : 0;
+      if (ageMs > MAX_AGE_MS) {
+        console.log(
+          `[источник] сообщение ${message.id} пролежало ${Math.round(ageMs / 3600000)} ч — уже неактуально, не разбираю`
+        );
+        return;
+      }
+
+      const listings = captionIsAd
+        ? await extract.fromText(text)
+        : await extract.fromImage(await client.downloadMedia(message, {}), 'image/jpeg', text);
 
       console.log(
         `[источник] Groq разобрал: ${listings
@@ -112,7 +171,7 @@ async function handleMessage(client, message) {
     } catch (err) {
       console.error('Автоимпорт из канала:', err.message);
     }
-  });
+  }, { background: true });
 }
 
 // Что уже видели: ключ — источник как он записан в SOURCE_CHANNEL, значение —
@@ -202,7 +261,7 @@ async function start() {
   setTimeout(loop, POLL_MS);
 
   console.log(
-    `Автоимпорт из канала включён: ${SOURCES.join(', ')} → только ${FORCE_TYPE === 'all' ? 'все объявления' : FORCE_TYPE}, опрос раз в ${POLL_MS / 1000} с`
+    `Автоимпорт из канала включён: ${SOURCES.join(', ')} → ${FORCE_ALL ? 'все объявления' : `только ${FORCE_TYPES.join(', ')}`}, опрос раз в ${POLL_MS / 1000} с, объявления не старше ${MAX_AGE_MS / 3600000} ч`
   );
 }
 

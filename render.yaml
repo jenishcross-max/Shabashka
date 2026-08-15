@@ -31,6 +31,28 @@ services:
         generateValue: true
       - key: TELEGRAM_CHANNEL_ID
         sync: false
+      # Автоимпорт из чужих групп (см. README, «Автоимпорт из канала-источника»).
+      # Это юзер-сессия MTProto, а не бот: api_id/api_hash с my.telegram.org,
+      # строка сессии — из `npm run telegram-login`. Без них автоимпорт просто
+      # выключен, остальной бот работает как обычно.
+      - key: TELEGRAM_API_ID
+        sync: false
+      - key: TELEGRAM_API_HASH
+        sync: false
+      - key: TELEGRAM_SESSION_STRING
+        sync: false
+      # Группы через запятую (@username или числовой id).
+      - key: SOURCE_CHANNEL
+        sync: false
+      # Какие типы публикуем: vacancy,order,board или all. По умолчанию vacancy,order.
+      - key: SOURCE_LISTING_TYPE
+        sync: false
+      # Куда слать отчёт о публикации. Пусто — первому админу из TELEGRAM_ADMIN_IDS.
+      - key: SOURCE_REPORT_CHAT_ID
+        sync: false
+      # Не публиковать объявления старше стольких часов, по умолчанию 12.
+      - key: SOURCE_MAX_AGE_HOURS
+        sync: false
       # Автопостинг роликов в Instagram. Без них бот просто присылает готовый
       # mp4 в Telegram, чтобы опубликовать вручную.
       - key: INSTAGRAM_USER_ID

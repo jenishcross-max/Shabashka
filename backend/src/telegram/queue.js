@@ -13,6 +13,13 @@
 // было бы честнее, но file_id скриншота живёт у Telegram не вечно, и «доразбор
 // через сутки после падения» всё равно не сработал бы — проще переслать пачку
 // заново.
+//
+// Очередь двухуровневая. Скриншот админа — это человек, который стоит над
+// телефоном и ждёт ответа; посты из чужих групп (см. sourceWatcher.js) идут
+// потоком и подождут. Без разделения один разговорчивый чат-барахолка забивал
+// бы очередь на полчаса вперёд, и присланный руками скриншот разбирался бы
+// последним. Поэтому фоновые задачи всегда встают в хвост, а обычные — перед
+// первой фоновой.
 const extract = require('./extract');
 
 const CONCURRENCY = Math.max(1, extract.KEY_COUNT);
@@ -22,9 +29,9 @@ let active = 0;
 
 function pump() {
   while (active < CONCURRENCY && jobs.length) {
-    const job = jobs.shift();
+    const { run } = jobs.shift();
     active += 1;
-    job() // свои ошибки задача ловит сама — иначе очередь встала бы на первой
+    run() // свои ошибки задача ловит сама — иначе очередь встала бы на первой
       .finally(() => {
         active -= 1;
         pump();
@@ -35,11 +42,22 @@ function pump() {
 // Возвращает номер партии: 1 — разбор начнётся прямо сейчас (или как только
 // освободится один из ключей), 2 — только после того как первая партия
 // разберётся, и так далее.
-function add(job) {
-  jobs.push(job);
-  const position = Math.ceil((jobs.length + active) / CONCURRENCY);
+function add(run, { background = false } = {}) {
+  // Место в очереди: фоновая задача — в хвост, обычная — перед первой фоновой.
+  let index = jobs.length;
+  if (!background) {
+    const firstBackground = jobs.findIndex((job) => job.background);
+    if (firstBackground !== -1) index = firstBackground;
+  }
+  jobs.splice(index, 0, { run, background });
+
+  const position = Math.ceil((index + 1 + active) / CONCURRENCY);
   pump();
   return position;
 }
 
-module.exports = { add };
+// Сколько задач ждёт разбора (без тех, что уже разбираются). Автоимпорт пишет
+// это число в лог: по нему сразу видно, насколько бот отстаёт от групп.
+const size = () => jobs.length;
+
+module.exports = { add, size };
