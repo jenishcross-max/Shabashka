@@ -23,9 +23,22 @@ const LISTING_TYPES = ['order', 'vacancy', 'board', 'other'];
 // Groq (Qwen3.6) — бесплатный тариф без карты и без региональных ограничений
 // (в отличие от Gemini, который в Кыргызстане выдаёт квоту 0).
 // Ключ берётся на https://console.groq.com/keys.
-const MODEL = process.env.GROQ_MODEL || 'qwen/qwen3.6-27b';
-const REASONING = process.env.GROQ_REASONING || 'none';
-const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+//
+// Узкое место у Groq — не сутки, а минута: 8000 токенов, то есть примерно один
+// разбор картинки в минуту на ключ. Поэтому можно подключить второй шлюз
+// (FALLBACK_API_URL — любой сервис с форматом OpenAI: OmniRoute, OpenRouter,
+// Gemini через OpenAI-совместимый адрес и т.п.). Он не заменяет Groq, а
+// подхватывает перелив: когда у всех ключей Groq минутный лимит выбран, разбор
+// уходит туда, вместо того чтобы стоять 55 секунд. См. выбор дорожки в pickLane.
+const GROQ = {
+  name: 'Groq',
+  url: 'https://api.groq.com/openai/v1/chat/completions',
+  model: process.env.GROQ_MODEL || 'qwen/qwen3.6-27b',
+  reasoning: process.env.GROQ_REASONING || 'none',
+  tokensField: 'max_completion_tokens',
+  // Groq присылает остаток минутного лимита в заголовках — по ним и держим темп.
+  paced: true,
+};
 
 // Vision-модели Groq не поддерживают строгий response_format: json_schema
 // (он есть только у текстовых gpt-oss) — используем свободный текст и
@@ -67,6 +80,9 @@ function buildSystem(categories) {
     '- is_listing = true, если в сообщении есть конкретное предложение или запрос и понятно, о чём речь: нужна работа сделана, нужен сотрудник, продаётся вещь или дом, сдаётся жильё, предлагаются услуги. Что именно должно быть названо — «есть работа», «продаю», «сдаю» без предмета не годится.',
     '- is_listing = false для переписки, приветствий («ассалам алейкум», «salam», «+», «кто свободен?»), благодарностей, споров, пересылок новостей и опросов.',
     '- is_listing = false для запрещённого, даже если это оформлено объявлением: наркотики и любые «закладки», мошенничество и лёгкие деньги без объяснения работы, ставки и казино, займы под проценты, обмен валют, сбор денег, продажа документов, прав и дипломов, интим-услуги, оружие, продажа аккаунтов и сим-карт.',
+    '- is_listing = false для сетевого маркетинга и «работы в офисе» без профессии. Это самый частый мусор в кыргызстанских чатах, и по форме он выглядит как образцовая вакансия: график 5/2 или 6/1, часы «10:00-17:00», возрастная вилка «от 17 до 28», «опыт не важен, всему научим», «өзүбүз үйрөтөбүз», «предусмотрено обучение», «стажировка 1 күн», «карьерный рост», «количество мест ограничено», «айлык келишим түрүндө», «требования: ответственность, пунктуальность, активдуу».',
+    '  Решающий признак один: НЕ НАЗВАНО, КЕМ РАБОТАТЬ. Есть график, возраст, зарплата и личные качества — а должности нет («требуются женщины и мужчины», «жаштар керек», «биз сизди күтөбүз»). Настоящая вакансия всегда называет профессию: повар, сварщик, продавец, водитель, официант, кассир. Если профессия названа — объявление обычное, и график 5/2 с обучением ему не мешают. Если не названа — is_listing = false, а в note напиши «не указана должность».',
+    '- is_listing = false и для прямого сетевого маркетинга: «сетевой бизнес», «ищу партнёров в команду», «международная компания», Атоми, Орифлейм, Эйвон, Гринвей, «финансовая свобода», «пассивный доход», «доход зависит только от тебя». Там платят не за выполненную работу, а за приведённых людей. Продажа самого товара из каталога («продаю крем Орифлейм, 500с») — это не вербовка, а обычное объявление: is_listing = true, listing_type = "board".',
     '- is_listing = false, если текст на скриншоте не читается, обрезан так, что суть непонятна, или ты не уверен, что разобрал его правильно. Не додумывай содержание по одному-двум словам и не восстанавливай смысл по догадке.',
     '- Не принимай за объявление элементы интерфейса мессенджера: имя чата и контакта, дату, «в сети», подписи вложений, названия групп, текст закреплённого сообщения.',
     '- Если сомневаешься между true и false — ставь false и коротко объясни причину в note.',
@@ -83,7 +99,7 @@ function buildSystem(categories) {
     '- employment_type и experience заполняй только когда listing_type = "vacancy" и это явно следует из текста; если не указано — оставь пустыми.',
     '- Ничего не выдумывай. Если поля нет в тексте — оставь пустую строку. Описание бери из сообщения, а не сочиняй по заголовку.',
     '',
-    'Перед ответом перечитай каждый элемент с is_listing = true и проверь: понятно, что именно предлагают или ищут? нет ли здесь запрещённого? текст ты действительно прочитал, а не додумал? Если хоть на один вопрос ответ «нет» — поставь is_listing = false. И отдельно проверь тип: заказчику нужен человек → "order" или "vacancy"; человек предлагает себя, товар или жильё → "board".',
+    'Перед ответом перечитай каждый элемент с is_listing = true и проверь: понятно, что именно предлагают или ищут? если это заказ или вакансия — названа ли профессия, а не только график и возраст? нет ли здесь запрещённого? текст ты действительно прочитал, а не додумал? Если хоть на один вопрос ответ «нет» — поставь is_listing = false. И отдельно проверь тип: заказчику нужен человек → "order" или "vacancy"; человек предлагает себя, товар или жильё → "board".',
   ].join('\n');
 }
 
@@ -186,18 +202,94 @@ const MAX_CAPACITY_WAIT_MS = 70000;
 // они работают по очереди (round robin), каждый по своему графику. У каждого
 // ключа свой остаток лимита и своё время последнего звонка — их нельзя мешать
 // в одну переменную, иначе пауза считалась бы так, будто ключ один.
-const KEYS = String(process.env.GROQ_API_KEY || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
-const keyStates = KEYS.map((key) => ({ key, budget: null, lastCallAt: 0 }));
-const KEY_COUNT = keyStates.length;
+const splitKeys = (value) => String(value || '').split(',').map((s) => s.trim()).filter(Boolean);
 
-let roundRobin = 0;
-function nextKeyState() {
-  const state = keyStates[roundRobin % keyStates.length];
-  roundRobin += 1;
-  return state;
+// Адрес запасного шлюза можно вписать как угодно: «http://host:20128»,
+// «.../v1» или сразу «.../v1/chat/completions» — дописываем недостающее сами,
+// чтобы опечатка в переменной окружения не выглядела как «шлюз не работает».
+function completionsUrl(raw) {
+  const url = String(raw || '').trim().replace(/\/+$/, '');
+  if (!url) return '';
+  if (url.endsWith('/chat/completions')) return url;
+  if (/\/v\d+$/.test(url)) return `${url}/chat/completions`;
+  return `${url}/v1/chat/completions`;
+}
+
+const FALLBACK_URL = completionsUrl(process.env.FALLBACK_API_URL);
+// Без названия модели шлюз не поднимаем: у OmniRoute их сотни, «по умолчанию»
+// там ничего нет, и запрос отбился бы на каждом объявлении. Лучше честно
+// сказать об этом один раз в лог при старте и продолжить на одном Groq.
+if (FALLBACK_URL && !process.env.FALLBACK_MODEL) {
+  console.error('[extract] FALLBACK_API_URL задан, а FALLBACK_MODEL — нет: запасной шлюз выключен');
+}
+const FALLBACK = FALLBACK_URL && process.env.FALLBACK_MODEL
+  ? {
+      name: process.env.FALLBACK_NAME || 'запасной шлюз',
+      url: FALLBACK_URL,
+      model: process.env.FALLBACK_MODEL,
+      // reasoning_effort понимают не все — по умолчанию не отправляем вовсе.
+      reasoning: process.env.FALLBACK_REASONING || '',
+      // max_tokens понимают все, max_completion_tokens — только новые. У шлюза
+      // на той стороне может стоять что угодно, поэтому берём совместимое имя.
+      tokensField: 'max_tokens',
+      // Заголовков с остатком минутного лимита у чужого шлюза может не быть,
+      // да и лимит там обычно по запросам, а не по токенам — темп не держим,
+      // на 429 просто ждём столько, сколько скажут в ответе.
+      paced: false,
+    }
+  : null;
+
+// Дорожка — это «провайдер + ключ»: у каждого ключа свой независимый лимит и
+// своё время последнего звонка, мешать их в одну переменную нельзя, иначе
+// пауза считалась бы так, будто ключ один. GROQ_API_KEY и FALLBACK_API_KEY
+// могут содержать несколько ключей через запятую — тогда дорожек столько же.
+const groqLanes = splitKeys(process.env.GROQ_API_KEY).map((key) => ({
+  provider: GROQ,
+  key,
+  budget: null,
+  lastCallAt: 0,
+}));
+
+// Ключ у запасного шлюза может быть и не нужен: OmniRoute, поднятый локально,
+// пускает без авторизации. Поэтому при заданном адресе дорожка появляется даже
+// с пустым ключом — тогда просто не шлём заголовок Authorization.
+const fallbackLanes = FALLBACK
+  ? (splitKeys(process.env.FALLBACK_API_KEY).length
+      ? splitKeys(process.env.FALLBACK_API_KEY)
+      : ['']
+    ).map((key) => ({ provider: FALLBACK, key, budget: null, lastCallAt: 0 }))
+  : [];
+
+// Сколько разборов можно вести одновременно (см. queue.js): по одному на дорожку.
+const KEY_COUNT = groqLanes.length + fallbackLanes.length;
+
+// Пишем расклад при старте: иначе опечатку в GROQ_API_KEY (лишний пробел,
+// потерянная запятая) никак не увидеть — бот молча работал бы на одном ключе,
+// вдвое медленнее, и выглядело бы это просто как «что-то тормозит».
+console.log(
+  `[extract] дорожек разбора: ${KEY_COUNT} — Groq ${groqLanes.length} ключ(а/ей)` +
+    (fallbackLanes.length ? `, ${FALLBACK.name} (${FALLBACK.model})` : ', запасного шлюза нет')
+);
+
+let groqTurn = 0;
+let fallbackTurn = 0;
+const nextGroq = () => groqLanes[groqTurn++ % groqLanes.length];
+const nextFallback = () => fallbackLanes[fallbackTurn++ % fallbackLanes.length];
+
+// Какую дорожку взять под этот разбор. Groq — первый: он проверен на кыргызском
+// и русском тексте с фотографий. Уходим на запасной шлюз только тогда, когда
+// ждать Groq пришлось бы по-настоящему: ни у одного его ключа не осталось
+// минутного лимита.
+function pickLane() {
+  if (!groqLanes.length) return fallbackLanes.length ? nextFallback() : null;
+  // По кругу, а не find по списку: иначе при двух свободных ключах оба
+  // одновременных разбора ушли бы в первый.
+  for (let i = 0; i < groqLanes.length; i += 1) {
+    const lane = nextGroq();
+    if (waitMs(lane) === 0) return lane;
+  }
+  if (fallbackLanes.length) return nextFallback();
+  return nextGroq();
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -223,28 +315,35 @@ function readBudget(state, res) {
     : null;
 }
 
-// Ждём перед запросом, если на минуту токенов уже не осталось. Groq присылает
-// остаток лимита в заголовках — по ним пауза выходит ровно такой, какая нужна,
-// и при свободном лимите её нет совсем. Если заголовков в ответе не оказалось,
-// держим фиксированный шаг: лучше подождать лишнее, чем ловить 429 на каждом
-// втором скриншоте.
-async function waitForCapacity(state) {
-  if (!state.lastCallAt) return;
+// Сколько миллисекунд пришлось бы ждать перед запросом по этой дорожке. Groq
+// присылает остаток минутного лимита в заголовках — по ним пауза выходит ровно
+// такой, какая нужна, и при свободном лимите её нет совсем. Если заголовков в
+// ответе не оказалось, держим фиксированный шаг: лучше подождать лишнее, чем
+// ловить 429 на каждом втором скриншоте.
+//
+// Отдельной функцией, а не сразу сном: по этому же числу pickLane решает, не
+// пора ли отдать разбор запасному шлюзу вместо ожидания.
+function waitMs(state) {
+  if (!state.provider.paced) return 0;
+  if (!state.lastCallAt) return 0;
 
   if (state.budget) {
     const left = state.budget.resetAt - Date.now();
-    if (left <= 0) {
-      state.budget = null;
-      return;
-    }
-    if (state.budget.remaining >= COST_ESTIMATE) return;
-    await sleep(Math.min(left + 1000, MAX_CAPACITY_WAIT_MS));
-    state.budget = null;
-    return;
+    if (left <= 0) return 0;
+    if (state.budget.remaining >= COST_ESTIMATE) return 0;
+    return Math.min(left + 1000, MAX_CAPACITY_WAIT_MS);
   }
 
   const since = Date.now() - state.lastCallAt;
-  if (since < PACE_MS) await sleep(PACE_MS - since);
+  return since < PACE_MS ? PACE_MS - since : 0;
+}
+
+async function waitForCapacity(state) {
+  const ms = waitMs(state);
+  if (ms) await sleep(ms);
+  // Окно лимита к этому моменту либо пересчитано на той стороне, либо истекло —
+  // старый остаток больше ничего не значит.
+  if (state.budget && (ms || state.budget.resetAt <= Date.now())) state.budget = null;
 }
 
 // Сколько ждать после 429. Заголовок retry-after Groq присылает не всегда,
@@ -266,54 +365,46 @@ function retryDelayMs(res, data) {
   return Math.min((seconds + 1) * 1000, MAX_WAIT_MS);
 }
 
-// Единственное место, где мы ходим в Groq. content — тело user-сообщения в
-// формате OpenAI chat completions: строка или массив частей text/image_url.
-// Возвращает массив разобранных объявлений (обычно один элемент).
-async function ask(content, systemSuffix) {
-  if (!keyStates.length) throw new Error('Не задан GROQ_API_KEY');
-  const state = nextKeyState();
-  const key = state.key;
-
-  const categories = await categoriesRepo.listNames();
-  const system = systemSuffix
-    ? `${buildSystem(categories)}\n\n${systemSuffix}`
-    : buildSystem(categories);
+// Один поход к модели по конкретной дорожке. Формат тела — OpenAI chat
+// completions, он одинаков и у Groq, и у любого шлюза, который мы можем
+// подключить запасным; различия провайдеров собраны в объекте provider.
+async function call(lane, system, content) {
+  const provider = lane.provider;
 
   const body = JSON.stringify({
-    model: MODEL,
+    model: provider.model,
     temperature: 0,
     // Groq считает запрос в минутный лимит вместе с max_completion_tokens, а не
     // по фактическому ответу: при 4000 один скриншот весил 8200 при лимите 8000
     // и отбивался целиком, сколько ни жди. 2600 хватает примерно на десяток
     // объявлений — больше на скриншот всё равно не влезает.
-    max_completion_tokens: 2600,
+    [provider.tokensField]: 2600,
     // Qwen3.6 — reasoning-модель, и по умолчанию размышления выключены: иначе
     // она пишет длинный блок рассуждений и может не добраться до JSON в пределах
     // max_completion_tokens, а сами рассуждения ещё и съедают минутный лимит.
     // Но отличить заказчика от исполнителя — как раз та задача, где размышления
     // помогают, поэтому GROQ_REASONING=low включает их без правки кода. Если
     // после этого JSON начнёт обрываться — поднимать надо и max_completion_tokens.
-    reasoning_effort: REASONING,
+    // Пустое значение — поле не отправляем совсем: чужой шлюз может его не знать.
+    ...(provider.reasoning ? { reasoning_effort: provider.reasoning } : {}),
     messages: [
       { role: 'system', content: system },
       { role: 'user', content },
     ],
   });
 
-  let res;
-  let data;
+  const headers = { 'Content-Type': 'application/json' };
+  // Локальный OmniRoute пускает без ключа — пустой заголовок ему не нужен.
+  if (lane.key) headers.Authorization = `Bearer ${lane.key}`;
+
   for (let attempt = 0; ; attempt += 1) {
     // Только перед первой попыткой: для повторов паузу диктует сам ответ 429,
     // и ждать вдобавок ещё и по остатку лимита значило бы ждать дважды.
-    if (attempt === 0) await waitForCapacity(state);
-    res = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-      body,
-    });
-    data = await res.json();
-    readBudget(state, res);
-    if (res.ok) break;
+    if (attempt === 0) await waitForCapacity(lane);
+    const res = await fetch(provider.url, { method: 'POST', headers, body });
+    const data = await res.json().catch(() => null);
+    readBudget(lane, res);
+    if (res.ok) return data;
 
     // Лимит токенов в минуту выбирается двумя скриншотами подряд: один разбор
     // весит около 5к токенов при лимите 8000. Groq в ответе говорит, через
@@ -326,15 +417,41 @@ async function ask(content, systemSuffix) {
       // столько же попросим и в следующий раз. Говорим, что с этим делать.
       if (/request too large/i.test(detail)) {
         throw new Error(
-          'Скриншот слишком большой для бесплатного лимита Groq. Обрежь его до нужной части переписки и пришли ещё раз.'
+          'Скриншот слишком большой для бесплатного лимита модели. Обрежь его до нужной части переписки и пришли ещё раз.'
         );
       }
-      throw new Error(`Groq: ${detail}`);
+      throw new Error(`${provider.name}: ${detail}`);
     }
-    await new Promise((resolve) => setTimeout(resolve, wait));
+    await sleep(wait);
+  }
+}
+
+// Единственное место, где мы ходим к модели. content — тело user-сообщения в
+// формате OpenAI chat completions: строка или массив частей text/image_url.
+// Возвращает массив разобранных объявлений (обычно один элемент).
+async function ask(content, systemSuffix) {
+  const lane = pickLane();
+  if (!lane) throw new Error('Не задан GROQ_API_KEY (или FALLBACK_API_URL)');
+
+  const categories = await categoriesRepo.listNames();
+  const system = systemSuffix
+    ? `${buildSystem(categories)}\n\n${systemSuffix}`
+    : buildSystem(categories);
+
+  let data;
+  try {
+    if (lane.provider !== GROQ) console.log(`[extract] разбираю через ${lane.provider.name} (${lane.provider.model})`);
+    data = await call(lane, system, content);
+  } catch (err) {
+    // Запасной шлюз бесплатный и чужой: модель могли снять, квота могла
+    // кончиться, туннель — отвалиться. Это не повод терять объявление —
+    // возвращаемся к Groq и просто ждём его минутного лимита, как раньше.
+    if (lane.provider === GROQ || !groqLanes.length) throw err;
+    console.error(`[extract] ${lane.provider.name} не ответил (${err.message}) — пробую Groq`);
+    data = await call(nextGroq(), system, content);
   }
 
-  const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  const text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
   if (!text) throw new Error('Пустой ответ модели');
 
   // Без response_format модель иногда добавляет пояснение до/после JSON или

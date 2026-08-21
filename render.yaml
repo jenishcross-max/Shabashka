@@ -21,6 +21,15 @@ services:
       # скриншоты разбираются параллельно, по одному на ключ.
       - key: GROQ_API_KEY
         sync: false
+      # Запасной шлюз на случай, когда минутный лимит Groq выбран (см. README,
+      # «Запасной шлюз»). Любой сервис с форматом OpenAI: OmniRoute, OpenRouter
+      # и т.п. Без FALLBACK_API_URL и FALLBACK_MODEL бот работает на одном Groq.
+      - key: FALLBACK_API_URL
+        sync: false
+      - key: FALLBACK_MODEL
+        sync: false
+      - key: FALLBACK_API_KEY
+        sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_ADMIN_IDS
