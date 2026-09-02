@@ -44,11 +44,6 @@ export default function Footer() {
           <h4>Контакты</h4>
           <ul>
             <li>
-              <a href="https://wa.me/996777675070" target="_blank" rel="noopener noreferrer">
-                💬 WhatsApp: 0777675070
-              </a>
-            </li>
-            <li>
               <a href="mailto:ittirek@gmail.com">✉️ ittirek@gmail.com</a>
             </li>
           </ul>

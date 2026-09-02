@@ -101,11 +101,7 @@ export default function Terms() {
       <h2>9. Контакты</h2>
       <p>
         По вопросам, связанным с использованием сервиса, а также по жалобам и просьбам удалить
-        объявление пишите на <a href="mailto:ittirek@gmail.com">ittirek@gmail.com</a> или в WhatsApp{' '}
-        <a href="https://wa.me/996777675070" target="_blank" rel="noopener noreferrer">
-          0777 675 070
-        </a>
-        .
+        объявление пишите на <a href="mailto:ittirek@gmail.com">ittirek@gmail.com</a>.
       </p>
 
       <p className="subtitle">
