@@ -186,6 +186,9 @@ function extractJson(text) {
 
 const RETRIES = 2;
 const MAX_WAIT_MS = 40000;
+// Граница между «минутный лимит» и «суточный»: до неё ждём на месте, дальше
+// считаем дорожку выбывшей до названного часа и берём другую.
+const MINUTE_LIMIT_MAX_MS = 5 * 60 * 1000;
 
 // Разбор одного скриншота весит около 6800 токенов при лимите 8000 в минуту:
 // промпт (~2300), ужатая картинка (~1900) и зарезервированный ответ (2600) —
@@ -292,18 +295,31 @@ function pickLane() {
   return nextGroq();
 }
 
+// Порядок обхода дорожек для одного разбора: выбранная первой, затем все
+// остальные — начиная с тех, у кого лимит свободен прямо сейчас.
+function lanesFrom(first) {
+  const rest = [...groqLanes, ...fallbackLanes]
+    .filter((lane) => lane !== first)
+    .sort((a, b) => waitMs(a) - waitMs(b));
+  return [first, ...rest];
+}
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // «7.66s», «2m59.56s», «500ms» — формат заголовков x-ratelimit-reset-*.
+// Часы нужны для суточного лимита: он отпускает через «1h23m45.6s», и без
+// разбора часов такой ответ выглядел бы как «срок неизвестен».
 function parseDuration(value) {
   if (!value) return null;
-  const match = /^(?:(\d+(?:\.\d+)?)m)?(?:(\d+(?:\.\d+)?)s)?$|^(\d+(?:\.\d+)?)ms$/.exec(value.trim());
-  if (!match) return null;
-  if (match[3] !== undefined) return Number(match[3]);
-  const minutes = Number(match[1] || 0);
-  const seconds = Number(match[2] || 0);
-  if (!minutes && !seconds) return null;
-  return (minutes * 60 + seconds) * 1000;
+  const text = String(value).trim();
+
+  const ms = /^(\d+(?:\.\d+)?)ms$/.exec(text);
+  if (ms) return Number(ms[1]);
+
+  const parts = /^(?:(\d+(?:\.\d+)?)h)?(?:(\d+(?:\.\d+)?)m)?(?:(\d+(?:\.\d+)?)s)?$/.exec(text);
+  if (!parts || !parts.slice(1).some((v) => v !== undefined)) return null;
+  const [, h = 0, m = 0, sec = 0] = parts;
+  return ((Number(h) * 60 + Number(m)) * 60 + Number(sec)) * 1000;
 }
 
 function readBudget(state, res) {
@@ -339,30 +355,42 @@ function waitMs(state) {
 }
 
 async function waitForCapacity(state) {
-  const ms = waitMs(state);
+  // Суточный лимит пережидать бессмысленно: 70 секунд сна его не приблизят, а
+  // админ всё это время смотрит в пустой чат. Идём сразу — либо Groq передумал,
+  // либо получим внятный отказ без минуты молчания. Пометку о том, что дорожка
+  // выбыла, при этом не стираем: по ней выбирается порядок обхода в ask.
+  const hopeless = state.budget && state.budget.resetAt - Date.now() > MINUTE_LIMIT_MAX_MS;
+  const ms = hopeless ? 0 : waitMs(state);
   if (ms) await sleep(ms);
   // Окно лимита к этому моменту либо пересчитано на той стороне, либо истекло —
   // старый остаток больше ничего не значит.
   if (state.budget && (ms || state.budget.resetAt <= Date.now())) state.budget = null;
 }
 
-// Сколько ждать после 429. Заголовок retry-after Groq присылает не всегда,
-// зато точное время почти всегда есть в тексте ошибки («try again in 9.66s»).
-// Если не нашли ни того ни другого — ждать вслепую не будем, вернём 0.
-function retryDelayMs(res, data) {
+// Через сколько дорожка снова заработает, по ответу 429. Заголовок retry-after
+// Groq присылает не всегда, зато точное время почти всегда есть в тексте
+// ошибки («try again in 9.66s», у суточного лимита — «try again in 1h23m45.6s»).
+// null — срок неизвестен.
+function retryResetMs(res, data) {
   const header = Number(res.headers.get('retry-after'));
-  let seconds = Number.isFinite(header) && header > 0 ? header : 0;
+  if (Number.isFinite(header) && header > 0) return header * 1000;
 
-  if (!seconds) {
-    const message = (data && data.error && data.error.message) || '';
-    const match = /try again in ([\d.]+)s/i.exec(message);
-    if (match) seconds = Number(match[1]);
-  }
-  if (!seconds) return 0;
+  const message = (data && data.error && data.error.message) || '';
+  const match = /try again in ([0-9hms.]+)/i.exec(message);
+  return match ? parseDuration(match[1].replace(/\.+$/, '')) : null;
+}
+
+// Сколько спать на месте перед повтором по той же дорожке. Минутный лимит
+// дешевле переждать здесь, чем занимать второй ключ. А вот суточный отпускает
+// через часы — спать столько нельзя, возвращаем 0, и разбор уходит на другую
+// дорожку (см. перебор в ask).
+function retryDelayMs(res, data) {
+  const reset = retryResetMs(res, data);
+  if (reset === null || reset > MINUTE_LIMIT_MAX_MS) return 0;
 
   // Секунда сверху: лимит считается по скользящему окну на стороне Groq,
   // и повтор ровно в названный момент иногда прилетает в тот же отказ.
-  return Math.min((seconds + 1) * 1000, MAX_WAIT_MS);
+  return Math.min(reset + 1000, MAX_WAIT_MS);
 }
 
 // Один поход к модели по конкретной дорожке. Формат тела — OpenAI chat
@@ -410,6 +438,13 @@ async function call(lane, system, content) {
     // весит около 5к токенов при лимите 8000. Groq в ответе говорит, через
     // сколько станет можно, — проще подождать и повторить, чем отдавать админу
     // ошибку на объявление, которое разобралось бы само через десять секунд.
+    // Запомнить, до какого момента дорожка выбыла: иначе следующий разбор
+    // выбрал бы её снова и снова упёрся бы в тот же суточный лимит.
+    if (res.status === 429) {
+      const reset = retryResetMs(res, data);
+      if (reset !== null) lane.budget = { remaining: 0, resetAt: Date.now() + reset };
+    }
+
     const wait = res.status === 429 && attempt < RETRIES ? retryDelayMs(res, data) : 0;
     if (!wait) {
       const detail = String((data && data.error && data.error.message) || res.status);
@@ -439,17 +474,31 @@ async function ask(content, systemSuffix) {
     : buildSystem(categories);
 
   let data;
-  try {
-    if (lane.provider !== GROQ) console.log(`[extract] разбираю через ${lane.provider.name} (${lane.provider.model})`);
-    data = await call(lane, system, content);
-  } catch (err) {
-    // Запасной шлюз бесплатный и чужой: модель могли снять, квота могла
-    // кончиться, туннель — отвалиться. Это не повод терять объявление —
-    // возвращаемся к Groq и просто ждём его минутного лимита, как раньше.
-    if (lane.provider === GROQ || !groqLanes.length) throw err;
-    console.error(`[extract] ${lane.provider.name} не ответил (${err.message}) — пробую Groq`);
-    data = await call(nextGroq(), system, content);
+  let lastErr = null;
+  // Отказ одной дорожки — не повод терять объявление. Раньше запасной ключ
+  // Groq не пробовался вовсе: перебор был написан только для чужого шлюза, а
+  // ошибка Groq летела админу сразу. Из-за этого выбранный по кругу ключ с
+  // выбранным суточным лимитом отбивал разбор, хотя второй ключ был свободен.
+  // Теперь обходим все дорожки: сначала выбранную, потом остальные — самые
+  // свободные первыми.
+  for (const next of lanesFrom(lane)) {
+    if (next !== lane || next.provider !== GROQ) {
+      console.log(`[extract] разбираю через ${next.provider.name} (${next.provider.model})`);
+    }
+    try {
+      data = await call(next, system, content);
+      lastErr = null;
+      break;
+    } catch (err) {
+      lastErr = err;
+      // Слишком большой скриншот на другой дорожке будет ровно таким же —
+      // перебирать их значило бы держать админа лишние минуты ради того же
+      // отказа. Эту ошибку отдаём сразу.
+      if (/слишком большой/i.test(err.message)) throw err;
+      console.error(`[extract] ${next.provider.name} не ответил (${err.message})`);
+    }
   }
+  if (lastErr) throw lastErr;
 
   const text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
   if (!text) throw new Error('Пустой ответ модели');
