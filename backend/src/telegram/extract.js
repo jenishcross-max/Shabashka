@@ -455,7 +455,18 @@ async function call(lane, system, content) {
           'Скриншот слишком большой для бесплатного лимита модели. Обрежь его до нужной части переписки и пришли ещё раз.'
         );
       }
-      throw new Error(`${provider.name}: ${detail}`);
+      const err = new Error(`${provider.name}: ${detail}`);
+      // Лимит — единственный отказ, который проходит сам собой. Помечаем его и
+      // называем срок: по ним бот откладывает объявление до восстановления
+      // лимита, вместо того чтобы отдать админу ошибку и забыть (см. park в
+      // bot.js). Все остальные отказы — ключ отозвали, модель убрали — ждать
+      // бессмысленно, они помечены не будут.
+      if (res.status === 429) {
+        err.rateLimited = true;
+        const reset = retryResetMs(res, data);
+        if (reset !== null) err.retryAt = Date.now() + reset;
+      }
+      throw err;
     }
     await sleep(wait);
   }
@@ -475,6 +486,10 @@ async function ask(content, systemSuffix) {
 
   let data;
   let lastErr = null;
+  // Самый ранний момент, когда хоть одна дорожка снова заработает. Нужен не
+  // здесь, а наверху: разбор, упёршийся в лимит, не теряется, а откладывается
+  // до этого времени.
+  let retryAt = null;
   // Отказ одной дорожки — не повод терять объявление. Раньше запасной ключ
   // Groq не пробовался вовсе: перебор был написан только для чужого шлюза, а
   // ошибка Groq летела админу сразу. Из-за этого выбранный по кругу ключ с
@@ -495,10 +510,19 @@ async function ask(content, systemSuffix) {
       // перебирать их значило бы держать админа лишние минуты ради того же
       // отказа. Эту ошибку отдаём сразу.
       if (/слишком большой/i.test(err.message)) throw err;
+      if (err.retryAt) retryAt = retryAt === null ? err.retryAt : Math.min(retryAt, err.retryAt);
       console.error(`[extract] ${next.provider.name} не ответил (${err.message})`);
     }
   }
-  if (lastErr) throw lastErr;
+  if (lastErr) {
+    // Ошибку отдаём последнюю, а срок — самый ранний из всех: ждать дольше, чем
+    // нужно первой освободившейся дорожке, незачем.
+    if (retryAt) {
+      lastErr.rateLimited = true;
+      lastErr.retryAt = retryAt;
+    }
+    throw lastErr;
+  }
 
   const text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
   if (!text) throw new Error('Пустой ответ модели');
