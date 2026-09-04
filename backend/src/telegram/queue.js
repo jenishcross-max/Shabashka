@@ -43,10 +43,14 @@ function pump() {
 // Возвращает номер партии: 1 — разбор начнётся прямо сейчас (или как только
 // освободится один из ключей), 2 — только после того как первая партия
 // разберётся, и так далее.
-function add(run, { background = false } = {}) {
-  // Место в очереди: фоновая задача — в хвост, обычная — перед первой фоновой.
+function add(run, { background = false, priority = false } = {}) {
+  // Место в очереди: реклама — в голову, фоновая задача — в хвост, обычная —
+  // перед первой фоновой. Реклама обгоняет и обычные скриншоты: за неё платят,
+  // и ждать, пока разберётся присланная перед ней пачка, она не должна.
   let index = jobs.length;
-  if (!background) {
+  if (priority) {
+    index = 0;
+  } else if (!background) {
     const firstBackground = jobs.findIndex((job) => job.background);
     if (firstBackground !== -1) index = firstBackground;
   }

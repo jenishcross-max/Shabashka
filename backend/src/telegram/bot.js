@@ -188,9 +188,9 @@ function scheduleAutoRetry(chatId, retryId, attempt = 0) {
 // три (квота считает посты, а не объявления). Поэтому здесь только расписка о
 // приёме: что куда встало в очередь. Чем кончилось, скажут отдельные сообщения
 // из social.onThreads и social.onReel ниже.
-async function shareToSocial(chatId, parsed, listingType, siteLink) {
+async function shareToSocial(chatId, parsed, listingType, siteLink, priority = false) {
   try {
-    const result = await social.shareListing(parsed, listingType, siteLink, { chatId });
+    const result = await social.shareListing(parsed, listingType, siteLink, { chatId }, { priority });
     const lines = [];
     if (result.reason) lines.push(`🎬 ${tg.esc(result.reason)}`);
     for (const name of result.skipped || []) lines.push(`${SITE_LABELS[name]}: не настроен`);
@@ -527,7 +527,7 @@ async function limitsText() {
 // Публикует объявление сразу, ничего не переспрашивая. Недостающие поля
 // достраивает imports.applyDefaults — что именно дописали, показываем в ответе,
 // чтобы подмена города или категории не прошла незамеченной.
-async function publishOne(chatId, id, parsed) {
+async function publishOne(chatId, id, parsed, priority = false) {
   const { parsed: ready, filled } = await imports.applyDefaults(parsed);
   if (filled.length) await imports.setParsed(id, ready);
 
@@ -585,10 +585,10 @@ async function publishOne(chatId, id, parsed) {
 
   // Намеренно без await: ролик едет своим ходом, следующее объявление из пачки
   // не должно ждать кодирования и загрузки на площадки.
-  shareToSocial(chatId, ready, result.type, shown).catch((err) => console.error('Соцсети:', err));
+  shareToSocial(chatId, ready, result.type, shown, priority).catch((err) => console.error('Соцсети:', err));
 }
 
-async function handleParsed(chatId, listings, { source, rawText }) {
+async function handleParsed(chatId, listings, { source, rawText, priority = false }) {
   const real = listings.filter((p) => p.is_listing && p.listing_type !== 'other');
   if (real.length === 0) {
     const note = listings[0] && listings[0].note;
@@ -637,7 +637,7 @@ async function handleParsed(chatId, listings, { source, rawText }) {
       continue;
     }
     try {
-      await publishOne(chatId, id, parsed);
+      await publishOne(chatId, id, parsed, priority);
       published += 1;
     } catch (err) {
       // Одно неудачное объявление не должно ронять всю пачку со скриншота.
@@ -657,6 +657,28 @@ function waitText(ms) {
   const minutes = Math.round(ms / 60000);
   if (minutes >= 2) return `≈ ${minutes} мин`;
   return `≈ ${Math.max(1, Math.round(ms / 30000)) * 30} сек`;
+}
+
+// Платная реклама. Людям, которые пишут «разместите за деньги», платное
+// объявление нельзя ставить в общий ряд: пачка скриншотов разбирается минутами,
+// а посты в Threads идут раз в десять минут — реклама уехала бы последней.
+// Команда /ad помечает объявление, и дальше пометка едет с ним по всем трём
+// очередям: разбор, Threads, ролик в Instagram.
+//
+// Промежутки между постами пометка не отменяет: они держат не порядок, а
+// антиспам Threads и часовой лимит Instagram, и обгонять их нельзя никому.
+const AD_TTL_MS = 30 * 60 * 1000;
+// chatId → до какого момента ждём рекламное объявление. Срок нужен затем, чтобы
+// забытая пометка не всплыла вечером на чужом объявлении.
+const adWaiting = new Map();
+
+// «/ad» отдельным сообщением помечает следующее объявление, «/ad текст» — само
+// это сообщение. Возвращает и снимает пометку: одна команда — одна реклама.
+function takeAd(chatId) {
+  const until = adWaiting.get(chatId);
+  if (!until) return false;
+  adWaiting.delete(chatId);
+  return until > Date.now();
 }
 
 // Отложенные объявления.
@@ -695,7 +717,7 @@ function pendingText(delay) {
   })}`;
 }
 
-function park(chatId, job, retryAt, attempt) {
+function park(chatId, job, retryAt, attempt, priority) {
   const delay = Math.min(
     Math.max(retryAt - Date.now(), 0) + PENDING_MARGIN_MS,
     PENDING_MAX_DELAY_MS
@@ -707,7 +729,7 @@ function park(chatId, job, retryAt, attempt) {
     pending.delete(entry);
     // Обратно в ту же очередь, а не мимо неё: к этому моменту админ мог
     // прислать новую пачку, и отложенное должно встать в общий ряд.
-    enqueue(chatId, job, attempt + 1);
+    enqueue(chatId, job, { attempt: attempt + 1, priority });
     tg.sendMessage(chatId, '🔁 Лимит отпустил — возвращаюсь к отложенному объявлению.').catch(() => {});
   }, delay);
 
@@ -717,7 +739,7 @@ function park(chatId, job, retryAt, attempt) {
 // Разбор ставим в очередь и отвечаем сразу: пачка из десятка скриншотов
 // разбирается несколько минут, и держать всё это время обработчик апдейта
 // нельзя — при long polling на нём встали бы и все остальные сообщения.
-function enqueue(chatId, job, attempt = 0) {
+function enqueue(chatId, job, { attempt = 0, priority = false } = {}) {
   return queue.add(async () => {
     try {
       await job();
@@ -726,7 +748,7 @@ function enqueue(chatId, job, attempt = 0) {
       // ждать его есть смысл. Отозванный ключ или сломанная модель такой
       // пометки не получают и по-прежнему приходят ошибкой сразу.
       if (err.retryAt && attempt < PENDING_MAX_ATTEMPTS) {
-        const delay = park(chatId, job, err.retryAt, attempt);
+        const delay = park(chatId, job, err.retryAt, attempt, priority);
         await tg
           .sendMessage(
             chatId,
@@ -742,7 +764,7 @@ function enqueue(chatId, job, attempt = 0) {
         : err.message;
       await tg.sendMessage(chatId, `⚠️ Ошибка: ${tg.esc(detail)}`).catch(() => {});
     }
-  });
+  }, { priority });
 }
 
 // Из скриншота берём самый крупный размер: Telegram отдаёт лесенку превью,
@@ -771,7 +793,31 @@ async function onMessage(message) {
     return;
   }
 
-  const text = (message.text || message.caption || '').trim();
+  const raw = (message.text || message.caption || '').trim();
+
+  // «/ad» можно послать и отдельным сообщением, и вместе с текстом объявления
+  // («/ad Открылся салон…»), и подписью к скриншоту. Команду отрезаем — дальше
+  // объявление идёт обычной дорогой, просто с пометкой.
+  const adPrefix = /^\/ad(?:@\S+)?\b[\s:,-]*/i.exec(raw);
+  const text = adPrefix ? raw.slice(adPrefix[0].length).trim() : raw;
+
+  // Голая команда — значит, объявление придёт следующим сообщением.
+  if (adPrefix && !text && !photoFileId(message)) {
+    adWaiting.set(chatId, Date.now() + AD_TTL_MS);
+    await tg.sendMessage(
+      chatId,
+      [
+        '📣 Жду рекламное объявление — пришлите его следующим сообщением, текстом или скриншотом.',
+        '',
+        'Оно пойдёт без очереди: разберу первым, в Threads и Instagram отправлю',
+        'первым и отсевом не отброшу. Промежутки между постами останутся прежними —',
+        'они держат антиспам площадок, а не порядок.',
+        '',
+        `Пометка ждёт ${Math.round(AD_TTL_MS / 60000)} минут и тратится на одно объявление.`,
+      ].join('\n')
+    );
+    return;
+  }
 
   if (text === '/start' || text === '/help') {
     await tg.sendMessage(
@@ -797,6 +843,11 @@ async function onMessage(message) {
         'в Instagram — своим роликом на каждое, с названием по типу: «Вакансия дня»,',
         '«Заказ дня», «Объявление дня». Ждать компанию объявлению больше не нужно,',
         'ролик собирается сразу. Про каждое напишу отдельно, когда дойдёт очередь.',
+        '',
+        '/ad — платная реклама. Пришлите её следующим сообщением или сразу вместе',
+        'с командой: «/ad Открылся салон…», а к скриншоту — подписью. Такое объявление',
+        'идёт вне очереди (разбор, Threads, ролик) и не отбраковывается отсевом —',
+        'кроме запрещённого. На сайте и в канале выглядит как обычное.',
         '',
         '/now — выпустить то, что почему-то ещё стоит в очереди, не дожидаясь своего',
         'хода. Работает и словом: напишите «выпусти», «выпускай» или «публикуй».',
@@ -859,32 +910,49 @@ async function onMessage(message) {
     return;
   }
 
+  // Пометку тратим здесь, а не в начале обработчика: между «/ad» и самим
+  // объявлением админ может успеть спросить /stats, и съедать её на этом
+  // вопросе было бы обидно.
   const fileId = photoFileId(message);
   if (fileId) {
+    const isAd = Boolean(adPrefix) || takeAd(chatId);
     const mediaType =
       message.document && message.document.mime_type ? message.document.mime_type : 'image/jpeg';
 
-    const position = enqueue(chatId, async () => {
-      const buffer = await tg.downloadFile(fileId);
-      const parsed = await extract.fromImage(buffer, mediaType);
-      await handleParsed(chatId, parsed, { source: 'whatsapp', rawText: text || null });
-    });
+    const position = enqueue(
+      chatId,
+      async () => {
+        const buffer = await tg.downloadFile(fileId);
+        const parsed = await extract.fromImage(buffer, mediaType, '', { ad: isAd });
+        await handleParsed(chatId, parsed, { source: 'whatsapp', rawText: text || null, priority: isAd });
+      },
+      { priority: isAd }
+    );
 
     await tg.sendMessage(
       chatId,
-      position === 1
-        ? '🔍 Читаю скриншот…'
-        : `📥 В очереди — ${position}-й, дойду ${waitText((position - 1) * extract.PACE_MS)}.`
+      isAd
+        ? '📣 Реклама — читаю скриншот вне очереди…'
+        : position === 1
+          ? '🔍 Читаю скриншот…'
+          : `📥 В очереди — ${position}-й, дойду ${waitText((position - 1) * extract.PACE_MS)}.`
     );
     return;
   }
 
   if (text.length > 15) {
-    const position = enqueue(chatId, async () => {
-      const parsed = await extract.fromText(text);
-      await handleParsed(chatId, parsed, { source: 'telegram', rawText: text });
-    });
-    if (position > 1) {
+    const isAd = Boolean(adPrefix) || takeAd(chatId);
+    const position = enqueue(
+      chatId,
+      async () => {
+        const parsed = await extract.fromText(text, { ad: isAd });
+        await handleParsed(chatId, parsed, { source: 'telegram', rawText: text, priority: isAd });
+      },
+      { priority: isAd }
+    );
+    if (isAd) {
+      await tg.sendMessage(chatId, '📣 Реклама — разбираю вне очереди.');
+    } else if (position > 1) {
       await tg.sendMessage(
         chatId,
         `📥 В очереди — ${position}-й, дойду ${waitText((position - 1) * extract.PACE_MS)}.`

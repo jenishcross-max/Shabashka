@@ -79,30 +79,52 @@ const queuedByType = () =>
 // медленнее. Очередь — цепочка промисов в памяти процесса, ничего не хранит.
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Очередь с минимальным промежутком между заданиями — цепочка промисов в памяти
-// процесса, ничего не хранит. У каждой площадки своя: полторы минуты для
-// Instagram считают часовой лимит Graph API, десять минут для Threads — его
-// антиспам, и ролик не должен стоять за текстовым постом.
+// Очередь с минимальным промежутком между заданиями — список в памяти процесса,
+// ничего не хранит. У каждой площадки своя: полторы минуты для Instagram
+// считают часовой лимит Graph API, десять минут для Threads — его антиспам, и
+// ролик не должен стоять за текстовым постом.
+//
+// Список, а не цепочка промисов, как было раньше: платная реклама (см. /ad в
+// bot.js) должна вставать перед теми, кто ещё ждёт, а в цепочку встроиться
+// посередине нельзя — её порядок задан навсегда в момент добавления.
 function pacer(minIntervalMs) {
-  let chain = Promise.resolve();
+  const tasks = [];
+  let running = false;
   let lastStartedAt = 0;
-  let queueLength = 0;
 
-  const schedule = (fn) => {
-    queueLength += 1;
-    const job = chain.then(async () => {
+  async function drain() {
+    running = true;
+    while (tasks.length) {
+      // Пауза до того, как взяли задание, а не после: за эти минуты может
+      // прийти реклама, и уйти должна она, а не тот, кого выбрали раньше.
       const wait = minIntervalMs - (Date.now() - lastStartedAt);
       if (wait > 0) await sleep(wait);
+      const task = tasks.shift();
       lastStartedAt = Date.now();
-      queueLength -= 1;
-      return fn();
+      try {
+        task.resolve(await task.fn());
+      } catch (err) {
+        // Ошибка одного задания не должна обрывать очередь для следующих за ним.
+        task.reject(err);
+      }
+    }
+    running = false;
+  }
+
+  const schedule = (fn, { priority = false } = {}) => {
+    const task = { fn };
+    const promise = new Promise((resolve, reject) => {
+      task.resolve = resolve;
+      task.reject = reject;
     });
-    // Ошибка одного задания не должна обрывать очередь для следующих за ним.
-    chain = job.catch(() => {});
-    return job;
+    // Перед ждущими, но не перед тем, что уже уехало на площадку: отменить
+    // начатую отправку нельзя.
+    tasks.splice(priority ? 0 : tasks.length, 0, task);
+    if (!running) drain();
+    return promise;
   };
   // Сколько заданий ещё не начинали выполняться, включая только что добавленное.
-  schedule.queued = () => queueLength;
+  schedule.queued = () => tasks.length;
   return schedule;
 }
 
@@ -290,7 +312,7 @@ async function withImageFallback(job, failure) {
   return { ...result, asImage: true, videoReason: failure.reason };
 }
 
-function scheduleInstagram(job) {
+function scheduleInstagram(job, priority = false) {
   return schedule(async () => {
     inFlight += 1;
     try {
@@ -298,7 +320,7 @@ function scheduleInstagram(job) {
     } finally {
       inFlight -= 1;
     }
-  });
+  }, { priority });
 }
 
 // Повторная попытка — по кнопке в боте или сама, в фоне (см. AUTO_RETRY_DELAYS
@@ -340,7 +362,7 @@ async function retry(id) {
 // обычные «Заказы дня», у дайджеста с сайта — свои заголовок, число и концовка.
 async function runBatch(entries, opts = {}) {
   const job = {
-    items: entries.map(({ ctx, ...item }) => item),
+    items: entries.map(({ ctx, priority, ...item }) => item),
     listingType: entries[0].listingType,
     collection: opts.collection || card.collectionTitle(entries[0].listingType, entries.length),
     day: opts.day,
@@ -348,7 +370,10 @@ async function runBatch(entries, opts = {}) {
     digest: Boolean(opts.digest),
     targets: ['instagram'],
   };
-  const instagramResult = await scheduleInstagram(job);
+  // Реклама едет вперёд остальных: между публикациями в Instagram полторы
+  // минуты, и в тихий день их не видно, а на пачке скриншотов платное
+  // объявление иначе стояло бы за всеми.
+  const instagramResult = await scheduleInstagram(job, entries.some((entry) => entry.priority));
   const failed = instagramResult.posted ? [] : ['instagram'];
 
   if (!reelHandler) return;
@@ -409,8 +434,8 @@ function shareDigest(items, opts, ctx) {
 
 // Ставит пост в очередь Threads и отчитывается сам, когда до него дошло: между
 // постами до десяти минут, столько ждать ответом на сообщение нельзя.
-function scheduleThreads(text, title, ctx) {
-  paceThreads(() => post('threads', () => threads.publishText(text)))
+function scheduleThreads(text, title, ctx, priority = false) {
+  paceThreads(() => post('threads', () => threads.publishText(text)), { priority })
     .then(async (result) => {
       const retryId = result.posted ? null : remember({ threadsText: text }, ['threads']);
       if (threadsHandler) await threadsHandler({ ...result, title, ctx, retryId });
@@ -423,21 +448,27 @@ function scheduleThreads(text, title, ctx) {
 // компанию. Threads пачками не собираем: своей квоты Instagram он не тратит,
 // лимиты у него заметно щедрее, и отдельными постами объявление и находят
 // чаще, и появляется оно там раньше.
-async function shareListing(parsed, listingType, siteLink, ctx) {
+// priority — платная реклама (/ad в боте): ставим её перед теми, кто ещё ждёт
+// своей очереди на площадку. Промежутки между постами при этом не трогаем —
+// они защищают от антиспама Threads и от часового лимита Instagram, и обгонять
+// их нельзя никому.
+async function shareListing(parsed, listingType, siteLink, ctx, { priority = false } = {}) {
   const skipped = [];
   const result = { threads: null, skipped, batchSize: BATCH_SIZE };
 
   if (threads.isConfigured()) {
     const text = video.threadsText(parsed, listingType, siteLink);
     result.threadsQueued = true;
-    result.threadsWaiting = scheduleThreads(text, parsed.title, ctx);
+    result.threadsWaiting = scheduleThreads(text, parsed.title, ctx, priority);
   } else {
     skipped.push('threads');
     console.log('[threads] не настроен — пропускаю');
   }
 
   if (instagram.isConfigured()) {
-    queueFor(listingType).push({ parsed, listingType, siteLink, ctx });
+    const entry = { parsed, listingType, siteLink, ctx, priority };
+    if (priority) queueFor(listingType).unshift(entry);
+    else queueFor(listingType).push(entry);
     result.queued = true;
     // Название с оглядкой на размер пачки: ролик из одного объявления называется
     // «Вакансия дня», и обещать в ответе «Вакансии дня» нельзя — в Instagram
