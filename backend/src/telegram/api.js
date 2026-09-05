@@ -64,6 +64,21 @@ async function sendVideo(chatId, buffer, caption) {
   return data.result;
 }
 
+// Копия чужого сообщения — со всем, что в нём было: видео, картинкой, кружком,
+// альбомом. Нужна для рекламы «как есть» (см. publishRawAd в bot.js): своей
+// отправкой мы бы пересобирали контент и теряли то, чего не умеем, а копия
+// уходит в канал ровно такой, какой её прислали. Подпись при этом можно
+// заменить — приписываем ссылку на сайт. У сообщения без медиа подпись менять
+// нечему: там копируется сам текст, и caption Telegram молча игнорирует.
+function copyMessage(chatId, fromChatId, messageId, caption) {
+  return call('copyMessage', {
+    chat_id: chatId,
+    from_chat_id: fromChatId,
+    message_id: messageId,
+    ...(caption ? { caption, parse_mode: 'HTML' } : {}),
+  });
+}
+
 // Картинка приходит как file_id — реальный файл нужно забрать в два шага.
 async function downloadFile(fileId) {
   const file = await call('getFile', { file_id: fileId });
@@ -79,6 +94,7 @@ module.exports = {
   editMessageText,
   answerCallbackQuery,
   sendVideo,
+  copyMessage,
   downloadFile,
   hasToken: () => Boolean(TOKEN),
 };

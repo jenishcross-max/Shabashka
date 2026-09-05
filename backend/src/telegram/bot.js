@@ -588,12 +588,136 @@ async function publishOne(chatId, id, parsed, priority = false) {
   shareToSocial(chatId, ready, result.type, shown, priority).catch((err) => console.error('Соцсети:', err));
 }
 
-async function handleParsed(chatId, listings, { source, rawText, priority = false }) {
+// Что в сообщении есть, кроме текста. Нужно только рекламе: обычное объявление
+// бот берёт со скриншота, а видео и гифку разобрать нечем в принципе.
+function mediaOf(message) {
+  const mime = message.document ? String(message.document.mime_type || '') : '';
+  if (message.video) return { kind: 'video', fileId: message.video.file_id };
+  // Гифка в Telegram — это mp4 без звука, Instagram примет её так же, как ролик.
+  if (message.animation) return { kind: 'video', fileId: message.animation.file_id };
+  if (mime.startsWith('video/')) return { kind: 'video', fileId: message.document.file_id };
+
+  const photo = photoFileId(message);
+  return photo ? { kind: 'image', fileId: photo } : null;
+}
+
+// Реклама «как есть»: модель к ней не притрагивается. Этим путём выходит то,
+// чего она не разберёт в принципе (видео, готовый макет), и то, что не влезло в
+// её бесплатный лимит. Объявление всё равно должно выйти — за него заплачено.
+//
+// Поля собираем сами, без модели: заголовок — первая строка подписи, описание —
+// вся подпись, телефон — первый номер из текста. Город и категорию допишет
+// applyDefaults, как и обычному объявлению.
+async function publishRawAd(chatId, message, text, media, priority) {
+  const lines = [];
+  let id = null;
+  let ready = null;
+  let siteLink = '';
+
+  if (text.length > 15) {
+    const first = text.split('\n').map((line) => line.trim()).find(Boolean) || 'Реклама';
+    const parsed = {
+      is_listing: true,
+      listing_type: 'board',
+      title: clamp(first, 80),
+      description: text,
+      phone: extract.phoneFrom(text) || '',
+      city: '',
+      category: '',
+      address: '',
+      budget: '',
+      work_format: 'offline',
+    };
+    id = await imports.create({ source: 'telegram', rawText: text, parsed, chatId });
+    if (id) {
+      ready = (await imports.applyDefaults(parsed)).parsed;
+      await imports.setParsed(id, ready);
+      const published = await imports.publish(id);
+      siteLink = SITE_URL ? `${SITE_URL}/board#p${published.id}` : '';
+      lines.push('✅ Повесил на доску — сутки, потом пропадёт само');
+      // Номер тут не обязателен, в отличие от обычного объявления: в рекламе
+      // контакт часто нарисован прямо на макете. Но сказать об этом надо —
+      // кнопки WhatsApp на такой карточке не будет.
+      if (!parsed.phone) lines.push('⚠️ Номера в тексте нет — кнопки WhatsApp на сайте не будет');
+    } else {
+      lines.push('♻️ На сайт не стал: такое же объявление приходило в этот час');
+    }
+  } else {
+    lines.push('📄 На сайт не стал: без текста карточке нечего показать');
+  }
+
+  const shown = prettyLink(siteLink);
+  const linkTag = siteLink ? `\n\n<a href="${siteLink}">${tg.esc(shown)}</a>` : '';
+
+  if (CHANNEL_ID) {
+    try {
+      // Копией, а не своей отправкой: пересобирая контент, мы потеряли бы всё,
+      // чего не умеем — кружок, альбом, гифку. Подпись в канале при этом своя,
+      // со ссылкой на сайт. У Telegram она ограничена 1024 знаками.
+      if (media) {
+        await tg.copyMessage(CHANNEL_ID, chatId, message.message_id, `${tg.esc(clamp(text, 900))}${linkTag}`);
+      } else {
+        await tg.sendMessage(CHANNEL_ID, `${tg.esc(text)}${linkTag}`);
+      }
+      lines.push('📢 Выложено в Telegram-канал');
+    } catch (err) {
+      lines.push(`⚠️ В канал не ушло: ${tg.esc(err.message)}`);
+    }
+  }
+
+  if (media) {
+    try {
+      const buffer = await tg.downloadFile(media.fileId);
+      const caption = `${text}${shown ? `\n\n${shown}` : ''}`.trim();
+      const result = social.shareMedia({ kind: media.kind, buffer, caption }, { chatId }, { priority });
+      for (const name of result.skipped) lines.push(`${SITE_LABELS[name]}: не настроен`);
+      if (result.threadsQueued) lines.push('🧵 Threads: публикую текстом');
+      if (result.instagramQueued) {
+        lines.push(media.kind === 'video' ? '🎬 Instagram: отправляю ваш ролик' : '📸 Instagram: отправляю картинку');
+        // Ответ площадки придёт через минуты — отдельным сообщением, как и у
+        // обычного объявления.
+        result.done
+          .then((posted) => {
+            if (!posted) return null;
+            return tg.sendMessage(
+              chatId,
+              posted.posted ? '📸 Instagram: реклама опубликована' : `📸 Instagram: ${tg.esc(posted.reason)}`
+            );
+          })
+          .catch((err) => console.error('Реклама (Instagram):', err));
+      }
+    } catch (err) {
+      // Телеграм не отдаёт боту файлы тяжелее 20 МБ — и это единственное, что
+      // тут обычно ломается. На сайте и в канале реклама к этому моменту уже
+      // есть, поэтому не падаем, а говорим, чего именно не хватило.
+      lines.push(`⚠️ В соцсети не ушло: ${tg.esc(err.message)}`);
+    }
+  } else if (ready) {
+    // Текстовая реклама без картинки идёт на площадки обычной дорогой: там ей
+    // соберут ролик из макета, как и всякому другому объявлению.
+    shareToSocial(chatId, ready, 'board', shown, priority).catch((err) => console.error('Соцсети:', err));
+  }
+
+  const sent = await tg.sendMessage(
+    chatId,
+    [`📣 Реклама, выложена как есть — без разбора.`, '', ...lines].join('\n'),
+    id
+      ? { reply_markup: { inline_keyboard: [[{ text: '🗑 Снять с доски', callback_data: `del:${id}` }]] } }
+      : undefined
+  );
+  if (id) await imports.setCard(id, chatId, sent.message_id);
+}
+
+async function handleParsed(chatId, listings, { source, rawText, priority = false, ad = false }) {
   const real = listings.filter((p) => p.is_listing && p.listing_type !== 'other');
   if (real.length === 0) {
-    const note = listings[0] && listings[0].note;
-    await tg.sendMessage(chatId, `🚫 Не похоже на объявление.${note ? `\n${tg.esc(note)}` : ''}`);
-    return;
+    // За отказом по рекламе тут же идёт публикация «как есть» — молчим, чтобы
+    // не пугать админа отказом, за которым сразу следует успех.
+    if (!ad) {
+      const note = listings[0] && listings[0].note;
+      await tg.sendMessage(chatId, `🚫 Не похоже на объявление.${note ? `\n${tg.esc(note)}` : ''}`);
+    }
+    return 0;
   }
 
   // По самим карточкам не видно, сколько объявлений было на скриншоте: одна
@@ -649,6 +773,9 @@ async function handleParsed(chatId, listings, { source, rawText, priority = fals
   }
 
   if (published) await tg.sendMessage(chatId, await statsText());
+  // Сколько объявлений вышло — по этому числу реклама решает, не пора ли
+  // выкладывать как есть (см. adJob в onMessage).
+  return published;
 }
 
 // «через 40 секунд» / «через 3 минуты» — прикидка, а не обещание: сколько
@@ -802,7 +929,7 @@ async function onMessage(message) {
   const text = adPrefix ? raw.slice(adPrefix[0].length).trim() : raw;
 
   // Голая команда — значит, объявление придёт следующим сообщением.
-  if (adPrefix && !text && !photoFileId(message)) {
+  if (adPrefix && !text && !mediaOf(message)) {
     adWaiting.set(chatId, Date.now() + AD_TTL_MS);
     await tg.sendMessage(
       chatId,
@@ -845,9 +972,16 @@ async function onMessage(message) {
         'ролик собирается сразу. Про каждое напишу отдельно, когда дойдёт очередь.',
         '',
         '/ad — платная реклама. Пришлите её следующим сообщением или сразу вместе',
-        'с командой: «/ad Открылся салон…», а к скриншоту — подписью. Такое объявление',
-        'идёт вне очереди (разбор, Threads, ролик) и не отбраковывается отсевом —',
-        'кроме запрещённого. На сайте и в канале выглядит как обычное.',
+        'с командой: «/ad Открылся салон…», а к скриншоту или видео — подписью.',
+        'Такое объявление идёт вне очереди (разбор, Threads, ролик) и не',
+        'отбраковывается отсевом — кроме запрещённого.',
+        '',
+        'Рекламой можно прислать что угодно: готовый ролик, гифку, макет картинкой.',
+        'Что разобрать нельзя — выложу как есть: ваш файл уйдёт в канал и в Instagram',
+        'своим видом, без нашего макета, а текст подписи станет запиской на доске',
+        '(заголовок — первая строка, телефон — первый номер из текста). Номер в тексте',
+        'не обязателен, но без него на сайте не будет кнопки WhatsApp.',
+        'Файл тяжелее 20 МБ Telegram боту не отдаёт — такой ролик сожмите заранее.',
         '',
         '/now — выпустить то, что почему-то ещё стоит в очереди, не дожидаясь своего',
         'хода. Работает и словом: напишите «выпусти», «выпускай» или «публикуй».',
@@ -913,9 +1047,22 @@ async function onMessage(message) {
   // Пометку тратим здесь, а не в начале обработчика: между «/ad» и самим
   // объявлением админ может успеть спросить /stats, и съедать её на этом
   // вопросе было бы обидно.
+  const media = mediaOf(message);
   const fileId = photoFileId(message);
+  const isAd = Boolean(adPrefix) || ((media || text.length > 15) && takeAd(chatId));
+
+  // Видео и гифку модель не читает вовсе — такая реклама идёт как есть и мимо
+  // очереди разбора: Groq в ней не участвует, и занимать им дорожку незачем.
+  if (isAd && media && media.kind === 'video') {
+    await tg.sendMessage(chatId, '📣 Реклама с готовым роликом — выкладываю как есть.');
+    publishRawAd(chatId, message, text, media, true).catch((err) => {
+      console.error('Реклама:', err);
+      tg.sendMessage(chatId, `⚠️ Ошибка: ${tg.esc(err.message)}`).catch(() => {});
+    });
+    return;
+  }
+
   if (fileId) {
-    const isAd = Boolean(adPrefix) || takeAd(chatId);
     const mediaType =
       message.document && message.document.mime_type ? message.document.mime_type : 'image/jpeg';
 
@@ -923,8 +1070,20 @@ async function onMessage(message) {
       chatId,
       async () => {
         const buffer = await tg.downloadFile(fileId);
-        const parsed = await extract.fromImage(buffer, mediaType, '', { ad: isAd });
-        await handleParsed(chatId, parsed, { source: 'whatsapp', rawText: text || null, priority: isAd });
+        let parsed = null;
+        try {
+          parsed = await extract.fromImage(buffer, mediaType, '', { ad: isAd });
+        } catch (err) {
+          // Лимит откладываем, как и всё остальное: он пройдёт сам, и разобранная
+          // реклама лучше выложенной как есть. А вот «не влезает» и отказ шлюза
+          // не пройдут — для рекламы это повод выложить без разбора.
+          if (!isAd || err.retryAt) throw err;
+          await tg.sendMessage(chatId, `⚠️ Разобрать не вышло: ${tg.esc(err.message)}`);
+        }
+        const published = parsed
+          ? await handleParsed(chatId, parsed, { source: 'whatsapp', rawText: text || null, priority: isAd, ad: isAd })
+          : 0;
+        if (isAd && !published) await publishRawAd(chatId, message, text, media, true);
       },
       { priority: isAd }
     );
@@ -941,12 +1100,20 @@ async function onMessage(message) {
   }
 
   if (text.length > 15) {
-    const isAd = Boolean(adPrefix) || takeAd(chatId);
     const position = enqueue(
       chatId,
       async () => {
-        const parsed = await extract.fromText(text, { ad: isAd });
-        await handleParsed(chatId, parsed, { source: 'telegram', rawText: text, priority: isAd });
+        let parsed = null;
+        try {
+          parsed = await extract.fromText(text, { ad: isAd });
+        } catch (err) {
+          if (!isAd || err.retryAt) throw err;
+          await tg.sendMessage(chatId, `⚠️ Разобрать не вышло: ${tg.esc(err.message)}`);
+        }
+        const published = parsed
+          ? await handleParsed(chatId, parsed, { source: 'telegram', rawText: text, priority: isAd, ad: isAd })
+          : 0;
+        if (isAd && !published) await publishRawAd(chatId, message, text, null, true);
       },
       { priority: isAd }
     );

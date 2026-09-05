@@ -432,6 +432,70 @@ function shareDigest(items, opts, ctx) {
   return true;
 }
 
+// Готовая реклама: ролик или картинку прислали уже собранными (см. publishRawAd
+// в telegram/bot.js), и наше дело — только довезти их до площадки. Ни сборки, ни
+// макета, ни очереди по типам здесь нет: собирать нечего, а подпись «Заказ дня»
+// на чужом ролике была бы враньём.
+//
+// Место в суточной норме берём по настоящему потолку, а не по мягкому: мягкий
+// придерживает последние места под запасные картинки обычных объявлений, и
+// платная реклама — ровно тот случай, ради которого этот запас и держат.
+async function deliverRawMedia(job) {
+  const base = backendUrl();
+  if (!base) return { posted: false, reason: 'не задан адрес бэкенда' };
+
+  await quota.sync(instagram.publishingLimit);
+  if (!quota.take(quota.hardLimit())) return quotaFailure();
+
+  const isVideo = job.kind === 'video';
+  // Instagram приходит за файлом сам, по ссылке: выкладываем наружу на двадцать
+  // минут тем же способом, что и собранные ролики.
+  const name = hosting.put(isVideo ? video.fileName() : `ad-${Date.now().toString(36)}.jpg`, job.buffer);
+  const url = `${base}/api/social/${isVideo ? 'video' : 'image'}/${name}`;
+  console.log(`[реклама] отдаю ссылку ${url}`);
+
+  return post('insta', () =>
+    isVideo
+      ? instagram.publishReel(url, job.caption, video.COVER_MS)
+      : instagram.publishImage(url, job.caption)
+  );
+}
+
+// Реклама «как есть» на площадки. Возвращает расписку о приёме и обещание
+// (done), которое сбудется, когда Instagram ответит: между публикациями
+// полторы минуты, столько ждать ответом на сообщение нельзя.
+function shareMedia({ kind, buffer, caption }, ctx, { priority = false } = {}) {
+  const skipped = [];
+  const result = { skipped, done: Promise.resolve(null) };
+
+  // Пустая подпись — не повод молчать в Threads, но и постить туда нечего:
+  // картинок он от нас не принимает, а пост из одной ссылки бесполезен.
+  if (!threads.isConfigured()) skipped.push('threads');
+  else if (caption) {
+    result.threadsQueued = true;
+    result.threadsWaiting = scheduleThreads(caption, 'реклама', ctx, priority);
+  }
+
+  if (!instagram.isConfigured()) {
+    skipped.push('instagram');
+    return result;
+  }
+
+  result.instagramQueued = true;
+  result.done = schedule(
+    async () => {
+      inFlight += 1;
+      try {
+        return await deliverRawMedia({ kind, buffer, caption });
+      } finally {
+        inFlight -= 1;
+      }
+    },
+    { priority }
+  );
+  return result;
+}
+
 // Ставит пост в очередь Threads и отчитывается сам, когда до него дошло: между
 // постами до десяти минут, столько ждать ответом на сообщение нельзя.
 function scheduleThreads(text, title, ctx, priority = false) {
@@ -516,6 +580,7 @@ async function limits() {
 
 module.exports = {
   shareListing,
+  shareMedia,
   shareDigest,
   flushNow,
   limits,
