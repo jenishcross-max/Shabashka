@@ -117,7 +117,8 @@ function socialReport(result) {
 // в потолок, который часами не сдвинется (суточная квота Instagram, антиспам
 // Threads) — см. isHardLimit в social/net.js. Частые автопопытки тут не
 // помогают, а только тратят ту же квоту или продлевают подозрение, поэтому
-// такие случаи не должны попадать в обычный каскад из scheduleAutoRetry.
+// такие случаи идут не обычным каскадом, а одним долгим ожиданием
+// (LIMIT_RETRY_DELAY_MS в scheduleAutoRetry).
 function hasHardLimit(result, failed) {
   return failed.some((name) => result[name] && result[name].hardLimit);
 }
@@ -136,7 +137,23 @@ const MINUTE_MS = 60 * 1000;
 const AUTO_RETRY_DELAYS = [5, 10, 20, 30, 45, 60, 60, 60, 60].map((m) => m * MINUTE_MS);
 const AUTO_RETRY_SPAN = 'почти шесть часов';
 
-function scheduleAutoRetry(chatId, retryId, attempt = 0) {
+// Суточная норма площадки — не сбой, и пятиминутными повторами её не пройти:
+// окно у Instagram скользящее, место освобождается ровно через сутки после той
+// публикации, которая его заняла. Раньше на этом каскад останавливался совсем,
+// и ролик ждал, пока админ вспомнит про кнопку, — а чаще всего не вспоминал, и
+// объявление оставалось на сайте, но не в Instagram. Теперь бот обнуляет
+// расписание и возвращается через десять часов: к этому времени первые за
+// прошлые сутки публикации из окна уже выпали, а сам он ждать не заставляет.
+const LIMIT_RETRY_DELAY_MS = 10 * 60 * 60 * 1000;
+// Сколько раз так ждать. Два захода — это сутки с лишним; если и после них
+// места нет, дело не в норме, а в том, что аккаунт занят чем-то ещё, и держать
+// ролик в памяти дальше незачем — остаётся кнопка.
+const LIMIT_RETRY_MAX = 2;
+
+function scheduleAutoRetry(chatId, retryId, attempt = 0, waited = 0) {
+  // Ожидание нормы идёт своим сроком и не тратит попытку каскада: вернувшись
+  // через десять часов, бот начинает расписание заново, как с первой публикации.
+  const delay = attempt === 0 && waited ? LIMIT_RETRY_DELAY_MS : AUTO_RETRY_DELAYS[attempt];
   setTimeout(async () => {
     let result;
     try {
@@ -163,16 +180,29 @@ function scheduleAutoRetry(chatId, retryId, attempt = 0) {
 
     if (hasHardLimit(result, failed)) {
       // Квота или антиспам-блокировка сама за минуты не пройдёт — дальнейшие
-      // попытки каждые 5-60 минут только жгли бы её впустую. Останавливаем
-      // каскад сразу и оставляем ролик на ручную кнопку.
+      // попытки каждые 5-60 минут только жгли бы её впустую. Каскад обнуляем и
+      // возвращаемся к ролику через десять часов, когда окно сдвинется.
+      if (waited < LIMIT_RETRY_MAX && result.retryId) {
+        scheduleAutoRetry(chatId, result.retryId, 0, waited + 1);
+        await tg
+          .sendMessage(
+            chatId,
+            `⏳ Упёрлись в лимит площадки: ${lines.join('; ')}\nПопробую сам через 10 часов — присылать заново не нужно.`
+          )
+          .catch(() => {});
+        return;
+      }
       await tg
-        .sendMessage(chatId, `⏳ Упёрлись в лимит площадки, само за часы не пройдёт: ${lines.join('; ')}`)
+        .sendMessage(
+          chatId,
+          `⏳ Лимит площадки не отпустил и через ${waited * 10} часов: ${lines.join('; ')}\nДальше только кнопкой в сообщении с роликом.`
+        )
         .catch(() => {});
       return;
     }
 
     if (attempt + 1 < AUTO_RETRY_DELAYS.length && result.retryId) {
-      scheduleAutoRetry(chatId, result.retryId, attempt + 1);
+      scheduleAutoRetry(chatId, result.retryId, attempt + 1, waited);
       return;
     }
 
@@ -180,7 +210,7 @@ function scheduleAutoRetry(chatId, retryId, attempt = 0) {
     await tg
       .sendMessage(chatId, `⚠️ Само не получилось за ${AUTO_RETRY_SPAN}: ${lines.join('; ')}`)
       .catch(() => {});
-  }, AUTO_RETRY_DELAYS[attempt]);
+  }, delay);
 }
 
 // Ни одна площадка больше не отвечает сразу: в Threads объявление уходит по
@@ -232,12 +262,14 @@ social.onThreads(async ({ title, ctx, posted, reason, hardLimit, retryId }) => {
 
   const lines = [`🧵 Threads: ${tg.esc(reason)}`, what];
   if (hardLimit) {
-    lines.push('Упёрлись в антиспам Threads, само за часы не пройдёт — можно выложить вручную.');
+    lines.push('Упёрлись в антиспам Threads — вернусь через 10 часов, когда он отпустит. Можно и вручную.');
   }
   await tg
     .sendMessage(chatId, lines.join('\n'), retryId ? retryKeyboard(retryId) : undefined)
     .catch(() => {});
-  if (retryId && !hardLimit) scheduleAutoRetry(chatId, retryId);
+  // Как и у ролика: антиспам Threads держит часами, поэтому не бросаем, а
+  // возвращаемся через десять часов.
+  if (retryId) scheduleAutoRetry(chatId, retryId, 0, hardLimit ? 1 : 0);
 });
 
 // Отчёт по уехавшему ролику. Приходит не в ответ на конкретное объявление, а
@@ -283,7 +315,7 @@ async function reportReel(chatId, result) {
   if (result.retryId) {
     lines.push(
       stuck
-        ? 'Упёрлись в лимит площадки, само за часы не пройдёт — ролик выше, можно опубликовать вручную.'
+        ? 'Упёрлись в лимит площадки — вернусь к ролику через 10 часов, когда окно сдвинется. Ролик выше, можно и вручную.'
         : result.buffer
         ? 'Бот попробует ещё раз сам. Ролик выше — можно опубликовать и вручную.'
         : 'Бот соберёт ролик заново и попробует опубликовать сам.'
@@ -292,7 +324,10 @@ async function reportReel(chatId, result) {
   await tg
     .sendMessage(chatId, lines.join('\n'), result.retryId ? retryKeyboard(result.retryId) : undefined)
     .catch(() => {});
-  if (result.retryId && !stuck) scheduleAutoRetry(chatId, result.retryId);
+  // Упёрлись в суточную норму — расписание из пятиминутных попыток тут ни к
+  // чему, но и бросать ролик нельзя: ждём десять часов и начинаем заново
+  // (см. LIMIT_RETRY_DELAY_MS). waited = 1 — это и есть «первое ожидание».
+  if (result.retryId) scheduleAutoRetry(chatId, result.retryId, 0, stuck ? 1 : 0);
 }
 
 // Куда слать отчёт, решаем по самим объявлениям, а не по настройкам: пачка
@@ -309,7 +344,7 @@ async function retrySocial(chatId, retryId) {
   if (!result) {
     await tg.sendMessage(
       chatId,
-      '🎬 Ролик уже не в памяти (прошло больше восьми часов или сервер перезапускался) — выложите его вручную из сообщения выше.'
+      '🎬 Ролик уже не в памяти (прошло больше двенадцати часов или сервер перезапускался) — выложите его вручную из сообщения выше.'
     );
     return;
   }
@@ -601,40 +636,84 @@ function mediaOf(message) {
   return photo ? { kind: 'image', fileId: photo } : null;
 }
 
-// Реклама «как есть»: модель к ней не притрагивается. Этим путём выходит то,
-// чего она не разберёт в принципе (видео, готовый макет), и то, что не влезло в
-// её бесплатный лимит. Объявление всё равно должно выйти — за него заплачено.
+// Реклама «как есть»: сам контент модель не трогает — он уходит в канал и в
+// Instagram в том виде, в каком его прислали. Этим путём выходит то, чего она не
+// разберёт в принципе (видео, готовый макет), и то, что не влезло в её
+// бесплатный лимит. Объявление всё равно должно выйти — за него заплачено.
 //
-// Поля собираем сами, без модели: заголовок — первая строка подписи, описание —
-// вся подпись, телефон — первый номер из текста. Город и категорию допишет
-// applyDefaults, как и обычному объявлению.
-async function publishRawAd(chatId, message, text, media, priority) {
+// Карточка на сайте при этом собирается как обычно: тип, город, категорию и
+// зарплату по возможности разбирает модель (см. adFields ниже), а чего не
+// хватит — допишет applyDefaults.
+// Поля рекламы, которую публикуем как есть. Тип у неё такой же, как у любого
+// другого объявления: вакансию надо положить в вакансии, разовый заказ — в
+// заказы, и только остальное — на доску. Раньше всё «как есть» уходило на
+// доску, и оплаченная вакансия оказывалась в ленте коротких записок вместо
+// своего раздела. Поэтому текст всё-таки показываем модели: сам контент она не
+// трогает — ролик и макет уходят в том виде, в каком их прислали, — а по
+// подписи говорит, что это и куда класть, заодно разбирая город, категорию и
+// зарплату.
+//
+// classify = false там, где этот же текст модели уже показывали и она не
+// справилась: второй заход кончится тем же отказом и только сожжёт суточный
+// лимит. Тогда, как и раньше, доска — она принимает что угодно.
+async function adFields(text, classify) {
+  const first = text.split('\n').map((line) => line.trim()).find(Boolean) || 'Реклама';
+  const byHand = {
+    is_listing: true,
+    listing_type: 'board',
+    title: clamp(first, 80),
+    description: text,
+    phone: extract.phoneFrom(text) || '',
+    city: '',
+    category: '',
+    address: '',
+    budget: '',
+    work_format: 'offline',
+  };
+  if (!classify) return byHand;
+
+  try {
+    const [parsed] = await extract.fromText(text, { ad: true });
+    if (!parsed || !parsed.is_listing || parsed.listing_type === 'other') return byHand;
+    // Заголовок, описание и телефон у нас уже собраны из самого текста — берём
+    // разобранные только там, где они есть: модель иногда возвращает пустую
+    // строку, и подставлять её вместо живого текста рекламы нельзя.
+    return {
+      ...parsed,
+      title: parsed.title || byHand.title,
+      description: parsed.description || byHand.description,
+      phone: parsed.phone || byHand.phone,
+    };
+  } catch (err) {
+    console.error('[реклама] тип не определить:', err.message);
+    return byHand;
+  }
+}
+
+async function publishRawAd(chatId, message, text, media, priority, { classify = true } = {}) {
   const lines = [];
   let id = null;
   let ready = null;
   let siteLink = '';
+  let listingType = 'board';
 
   if (text.length > 15) {
-    const first = text.split('\n').map((line) => line.trim()).find(Boolean) || 'Реклама';
-    const parsed = {
-      is_listing: true,
-      listing_type: 'board',
-      title: clamp(first, 80),
-      description: text,
-      phone: extract.phoneFrom(text) || '',
-      city: '',
-      category: '',
-      address: '',
-      budget: '',
-      work_format: 'offline',
-    };
+    const parsed = await adFields(text, classify);
+    listingType = parsed.listing_type;
     id = await imports.create({ source: 'telegram', rawText: text, parsed, chatId });
     if (id) {
       ready = (await imports.applyDefaults(parsed)).parsed;
       await imports.setParsed(id, ready);
       const published = await imports.publish(id);
-      siteLink = SITE_URL ? `${SITE_URL}/board#p${published.id}` : '';
-      lines.push('✅ Повесил на доску — сутки, потом пропадёт само');
+      listingType = published.type;
+      const path =
+        published.type === 'board' ? `board#p${published.id}` : `${LISTING_PATHS[published.type]}/${published.id}`;
+      siteLink = SITE_URL ? `${SITE_URL}/${path}` : '';
+      lines.push(
+        published.type === 'board'
+          ? '✅ Повесил на доску — сутки, потом пропадёт само'
+          : `✅ Опубликовал: ${published.type === 'vacancy' ? 'вакансия' : 'заказ'}`
+      );
       // Номер тут не обязателен, в отличие от обычного объявления: в рекламе
       // контакт часто нарисован прямо на макете. Но сказать об этом надо —
       // кнопки WhatsApp на такой карточке не будет.
@@ -695,14 +774,28 @@ async function publishRawAd(chatId, message, text, media, priority) {
   } else if (ready) {
     // Текстовая реклама без картинки идёт на площадки обычной дорогой: там ей
     // соберут ролик из макета, как и всякому другому объявлению.
-    shareToSocial(chatId, ready, 'board', shown, priority).catch((err) => console.error('Соцсети:', err));
+    shareToSocial(chatId, ready, listingType, shown, priority).catch((err) => console.error('Соцсети:', err));
   }
 
   const sent = await tg.sendMessage(
     chatId,
-    [`📣 Реклама, выложена как есть — без разбора.`, '', ...lines].join('\n'),
+    // «Как есть» — про сам контент: ролик и макет уходят такими, какими их
+    // прислали. Тип при этом разобран, и в отчёте это должно быть видно —
+    // иначе непонятно, почему реклама оказалась в вакансиях.
+    [`📣 Реклама, контент выложен как есть.`, '', ...lines].join('\n'),
     id
-      ? { reply_markup: { inline_keyboard: [[{ text: '🗑 Снять с доски', callback_data: `del:${id}` }]] } }
+      ? {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: listingType === 'board' ? '🗑 Снять с доски' : '🗑 Удалить с сайта',
+                  callback_data: `del:${id}`,
+                },
+              ],
+            ],
+          },
+        }
       : undefined
   );
   if (id) await imports.setCard(id, chatId, sent.message_id);
@@ -977,10 +1070,11 @@ async function onMessage(message) {
         'отбраковывается отсевом — кроме запрещённого.',
         '',
         'Рекламой можно прислать что угодно: готовый ролик, гифку, макет картинкой.',
-        'Что разобрать нельзя — выложу как есть: ваш файл уйдёт в канал и в Instagram',
-        'своим видом, без нашего макета, а текст подписи станет запиской на доске',
-        '(заголовок — первая строка, телефон — первый номер из текста). Номер в тексте',
-        'не обязателен, но без него на сайте не будет кнопки WhatsApp.',
+        'Файл уйдёт в канал и в Instagram своим видом, без нашего макета, а подпись',
+        'разберу как обычное объявление — вакансия попадёт в вакансии, разовая',
+        'работа в заказы, остальное на доску. Не разберу подпись — повешу запиской',
+        'на доску (заголовок — первая строка, телефон — первый номер из текста).',
+        'Номер в тексте не обязателен, но без него на сайте не будет кнопки WhatsApp.',
         'Файл тяжелее 20 МБ Telegram боту не отдаёт — такой ролик сожмите заранее.',
         '',
         '/now — выпустить то, что почему-то ещё стоит в очереди, не дожидаясь своего',
@@ -1113,7 +1207,9 @@ async function onMessage(message) {
         const published = parsed
           ? await handleParsed(chatId, parsed, { source: 'telegram', rawText: text, priority: isAd, ad: isAd })
           : 0;
-        if (isAd && !published) await publishRawAd(chatId, message, text, null, true);
+        // classify: false — этот же текст модель только что не осилила, второй
+        // заход кончится тем же и лишь потратит суточный лимит.
+        if (isAd && !published) await publishRawAd(chatId, message, text, null, true, { classify: false });
       },
       { priority: isAd }
     );
