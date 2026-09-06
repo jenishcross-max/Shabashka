@@ -937,18 +937,27 @@ function waitText(ms) {
 //
 // Промежутки между постами пометка не отменяет: они держат не порядок, а
 // антиспам Threads и часовой лимит Instagram, и обгонять их нельзя никому.
+//
+// Вне очереди — ещё не «сразу». Дорожки разбора у Groq общие, и когда суточный
+// лимит выбран, первым в очереди стоять бесполезно: реклама откладывается со
+// всеми и ждёт часами. Для такого случая есть «/ad_fast» — та же реклама, но
+// мимо модели совсем: тип берётся по словам, заголовок из первых строк
+// (см. adFields), и объявление уходит на сайт, в канал и на площадки в ту же
+// секунду. Платим за это разбором: города, категории и зарплаты в карточке не
+// будет — только то, что видно в самом тексте.
 const AD_TTL_MS = 30 * 60 * 1000;
-// chatId → до какого момента ждём рекламное объявление. Срок нужен затем, чтобы
-// забытая пометка не всплыла вечером на чужом объявлении.
+// chatId → { until, fast }: до какого момента ждём рекламное объявление и надо
+// ли выкладывать его без разбора. Срок нужен затем, чтобы забытая пометка не
+// всплыла вечером на чужом объявлении.
 const adWaiting = new Map();
 
 // «/ad» отдельным сообщением помечает следующее объявление, «/ad текст» — само
 // это сообщение. Возвращает и снимает пометку: одна команда — одна реклама.
 function takeAd(chatId) {
-  const until = adWaiting.get(chatId);
-  if (!until) return false;
+  const mark = adWaiting.get(chatId);
+  if (!mark) return null;
   adWaiting.delete(chatId);
-  return until > Date.now();
+  return mark.until > Date.now() ? mark : null;
 }
 
 // Отложенные объявления.
@@ -987,29 +996,43 @@ function pendingText(delay) {
   })}`;
 }
 
-function park(chatId, job, retryAt, attempt, priority) {
+function park(chatId, job, retryAt, attempt, priority, ad) {
   const delay = Math.min(
     Math.max(retryAt - Date.now(), 0) + PENDING_MARGIN_MS,
     PENDING_MAX_DELAY_MS
   );
 
-  const entry = {};
+  const entry = { delay, done: false };
   pending.add(entry);
-  setTimeout(() => {
+  entry.timer = setTimeout(() => {
+    entry.done = true;
     pending.delete(entry);
     // Обратно в ту же очередь, а не мимо неё: к этому моменту админ мог
     // прислать новую пачку, и отложенное должно встать в общий ряд.
-    enqueue(chatId, job, { attempt: attempt + 1, priority });
+    enqueue(chatId, job, { attempt: attempt + 1, priority, ad });
     tg.sendMessage(chatId, '🔁 Лимит отпустил — возвращаюсь к отложенному объявлению.').catch(() => {});
   }, delay);
 
-  return delay;
+  return entry;
+}
+
+// Отложенную рекламу можно не ждать. Набирать «/ad_fast» и вставлять текст
+// заново ради этого не нужно: объявление у нас уже есть, поэтому к сообщению об
+// ожидании прикладывается кнопка, которая выкладывает его без разбора прямо
+// сейчас. Ключ — счётчик, а не id объявления: на сайте его ещё нет.
+let adNowSeq = 0;
+const adNow = new Map();
+
+function cancelPending(entry) {
+  clearTimeout(entry.timer);
+  entry.done = true;
+  pending.delete(entry);
 }
 
 // Разбор ставим в очередь и отвечаем сразу: пачка из десятка объявлений
 // разбирается несколько минут, и держать всё это время обработчик апдейта
 // нельзя — при long polling на нём встали бы и все остальные сообщения.
-function enqueue(chatId, job, { attempt = 0, priority = false } = {}) {
+function enqueue(chatId, job, { attempt = 0, priority = false, ad = null } = {}) {
   return queue.add(async () => {
     try {
       await job();
@@ -1018,13 +1041,22 @@ function enqueue(chatId, job, { attempt = 0, priority = false } = {}) {
       // ждать его есть смысл. Отозванный ключ или сломанная модель такой
       // пометки не получают и по-прежнему приходят ошибкой сразу.
       if (err.retryAt && attempt < PENDING_MAX_ATTEMPTS) {
-        const delay = park(chatId, job, err.retryAt, attempt, priority);
-        await tg
-          .sendMessage(
-            chatId,
-            `⏳ Лимиты разбора выбраны. Объявление не потеряно — отложил и вернусь к нему сам ${pendingText(delay)}. Присылать заново не нужно.`
-          )
-          .catch(() => {});
+        const parked = park(chatId, job, err.retryAt, attempt, priority, ad);
+        const lines = [
+          `⏳ Лимиты разбора выбраны. Объявление не потеряно — отложил и вернусь к нему сам ${pendingText(parked.delay)}. Присылать заново не нужно.`,
+        ];
+        let markup;
+        if (ad) {
+          const key = String((adNowSeq += 1));
+          adNow.set(key, { ...ad, chatId, parked });
+          lines.push('', 'Ждать не обязательно — кнопка выложит рекламу сразу, без разбора.');
+          markup = {
+            reply_markup: {
+              inline_keyboard: [[{ text: '⚡ Выложить сразу, без разбора', callback_data: `an:${key}` }]],
+            },
+          };
+        }
+        await tg.sendMessage(chatId, lines.join('\n'), markup).catch(() => {});
         return;
       }
 
@@ -1068,20 +1100,32 @@ async function onMessage(message) {
   // «/ad» можно послать и отдельным сообщением, и вместе с текстом объявления
   // («/ad Открылся салон…»), и подписью к скриншоту. Команду отрезаем — дальше
   // объявление идёт обычной дорогой, просто с пометкой.
-  const adPrefix = /^\/ad(?:@\S+)?\b[\s:,-]*/i.exec(raw);
+  //
+  // «/ad_fast» (или «/adfast») — та же реклама, но без разбора: когда лимиты
+  // Groq выбраны, ждать освобождения незачем.
+  const adPrefix = /^\/ad(_?fast)?(?:@\S+)?\b[\s:,-]*/i.exec(raw);
   const text = adPrefix ? raw.slice(adPrefix[0].length).trim() : raw;
 
   // Голая команда — значит, объявление придёт следующим сообщением.
   if (adPrefix && !text && !mediaOf(message)) {
-    adWaiting.set(chatId, Date.now() + AD_TTL_MS);
+    const fast = Boolean(adPrefix[1]);
+    adWaiting.set(chatId, { until: Date.now() + AD_TTL_MS, fast });
     await tg.sendMessage(
       chatId,
       [
         '📣 Жду рекламное объявление — пришлите его следующим сообщением: текстом, картинкой или видео.',
         '',
-        'Оно пойдёт без очереди: разберу первым, в Threads и Instagram отправлю',
-        'первым и отсевом не отброшу. Промежутки между постами останутся прежними —',
-        'они держат антиспам площадок, а не порядок.',
+        ...(fast
+          ? [
+              'Разбирать не буду — выложу сразу, как пришло. Тип определю по словам,',
+              'заголовок соберу из первых строк. Города, категории и зарплаты',
+              'в карточке не будет: их называет модель, а к ней мы не пойдём.',
+            ]
+          : [
+              'Оно пойдёт без очереди: разберу первым, в Threads и Instagram отправлю',
+              'первым и отсевом не отброшу. Промежутки между постами останутся прежними —',
+              'они держат антиспам площадок, а не порядок.',
+            ]),
         '',
         `Пометка ждёт ${Math.round(AD_TTL_MS / 60000)} минут и тратится на одно объявление.`,
       ].join('\n')
@@ -1130,6 +1174,17 @@ async function onMessage(message) {
         'на доску (заголовок — первая строка, телефон — первый номер из текста).',
         'Номер в тексте не обязателен, но без него на сайте не будет кнопки WhatsApp.',
         'Файл тяжелее 20 МБ Telegram боту не отдаёт — такой ролик сожмите заранее.',
+        '',
+        '/ad_fast — то же самое, но без разбора. Нужна, когда суточный лимит модели',
+        'выбран: «вне очереди» тогда не помогает — дорожки общие, и реклама ждёт',
+        'освобождения вместе со всеми. По этой команде объявление уходит на сайт,',
+        'в канал и на площадки сразу. Тип определю по словам («требуются» плюс',
+        'разговор про оплату — вакансия, иначе доска), заголовок соберу из первых',
+        'строк. Города, категории и зарплаты в карточке не будет — их называет',
+        'модель, а к ней мы не идём. Промежутки между постами остаются: они держат',
+        `антиспам Threads (${social.THREADS_INTERVAL_MIN} минут) и часовой лимит Instagram, и снимать их нельзя —`,
+        'за залп Threads блокирует на часы. Если суточная норма Instagram занята,',
+        'ролик всё равно соберу и пришлю сюда файлом — выложите руками.',
         '',
         '/now — выпустить то, что почему-то ещё стоит в очереди, не дожидаясь своего',
         'хода. Работает и словом: напишите «выпусти», «выпускай» или «публикуй».',
@@ -1198,13 +1253,22 @@ async function onMessage(message) {
   // вопросе было бы обидно.
   const media = mediaOf(message);
   const fileId = photoFileId(message);
-  const isAd = Boolean(adPrefix) || ((media || text.length > 15) && takeAd(chatId));
+  const marked = adPrefix ? null : (media || text.length > 15) && takeAd(chatId);
+  const isAd = Boolean(adPrefix) || Boolean(marked);
+  // «Без разбора» — свойство команды, а не сообщения: пометка от «/ad_fast»
+  // доезжает до следующего сообщения такой же.
+  const fast = adPrefix ? Boolean(adPrefix[1]) : Boolean(marked && marked.fast);
 
   // Видео и гифку модель не читает вовсе — такая реклама идёт как есть и мимо
   // очереди разбора: Groq в ней не участвует, и занимать им дорожку незачем.
   if (isAd && media && media.kind === 'video') {
-    await tg.sendMessage(chatId, '📣 Реклама с готовым роликом — выкладываю как есть.');
-    publishRawAd(chatId, message, text, media, true).catch((err) => {
+    await tg.sendMessage(
+      chatId,
+      fast
+        ? '📣 Срочная реклама с готовым роликом — выкладываю сразу, подпись не разбираю.'
+        : '📣 Реклама с готовым роликом — выкладываю как есть.'
+    );
+    publishRawAd(chatId, message, text, media, true, { classify: !fast }).catch((err) => {
       console.error('Реклама:', err);
       tg.sendMessage(chatId, `⚠️ Ошибка: ${tg.esc(err.message)}`).catch(() => {});
     });
@@ -1217,8 +1281,13 @@ async function onMessage(message) {
   // есть, а тип и поля собираются по подписи.
   if (fileId) {
     if (isAd) {
-      await tg.sendMessage(chatId, '📣 Реклама картинкой — выкладываю как есть, разберу подпись.');
-      publishRawAd(chatId, message, text, media, true).catch((err) => {
+      await tg.sendMessage(
+        chatId,
+        fast
+          ? '📣 Срочная реклама картинкой — выкладываю сразу, подпись не разбираю.'
+          : '📣 Реклама картинкой — выкладываю как есть, разберу подпись.'
+      );
+      publishRawAd(chatId, message, text, media, true, { classify: !fast }).catch((err) => {
         console.error('Реклама:', err);
         tg.sendMessage(chatId, `⚠️ Ошибка: ${tg.esc(err.message)}`).catch(() => {});
       });
@@ -1246,6 +1315,20 @@ async function onMessage(message) {
   }
 
   if (text.length > 15) {
+    // Срочная реклама к модели не идёт вовсе — ни в очередь разбора, ни в
+    // отложенные. Ждать в ней нечего: дорожки Groq общие, и когда суточный
+    // лимит выбран, место в начале очереди ничего не решает — объявление
+    // простоит те же часы. Всё остальное (сайт, канал, Threads, ролик) идёт
+    // обычной дорогой и вне очереди, как у «/ad».
+    if (fast) {
+      await tg.sendMessage(chatId, '📣 Срочная реклама — выкладываю сразу, без разбора.');
+      publishRawAd(chatId, message, text, null, true, { classify: false }).catch((err) => {
+        console.error('Реклама:', err);
+        tg.sendMessage(chatId, `⚠️ Ошибка: ${tg.esc(err.message)}`).catch(() => {});
+      });
+      return;
+    }
+
     const position = enqueue(
       chatId,
       async () => {
@@ -1263,7 +1346,7 @@ async function onMessage(message) {
         // заход кончится тем же и лишь потратит суточный лимит.
         if (isAd && !published) await publishRawAd(chatId, message, text, null, true, { classify: false });
       },
-      { priority: isAd }
+      { priority: isAd, ad: isAd ? { message, text } : null }
     );
     if (isAd) {
       await tg.sendMessage(chatId, '📣 Реклама — разбираю вне очереди.');
@@ -1316,6 +1399,27 @@ async function onCallback(query) {
     makeDigest(chatId, rawId).catch(async (err) => {
       console.error('Подборка:', err);
       await tg.sendMessage(chatId, `⚠️ Подборка не вышла: ${tg.esc(err.message)}`).catch(() => {});
+    });
+    return;
+  }
+
+  if (action === 'an') {
+    const ad = adNow.get(rawId);
+    // Кнопка живёт дольше самого ожидания: бот мог вернуться к объявлению сам,
+    // пока сообщение висело в чате. Тогда публиковать второй раз нельзя.
+    adNow.delete(rawId);
+    if (!ad || ad.parked.done) {
+      await tg.answerCallbackQuery(query.id, 'Бот уже вернулся к этому объявлению');
+      return;
+    }
+    cancelPending(ad.parked);
+    await tg.answerCallbackQuery(query.id, 'Выкладываю без разбора');
+    await tg
+      .call('editMessageReplyMarkup', { chat_id: chatId, message_id: messageId })
+      .catch(() => {});
+    publishRawAd(ad.chatId, ad.message, ad.text, null, true, { classify: false }).catch(async (err) => {
+      console.error('Реклама без разбора:', err);
+      await tg.sendMessage(chatId, `⚠️ Ошибка: ${tg.esc(err.message)}`).catch(() => {});
     });
     return;
   }

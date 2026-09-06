@@ -207,7 +207,11 @@ async function buildVideo(job) {
 function quotaFailure() {
   const used = quota.used();
   const free = quota.freeAt();
-  const when = free ? `, место освободится к ${free.toLocaleString('ru-RU')}` : '';
+  // Часовой пояс называем явно: Render живёт по UTC, и без него срок уезжал на
+  // шесть часов назад — в чат приходило «освободится к 19:03» в час ночи.
+  const when = free
+    ? `, место освободится к ${free.toLocaleString('ru-RU', { timeZone: 'Asia/Bishkek' })}`
+    : '';
   return {
     posted: false,
     reason:

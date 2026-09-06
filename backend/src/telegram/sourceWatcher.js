@@ -111,7 +111,11 @@ async function noteLimit(err) {
   const day = new Date().toISOString().slice(0, 10);
   if (!err.rateLimited || limitNotedOn === day) return;
   limitNotedOn = day;
-  const until = err.retryAt ? new Date(err.retryAt).toLocaleString('ru-RU') : null;
+  // По Бишкеку, а не по UTC, в котором живёт Render: иначе бот обещает
+  // освобождение вчерашним вечером, когда на часах у админа час ночи.
+  const until = err.retryAt
+    ? new Date(err.retryAt).toLocaleString('ru-RU', { timeZone: 'Asia/Bishkek' })
+    : null;
   await tg
     .sendMessage(
       REPORT_CHAT_ID,
