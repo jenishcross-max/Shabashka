@@ -193,6 +193,50 @@ function extractJson(text) {
   return null;
 }
 
+// Модель переписывает объявление слово в слово, а в кыргызстанских объявлениях
+// обратный слэш стоит через раз: «2300-2600 с\смена», «график 2\2, 3\1, 5\2».
+// В JSON одиночный слэш перед буквой — недопустимая escape-последовательность,
+// и JSON.parse валит весь ответ целиком: разобранное объявление теряется, а
+// оплаченная реклама уходит на доску запасным путём вместо своего раздела.
+// Просить модель экранировать бесполезно — она копирует текст как видит.
+// Поэтому чиним ответ сами: одиночные слэши удваиваем, живые переводы строк
+// внутри строки экранируем.
+const VALID_ESCAPES = new Set(['"', '\\', '/', 'b', 'f', 'n', 'r', 't']);
+const CONTROL_ESCAPES = { '\n': '\\n', '\r': '\\r', '\t': '\\t', '\b': '\\b', '\f': '\\f' };
+
+function repairJson(json) {
+  let out = '';
+  let inString = false;
+
+  for (let i = 0; i < json.length; i++) {
+    const ch = json[i];
+    if (!inString) {
+      if (ch === '"') inString = true;
+      out += ch;
+      continue;
+    }
+    if (ch === '"') {
+      inString = false;
+      out += ch;
+      continue;
+    }
+    if (ch === '\\') {
+      const next = json[i + 1];
+      // \uXXXX без четырёх шестнадцатеричных — такой же мусор из текста.
+      const hex = next === 'u' && /^[0-9a-fA-F]{4}$/.test(json.slice(i + 2, i + 6));
+      if (hex || VALID_ESCAPES.has(next)) {
+        out += ch + next;
+        i++;
+      } else {
+        out += '\\\\';
+      }
+      continue;
+    }
+    out += CONTROL_ESCAPES[ch] || (ch < ' ' ? ' ' : ch);
+  }
+  return out;
+}
+
 const RETRIES = 2;
 const MAX_WAIT_MS = 40000;
 // Граница между «минутный лимит» и «суточный»: до неё ждём на месте, дальше
@@ -606,7 +650,14 @@ async function ask(content, systemSuffix, { maxTokens = DEFAULT_MAX_TOKENS } = {
   const json = extractJson(text);
   if (!json) throw new Error(`Модель вернула не JSON: ${text.slice(0, 200)}`);
 
-  const parsed = JSON.parse(json);
+  // Сначала пробуем как есть: правильный ответ трогать незачем.
+  let parsed;
+  try {
+    parsed = JSON.parse(json);
+  } catch (err) {
+    parsed = JSON.parse(repairJson(json));
+    console.log(`[extract] в ответе были неэкранированные слэши — починил (${err.message})`);
+  }
   const list = Array.isArray(parsed.listings) ? parsed.listings : [parsed];
   // Сколько объявлений модель разглядела на картинке — по одной этой строке
   // видно, разбор ли потерял объявления или их и правда было столько.

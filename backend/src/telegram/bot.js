@@ -665,13 +665,38 @@ function mediaOf(message) {
 //
 // classify = false там, где этот же текст модели уже показывали и она не
 // справилась: второй заход кончится тем же отказом и только сожжёт суточный
-// лимит. Тогда, как и раньше, доска — она принимает что угодно.
+// лимит.
+//
+// Когда модели нет, тип берём по словам. Раньше в этом случае всё падало на
+// доску, и оплаченная вакансия на десяток поваров выходила короткой запиской
+// «Требуются:» с ценой «договорная». Признаки нужны оба сразу — и «требуются»,
+// и разговор про деньги или график: ошибиться типом у оплаченной рекламы так же
+// некрасиво, как свалить её на доску. Не сошлось — доска, она принимает что
+// угодно.
+const VACANCY_HINTS = /требуе(тся|мся)|требуются|вакансия|ищем сотрудник|на постоянную работу|жумуш(чу)? керек|кызматкер керек/i;
+const PAY_HINTS = /зарплат|оклад|оплата|график|смена|айлык|төлө/i;
+
+function guessType(text) {
+  return VACANCY_HINTS.test(text) && PAY_HINTS.test(text) ? 'vacancy' : 'board';
+}
+
+// Первая строка объявления часто оказывается шапкой — «Требуются:», «Срочно!».
+// Одна такая на карточке и в ролике ничего не говорит, поэтому к короткой
+// строке или строке с двоеточием на конце подклеиваем следующую, обрезав у неё
+// значки и эмодзи в начале.
+function headline(text) {
+  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
+  if (!lines.length) return 'Реклама';
+  const [first, second] = lines;
+  if (!second || (first.length >= 12 && !/[:!]$/.test(first))) return first;
+  return `${first.replace(/[:!]+$/, '')}: ${second.replace(/^[^\p{L}\p{N}]+/u, '')}`;
+}
+
 async function adFields(text, classify) {
-  const first = text.split('\n').map((line) => line.trim()).find(Boolean) || 'Реклама';
   const byHand = {
     is_listing: true,
-    listing_type: 'board',
-    title: clamp(first, 80),
+    listing_type: guessType(text),
+    title: clamp(headline(text), 80),
     description: text,
     phone: extract.phoneFrom(text) || '',
     city: '',
@@ -685,13 +710,18 @@ async function adFields(text, classify) {
   try {
     const [parsed] = await extract.fromText(text, { ad: true });
     if (!parsed || !parsed.is_listing || parsed.listing_type === 'other') return byHand;
-    // Заголовок, описание и телефон у нас уже собраны из самого текста — берём
-    // разобранные только там, где они есть: модель иногда возвращает пустую
-    // строку, и подставлять её вместо живого текста рекламы нельзя.
+    // Описание всегда своё, из присланного текста. Модель возвращает список, и
+    // в нём столько объявлений, сколько она разглядела: в одной рекламе кофейни
+    // это и бариста, и техничка, и повара. Взяли бы описание у первого — из
+    // оплаченной рекламы пропали бы остальные. Тип, город, категорию и зарплату
+    // берём у первого: раздел и деньги у такой пачки общие.
+    //
+    // Заголовок и телефон — разобранные, если они есть: модель иногда
+    // возвращает пустую строку, и подставлять её вместо живого текста нельзя.
     return {
       ...parsed,
       title: parsed.title || byHand.title,
-      description: parsed.description || byHand.description,
+      description: byHand.description,
       phone: parsed.phone || byHand.phone,
     };
   } catch (err) {
