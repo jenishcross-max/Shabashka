@@ -1,12 +1,12 @@
 // Автоимпорт вакансий из чужого Telegram-канала — без пересылки руками.
 //
-// Бот из bot.js видит только то, что ему прислали лично: скриншот или
-// пересланное сообщение. Канал-источник — чужой (админ там просто подписчик),
+// Бот из bot.js видит только то, что ему прислали лично, — пересланное
+// сообщение. Канал-источник — чужой (админ там просто подписчик),
 // а Bot API не даёт читать посты в канале, где бот не администратор. Поэтому
 // здесь не бот, а юзер-сессия (MTProto, библиотека GramJS) — то же самое, что
 // открытый Telegram на телефоне админа, только без интерфейса. Она читает
 // новые посты и сама отдаёт их в тот же разбор и ту же публикацию, которыми
-// идут скриншоты из личных сообщений (bot.ingestFromSource = handleParsed из
+// идут объявления из личных сообщений (bot.ingestFromSource = handleParsed из
 // bot.js) — очередь, дедуп, отчёт в чат, retry соцсетей, всё общее, копии
 // логики нет.
 //
@@ -24,6 +24,7 @@
 // TELEGRAM_SESSION_STRING, которую достаточно один раз вписать в .env (и в
 // переменные окружения на Render) — дальше сессия переживает перезапуски сама.
 const extract = require('./extract');
+const tg = require('./api');
 const queue = require('./queue');
 const bot = require('./bot');
 const { ADMIN_IDS } = require('./notify');
@@ -38,10 +39,13 @@ const SOURCES = String(process.env.SOURCE_CHANNEL || '')
   .map((s) => s.trim())
   .filter(Boolean);
 
-// По умолчанию публикуем вакансии и заказы, доску объявлений (board) — нет:
-// в задаче стоят именно эти два типа. Список через запятую (vacancy,order,board),
-// либо all — снять фильтр совсем, кроме явного мусора (listing_type = other).
-const FORCE_TYPES = String(process.env.SOURCE_LISTING_TYPE || 'vacancy,order')
+// Что публикуем из источников. По умолчанию всё, кроме явного мусора
+// (listing_type = other), и это важнее, чем кажется: фильтр стоит ПОСЛЕ модели,
+// то есть за отброшенный тип разбор уже оплачен из суточной нормы токенов.
+// Раньше здесь стояло vacancy,order, и каждое объявление с доски —
+// «продаю», «сдаю», «делаем ремонт», реклама курсов — выбрасывалось уже
+// разобранным. Список через запятую (vacancy,order,board) сужает обратно.
+const FORCE_TYPES = String(process.env.SOURCE_LISTING_TYPE || 'all')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
@@ -76,7 +80,7 @@ const MIN_TEXT_LENGTH = 15;
 // и протухнуть.
 //
 // Это же страхует от бесконечного роста очереди. Бесплатный Groq пропускает
-// около одного разбора картинки в минуту на ключ; если из групп приходит
+// около двух разборов в минуту на ключ; если из групп приходит
 // больше, отставание упирается в этот порог и дальше не растёт — протухшая
 // голова очереди отбрасывается мгновенно, без запроса к модели.
 const MAX_AGE_MS = Number(process.env.SOURCE_MAX_AGE_HOURS || 12) * 3600 * 1000;
@@ -97,11 +101,33 @@ function firstInAlbum(message) {
   return true;
 }
 
-async function handleMessage(client, message) {
+// Про упёршийся суточный лимит бот молчал: ошибка фоновой задачи уходила в лог
+// Render, а в чате в это время было пусто — и «в группах ничего не пишут» ничем
+// не отличалось от «мы стоим до утра». Говорим один раз в сутки: повторять на
+// каждом посте незачем, их за остаток дня наберутся десятки.
+let limitNotedOn = null;
+
+async function noteLimit(err) {
+  const day = new Date().toISOString().slice(0, 10);
+  if (!err.rateLimited || limitNotedOn === day) return;
+  limitNotedOn = day;
+  const until = err.retryAt ? new Date(err.retryAt).toLocaleString('ru-RU') : null;
+  await tg
+    .sendMessage(
+      REPORT_CHAT_ID,
+      [
+        '🧠 Суточный лимит разбора выбран — объявления из групп до его конца не публикуются.',
+        until ? `Освободится к ${until}.` : 'Когда отпустит, Groq не сказал.',
+        'Проверить расход: /stats',
+      ].join('\n')
+    )
+    .catch(() => {});
+}
+
+async function handleMessage(message) {
   const text = String(message.message || '').trim();
-  const hasPhoto = Boolean(message.photo);
   console.log(
-    `[источник] сообщение ${message.id}: ${hasPhoto ? 'фото' : `текст (${text.length} симв.)`}, в очереди ${queue.size()} — "${text.slice(0, 60)}"`
+    `[источник] сообщение ${message.id}: ${text.length} симв.${message.photo ? ' + фото' : ''} — "${text.slice(0, 60)}"`
   );
 
   if (!firstInAlbum(message)) {
@@ -109,28 +135,27 @@ async function handleMessage(client, message) {
     return;
   }
 
-  if (!hasPhoto && text.length < MIN_TEXT_LENGTH) {
-    console.log('[источник] короче порога — пропускаю без разбора');
+  // Картинки мы больше не читаем (см. шапку extract.js) — значит, у поста
+  // должен быть текст: сам пост или подпись под фотографией. Пост, у которого
+  // объявление нарисовано на картинке, теперь проходит мимо, и это осознанный
+  // размен: такие в этих группах редки, а стоила каждая картинка вдвое дороже
+  // разбора текста.
+  if (text.length < MIN_TEXT_LENGTH) {
+    console.log('[источник] текста нет или он короче порога — пропускаю');
     return;
   }
 
   // Без телефона объявление всё равно не опубликуется (откликнуться некуда —
-  // см. handleParsed в bot.js), так что разбирать его незачем. Проверяем только
-  // текст без картинки: на фотографии номер может быть нарисован.
-  if (!hasPhoto && !extract.hasPhone(text)) {
+  // см. handleParsed в bot.js), так что разбирать его незачем.
+  if (!extract.hasPhone(text)) {
     console.log('[источник] нет телефона — публиковать было бы нечего, пропускаю без разбора');
     return;
   }
 
-  // Подпись под картинкой чаще всего и есть само объявление. Если в ней есть
-  // телефон и она достаточно длинная — разбираем текстом: он втрое дешевле по
-  // минутному лимиту Groq и читается точнее, чем тот же текст с фотографии.
-  const captionIsAd = text.length >= MIN_TEXT_LENGTH && extract.hasPhone(text);
-
   // В общую очередь разбора (backend/src/telegram/queue.js) — она же держит
-  // темп для скриншотов из личных сообщений и не даёт улететь в лимит Groq,
-  // если из канала и от админа в личку прилетело одновременно. Фоном: скриншот
-  // админа, присланный руками, должен обгонять поток из чужих групп.
+  // темп для объявлений из личных сообщений и не даёт улететь в лимит Groq,
+  // если из канала и от админа прилетело одновременно. Фоном: то, что админ
+  // прислал руками, должно обгонять поток из чужих групп.
   queue.add(async () => {
     try {
       // Пока пост стоял в очереди, перед ним разбирались другие — мог и
@@ -144,9 +169,7 @@ async function handleMessage(client, message) {
         return;
       }
 
-      const listings = captionIsAd
-        ? await extract.fromText(text)
-        : await extract.fromImage(await client.downloadMedia(message, {}), 'image/jpeg', text);
+      const listings = await extract.fromText(text);
 
       console.log(
         `[источник] Groq разобрал: ${listings
@@ -170,6 +193,7 @@ async function handleMessage(client, message) {
       });
     } catch (err) {
       console.error('Автоимпорт из канала:', err.message);
+      await noteLimit(err);
     }
   }, { background: true });
 }
@@ -208,7 +232,7 @@ async function pollSource(client, source) {
   console.log(`[источник] ${source}: новых сообщений ${messages.length}`);
   for (const message of messages) {
     lastSeen.set(source, Math.max(lastSeen.get(source) || 0, message.id));
-    await handleMessage(client, message);
+    await handleMessage(message);
   }
 }
 

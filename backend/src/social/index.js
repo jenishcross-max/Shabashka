@@ -217,6 +217,23 @@ function quotaFailure() {
   };
 }
 
+// Норма занята, а объявление платное: ролик всё равно собираем и оставляем в
+// задании — из него его заберёт отчёт и отдаст админу в чат готовым mp4
+// (см. reportReel в telegram/bot.js), чтобы рекламу можно было выложить руками,
+// не дожидаясь, пока окно сдвинется. Раньше до сборки в этом случае просто не
+// доходило, и в чат приходила одна строка об отказе — выкладывать было нечего.
+// Только для рекламы: собирать минуту ffmpeg на бесплатном Render ради ролика,
+// которого никто не просил, незачем.
+async function buildForHand(job, failure) {
+  if (!job.priority || job.buffer) return failure;
+  try {
+    await buildVideo(job);
+  } catch (err) {
+    console.log(`[видео] для ручной публикации не собрался: ${err.message}`);
+  }
+  return failure;
+}
+
 async function deliverInstagram(job) {
   const base = backendUrl();
   if (!base) return { posted: false, reason: 'не задан адрес бэкенда' };
@@ -232,7 +249,10 @@ async function deliverInstagram(job) {
   // объявление сразу едет картинкой. Ей место найдётся: у картинки потолок выше
   // (см. hardLimit в quota.js), а стоит она два вызова Graph API вместо трёх
   // десятков.
-  if (!quota.left()) return withImageFallback(job, quotaFailure());
+  if (!quota.left()) {
+    const failure = await withImageFallback(job, quotaFailure());
+    return failure.posted ? failure : buildForHand(job, failure);
+  }
 
   if (!job.buffer) {
     try {
@@ -252,7 +272,12 @@ async function deliverInstagram(job) {
   // не дойти, нельзя. Сборка идёт минуту с лишним — за это время место мог
   // занять другой ролик, поэтому проверяем ещё раз, и снова с той же развилкой
   // на картинку.
-  if (!quota.take()) return withImageFallback(job, quotaFailure());
+  if (!quota.take()) {
+    // Ролик к этому моменту уже собран — buildForHand его не тронет, но и не
+    // помешает: отдать админу нужно ровно то же самое.
+    const failure = await withImageFallback(job, quotaFailure());
+    return failure.posted ? failure : buildForHand(job, failure);
+  }
 
   // Ссылку выкладываем заново на каждой попытке: с прошлого раза файл мог
   // выветриться из hosting.
@@ -373,11 +398,15 @@ async function runBatch(entries, opts = {}) {
     cta: opts.cta,
     digest: Boolean(opts.digest),
     targets: ['instagram'],
+    // Платное объявление в пачке. Нужно не только для места в очереди, но и
+    // для отказа по норме: рекламе ролик собирают даже тогда, когда публиковать
+    // его некуда, — чтобы админ выложил руками (см. buildForHand).
+    priority: entries.some((entry) => entry.priority),
   };
   // Реклама едет вперёд остальных: между публикациями в Instagram полторы
   // минуты, и в тихий день их не видно, а на пачке скриншотов платное
   // объявление иначе стояло бы за всеми.
-  const instagramResult = await scheduleInstagram(job, entries.some((entry) => entry.priority));
+  const instagramResult = await scheduleInstagram(job, job.priority);
   const failed = instagramResult.posted ? [] : ['instagram'];
 
   if (!reelHandler) return;
