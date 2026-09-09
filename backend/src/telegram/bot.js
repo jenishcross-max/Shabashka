@@ -218,9 +218,18 @@ function scheduleAutoRetry(chatId, retryId, attempt = 0, waited = 0) {
 // три (квота считает посты, а не объявления). Поэтому здесь только расписка о
 // приёме: что куда встало в очередь. Чем кончилось, скажут отдельные сообщения
 // из social.onThreads и social.onReel ниже.
-async function shareToSocial(chatId, parsed, listingType, siteLink, priority = false) {
+// importId едет в ctx до самых отчётов: пост в Threads и ролик уходят минутами
+// позже, и связать их с объявлением можно только так. Без этого снятие
+// объявления знало бы про один сайт (см. imports.setPosts).
+async function shareToSocial(chatId, parsed, listingType, siteLink, priority = false, importId = null) {
   try {
-    const result = await social.shareListing(parsed, listingType, siteLink, { chatId }, { priority });
+    const result = await social.shareListing(
+      parsed,
+      listingType,
+      siteLink,
+      { chatId, importId },
+      { priority }
+    );
     const lines = [];
     if (result.reason) lines.push(`🎬 ${tg.esc(result.reason)}`);
     for (const name of result.skipped || []) lines.push(`${SITE_LABELS[name]}: не настроен`);
@@ -250,8 +259,15 @@ async function shareToSocial(chatId, parsed, listingType, siteLink, priority = f
 // Отчёт по посту в Threads. Как и у ролика, приходит не в ответ на объявление,
 // а когда до поста дошла очередь, — поэтому называем заголовок, иначе непонятно,
 // за какое из объявлений оно отчитывается.
-social.onThreads(async ({ title, ctx, posted, reason, hardLimit, retryId }) => {
+social.onThreads(async ({ title, ctx, posted, reason, hardLimit, retryId, id }) => {
   const chatId = ctx && ctx.chatId;
+  // Запоминаем до отчёта и независимо от него: чат мог отвалиться, а пост уже
+  // висит, и снимать его потом всё равно придётся.
+  if (posted && ctx && ctx.importId) {
+    await imports.setPosts(ctx.importId, { threadsPostId: id }).catch((err) =>
+      console.error('[снятие] id поста Threads не записан:', err.message)
+    );
+  }
   if (!chatId) return;
   const what = tg.esc(clamp(title || 'без заголовка', 80));
 
@@ -333,6 +349,18 @@ async function reportReel(chatId, result) {
 // Куда слать отчёт, решаем по самим объявлениям, а не по настройкам: пачка
 // собирается из того, что присылали в чат, и отчёт должен вернуться туда же.
 social.onReel(async (result) => {
+  // Ролик один на всю пачку, поэтому его id получают все объявления из неё:
+  // сняли любое — ссылка ведёт в тот самый пост. Дайджест пропускаем: он
+  // собран из уже опубликованного и к отдельному объявлению не привязан.
+  if (result.instagram && result.instagram.posted && !result.digest) {
+    for (const ctx of result.contexts || []) {
+      if (!ctx || !ctx.importId) continue;
+      await imports
+        .setPosts(ctx.importId, { instagramMediaId: result.instagram.id })
+        .catch((err) => console.error('[снятие] id ролика не записан:', err.message));
+    }
+  }
+
   const chats = [...new Set((result.contexts || []).map((c) => c && c.chatId).filter(Boolean))];
   for (const chatId of chats) await reportReel(chatId, result);
 });
@@ -593,7 +621,8 @@ async function publishOne(chatId, id, parsed, priority = false) {
   let channelLine = '';
   if (CHANNEL_ID) {
     try {
-      await tg.sendMessage(CHANNEL_ID, `${tg.esc(body)}${linkTag}`);
+      const inChannel = await tg.sendMessage(CHANNEL_ID, `${tg.esc(body)}${linkTag}`);
+      await imports.setPosts(id, { channelMessageId: inChannel.message_id });
       channelLine = '📢 Выложено в Telegram-канал';
     } catch (err) {
       channelLine = `⚠️ В канал не ушло: ${tg.esc(err.message)}`;
@@ -630,7 +659,7 @@ async function publishOne(chatId, id, parsed, priority = false) {
 
   // Намеренно без await: ролик едет своим ходом, следующее объявление из пачки
   // не должно ждать кодирования и загрузки на площадки.
-  shareToSocial(chatId, ready, result.type, shown, priority).catch((err) => console.error('Соцсети:', err));
+  shareToSocial(chatId, ready, result.type, shown, priority, id).catch((err) => console.error('Соцсети:', err));
 }
 
 // Что в сообщении есть, кроме текста. Нужно только рекламе: обычное объявление
@@ -773,11 +802,10 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
       // Копией, а не своей отправкой: пересобирая контент, мы потеряли бы всё,
       // чего не умеем — кружок, альбом, гифку. Подпись в канале при этом своя,
       // со ссылкой на сайт. У Telegram она ограничена 1024 знаками.
-      if (media) {
-        await tg.copyMessage(CHANNEL_ID, chatId, message.message_id, `${tg.esc(clamp(text, 900))}${linkTag}`);
-      } else {
-        await tg.sendMessage(CHANNEL_ID, `${tg.esc(text)}${linkTag}`);
-      }
+      const inChannel = media
+        ? await tg.copyMessage(CHANNEL_ID, chatId, message.message_id, `${tg.esc(clamp(text, 900))}${linkTag}`)
+        : await tg.sendMessage(CHANNEL_ID, `${tg.esc(text)}${linkTag}`);
+      await imports.setPosts(id, { channelMessageId: inChannel.message_id });
       lines.push('📢 Выложено в Telegram-канал');
     } catch (err) {
       lines.push(`⚠️ В канал не ушло: ${tg.esc(err.message)}`);
@@ -824,7 +852,7 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
   } else if (ready) {
     // Текстовая реклама без картинки идёт на площадки обычной дорогой: там ей
     // соберут ролик из макета, как и всякому другому объявлению.
-    shareToSocial(chatId, ready, listingType, shown, priority).catch((err) => console.error('Соцсети:', err));
+    shareToSocial(chatId, ready, listingType, shown, priority, id).catch((err) => console.error('Соцсети:', err));
   }
 
   const sent = await tg.sendMessage(
@@ -1449,16 +1477,70 @@ async function onCallback(query) {
   if (action === 'del') {
     try {
       await imports.remove(id);
-      await tg.answerCallbackQuery(query.id, 'Удалено с сайта');
+      await tg.answerCallbackQuery(query.id, 'Снимаю объявление');
       await tg.editMessageText(
         chatId,
         messageId,
-        `🗑 <b>${tg.esc(row.parsed.title || 'без названия')}</b>\nУдалено с сайта.\n\n⚠️ В Telegram-канале, Instagram и Threads пост остаётся — их надо убрать вручную.`
+        [
+          `🗑 <b>${tg.esc(row.parsed.title || 'без названия')}</b>`,
+          ...(await unpublishLines(row)),
+        ].join('\n')
       );
     } catch (err) {
       await tg.answerCallbackQuery(query.id, err.message.slice(0, 190));
     }
   }
+}
+
+// Куда объявление ушло, оттуда его и снимаем. Автор пишет «нашли людей» — и
+// снятая с сайта карточка ничего не меняет, пока пост в канале и в Threads
+// по-прежнему приводит к нему звонящих.
+//
+// Пост в канале удаляет сам бот: он его и публиковал, а Telegram разрешает боту
+// убирать свои сообщения там, где он админ. Threads снимает social.unpublish.
+// Ролик в Instagram остаётся — на него даём прямую ссылку (почему именно так,
+// см. unpublish).
+async function unpublishLines(row) {
+  const lines = ['Снято с сайта.'];
+
+  if (row.channel_message_id && CHANNEL_ID) {
+    try {
+      await tg.call('deleteMessage', { chat_id: CHANNEL_ID, message_id: row.channel_message_id });
+      lines.push('📢 Пост в Telegram-канале удалён.');
+    } catch (err) {
+      // Телеграм не даёт боту удалять свои сообщения старше 48 часов — а
+      // объявления снимают и через неделю. Тогда только руками.
+      lines.push(`⚠️ Пост в канале не удалить (${tg.esc(err.message)}) — уберите вручную.`);
+    }
+  }
+
+  const away = await social.unpublish({
+    threadsPostId: row.threads_post_id,
+    instagramMediaId: row.instagram_media_id,
+  });
+
+  if (away.threads) {
+    lines.push(
+      away.threads.removed
+        ? '🧵 Пост в Threads удалён.'
+        : `⚠️ Threads не отдал пост (${tg.esc(away.threads.reason)}) — уберите вручную.`
+    );
+  }
+
+  if (away.instagram) {
+    // Ссылка кликабельная — в этом и смысл: искать ролик в ленте руками дольше,
+    // чем удалить его.
+    lines.push(
+      away.instagram.link
+        ? `📸 Instagram: <a href="${away.instagram.link}">откройте пост</a> и удалите — через API Meta нам этого не даёт.`
+        : '📸 Instagram: пост остался, удалите его в приложении — через API Meta нам этого не даёт.'
+    );
+  }
+
+  // Ни одного поста в базе: объявление вышло до того, как бот начал их
+  // запоминать, либо на площадки не уезжало вовсе.
+  if (lines.length === 1) lines.push('Постов на площадках за этим объявлением не записано.');
+  return lines;
 }
 
 async function handleUpdate(update) {

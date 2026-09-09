@@ -29,9 +29,11 @@ async function call(step, method, path, params) {
   const url = new URL(`https://${HOST}/${VERSION}/${path}`);
   const body = new URLSearchParams({ ...params, access_token: TOKEN });
 
-  const res = await fetch(method === 'GET' ? `${url}?${body}` : url, {
+  // Токен и параметры у DELETE идут строкой запроса, как у GET: тела у него нет.
+  const inUrl = method === 'GET' || method === 'DELETE';
+  const res = await fetch(inUrl ? `${url}?${body}` : url, {
     method,
-    body: method === 'GET' ? undefined : body,
+    body: inUrl ? undefined : body,
   });
   const data = await res.json();
   if (!res.ok || data.error) {
@@ -114,6 +116,16 @@ async function publishText(text) {
   return publishContainer(id);
 }
 
+// Снимает пост. Нужно, когда автор объявления нашёл работника и попросил убрать
+// его: на сайте карточку удаляем сами, а пост в Threads без этого висел бы
+// дальше и приводил людей к закрытой вакансии.
+//
+// Своя норма у удалений — сотня в сутки, отдельно от нормы на публикации. Нам её
+// не выбрать: столько объявлений за день и не выходит.
+async function remove(postId) {
+  await safeCall('удаление поста', 'DELETE', String(postId), {});
+}
+
 // Своя норма у Threads считается отдельно от инстаграмной и заметно щедрее —
 // 250 постов за скользящие сутки против сотни. Сюда ходим только по команде
 // /limits: коду это число не нужно, публикации в Threads в него не упираются.
@@ -128,4 +140,4 @@ async function publishingLimit() {
   };
 }
 
-module.exports = { isConfigured, publishText, publishingLimit };
+module.exports = { isConfigured, publishText, publishingLimit, remove };

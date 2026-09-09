@@ -60,6 +60,26 @@ async function setParsed(id, parsed) {
   await db.query('UPDATE imported_listings SET parsed = $1 WHERE id = $2', [parsed, id]);
 }
 
+// Куда объявление уехало, кроме сайта. Приходит вразнобой: пост в канале — сразу
+// при публикации, Threads — через минуты своей очереди, ролик Instagram — ещё
+// позже. Поэтому не один UPDATE на все три поля, а дописывание того, что стало
+// известно; пустые значения не трогают уже записанное.
+const POST_FIELDS = {
+  channelMessageId: 'channel_message_id',
+  threadsPostId: 'threads_post_id',
+  instagramMediaId: 'instagram_media_id',
+};
+
+async function setPosts(id, posts) {
+  const pairs = Object.entries(POST_FIELDS).filter(([key]) => posts[key]);
+  if (!id || !pairs.length) return;
+  const set = pairs.map(([, column], i) => `${column} = $${i + 2}`).join(', ');
+  await db.query(`UPDATE imported_listings SET ${set} WHERE id = $1`, [
+    id,
+    ...pairs.map(([key]) => String(posts[key])),
+  ]);
+}
+
 async function setCard(id, chatId, messageId) {
   await db.query('UPDATE imported_listings SET tg_chat_id = $1, tg_message_id = $2 WHERE id = $3', [
     chatId,
@@ -308,4 +328,16 @@ async function remove(id) {
   invalidate('home:');
 }
 
-module.exports = { create, get, setParsed, setCard, reject, publish, validate, applyDefaults, countToday, remove };
+module.exports = {
+  create,
+  get,
+  setParsed,
+  setCard,
+  setPosts,
+  reject,
+  publish,
+  validate,
+  applyDefaults,
+  countToday,
+  remove,
+};

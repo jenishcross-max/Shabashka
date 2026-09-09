@@ -149,4 +149,19 @@ async function followers() {
   return followers_count;
 }
 
-module.exports = { isConfigured, publishReel, publishImage, publishingLimit, followers };
+// Ссылка на опубликованный ролик. Нужна для снятия объявления: удалить медиа
+// через API мы не можем — Meta даёт DELETE /{media-id} только приложениям на
+// Facebook Login с разрешением instagram_manage_contents, а мы работаем через
+// Instagram Login (см. HOST выше). Поэтому даём админу прямую ссылку на пост:
+// в приложении это два касания, а искать ролик в ленте руками — минуты.
+//
+// Из числового id ссылку не собрать: в адресе стоит shortcode, который знает
+// только Meta. Отсюда лишний запрос — зато он ходит по тому же токену.
+async function permalink(mediaId) {
+  const { permalink: link } = await safeCall('ссылка на пост', 'GET', String(mediaId), {
+    fields: 'permalink',
+  });
+  return link || '';
+}
+
+module.exports = { isConfigured, publishReel, publishImage, publishingLimit, followers, permalink };

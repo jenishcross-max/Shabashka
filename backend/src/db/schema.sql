@@ -159,6 +159,13 @@ CREATE TABLE IF NOT EXISTS imported_listings (
   board_post_id INTEGER, -- записка на доске; без REFERENCES, потому что она пропадает сама
   tg_chat_id    BIGINT,      -- чат и сообщение с карточкой — чтобы обновить её после решения
   tg_message_id BIGINT,
+  -- Куда объявление ушло, кроме сайта: автор находит работника и просит снять
+  -- объявление, а висит оно в четырёх местах сразу. Пост в канале и в Threads
+  -- бот удаляет сам по этим id; инстаграмный нужен, чтобы дать на него ссылку —
+  -- удаление медиа Meta даёт только через Facebook Login (см. README).
+  channel_message_id BIGINT,
+  threads_post_id    TEXT,
+  instagram_media_id TEXT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   published_at  TIMESTAMPTZ  -- когда ушло на сайт; по нему считается счётчик за день
 );

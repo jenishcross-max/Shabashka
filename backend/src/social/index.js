@@ -139,7 +139,9 @@ async function post(label, fn) {
   try {
     const id = await fn();
     console.log(`[${label}] опубликовано: ${id}`);
-    return { posted: true };
+    // id отдаём наверх, а не только в лог: по нему потом снимают объявление,
+    // когда автор нашёл работника (см. imports.setPosts).
+    return { posted: true, id };
   } catch (err) {
     console.log(`[${label}] не вышло: ${err.message}`);
     // code нужен запасному ходу с картинкой: по нему видно, дело в самом ролике
@@ -615,9 +617,44 @@ async function limits() {
   return { instagram: ig, threads: th };
 }
 
+// Снять объявление с площадок. Зовётся, когда автор нашёл работника и попросил
+// убрать объявление: висит оно в четырёх местах сразу, и снятое с одного сайта
+// по-прежнему приводит людей к закрытой вакансии.
+//
+// В Threads пост удаляем сами. Ролик в Instagram — нет: удаление медиа Meta даёт
+// только приложениям на Facebook Login с разрешением instagram_manage_contents,
+// а мы работаем через Instagram Login. Поэтому возвращаем ссылку на пост — в
+// приложении это два касания вместо поисков ролика в ленте.
+//
+// Ни один отказ не считается провалом всего снятия: с сайта объявление к этому
+// моменту уже убрано, и оборванный запрос к Meta не повод об этом молчать.
+async function unpublish({ threadsPostId, instagramMediaId }) {
+  const result = { threads: null, instagram: null };
+
+  if (threadsPostId && threads.isConfigured()) {
+    try {
+      await threads.remove(threadsPostId);
+      result.threads = { removed: true };
+    } catch (err) {
+      result.threads = { removed: false, reason: err.message };
+    }
+  }
+
+  if (instagramMediaId && instagram.isConfigured()) {
+    try {
+      result.instagram = { link: await instagram.permalink(instagramMediaId) };
+    } catch (err) {
+      result.instagram = { link: '', reason: err.message };
+    }
+  }
+
+  return result;
+}
+
 module.exports = {
   shareListing,
   shareMedia,
+  unpublish,
   shareDigest,
   flushNow,
   limits,

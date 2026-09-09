@@ -54,6 +54,13 @@ function init() {
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_token TEXT');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_token_expires TIMESTAMPTZ');
 
+      // Куда объявление ушло, кроме сайта. Нужно для снятия: автор находит
+      // работника и просит убрать объявление, а оно к этому моменту висит в
+      // четырёх местах. Без этих трёх колонок бот знал только про сайт.
+      await pool.query('ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS channel_message_id BIGINT');
+      await pool.query('ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS threads_post_id TEXT');
+      await pool.query('ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS instagram_media_id TEXT');
+
       // Отмечает витринные объявления-примеры (см. seedExamples.js) — отдельно от
       // настоящих объявлений пользователей, чтобы честно показывать это в интерфейсе
       await pool.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_example BOOLEAN NOT NULL DEFAULT false');
