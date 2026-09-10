@@ -651,7 +651,7 @@ async function publishOne(chatId, id, parsed, priority = false) {
   const sent = await tg.sendMessage(chatId, lines.join('\n'), {
     reply_markup: {
       inline_keyboard: [
-        [{ text: isBoard ? '🗑 Снять с доски' : '🗑 Удалить с сайта', callback_data: `del:${id}` }],
+        [{ text: '🗑 Удалить', callback_data: `del:${id}` }],
       ],
     },
   });
@@ -865,12 +865,7 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
       ? {
           reply_markup: {
             inline_keyboard: [
-              [
-                {
-                  text: listingType === 'board' ? '🗑 Снять с доски' : '🗑 Удалить с сайта',
-                  callback_data: `del:${id}`,
-                },
-              ],
+              [{ text: '🗑 Удалить', callback_data: `del:${id}` }],
             ],
           },
         }
@@ -1181,8 +1176,10 @@ async function onMessage(message) {
         '',
         'Чего не хватает — дописываю сам (город → Бишкек, категория → Другое)',
         'и пишу об этом в ответе. В ответ присылаю текст объявления целиком,',
-        'как он ушёл на сайт, и кнопку 🗑 «Удалить с сайта» — прочитал, и если',
-        'в разбор попало лишнее, сразу убрал.',
+        'как он ушёл на сайт, и кнопку 🗑 «Удалить» — прочитал, и если',
+        'в разбор попало лишнее, сразу убрал. Снимает она разом с сайта,',
+        'из канала и из Threads; на ролик в Instagram даёт ссылку —',
+        'его Meta через API удалять не даёт.',
         '',
         'В соцсети объявление уходит не мгновенно, и это нарочно: в Threads —',
         `по одному, но не чаще раза в ${social.THREADS_INTERVAL_MIN} минут (иначе он ловит антиспам),`,
