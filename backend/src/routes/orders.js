@@ -9,6 +9,7 @@ const asyncHandler = require('../asyncHandler');
 const { ORDER_FIELDS } = require('../sqlFields');
 const { invalidate } = require('../cache');
 const { canCreateListing } = require('../emailGate');
+const { abroadWork } = require('../abroad');
 
 const router = express.Router();
 
@@ -262,6 +263,13 @@ async function validateOrderFields(body, { partial }) {
     if (budget && (!Number.isFinite(budgetValue) || budgetValue < 0)) errors.push('Некорректный бюджет');
     else result.budget = budgetValue;
   }
+
+  // Только работа в Кыргызстане (см. abroad.js). При правке смотрим то, что
+  // пришло: заграница в одном изменённом поле — тоже заграница.
+  const abroad = abroadWork([result.title, result.description, result.city].filter(Boolean).join('\n'), {
+    job: true,
+  });
+  if (abroad) errors.push(`Шабашка публикует только работу в Кыргызстане, а здесь указано «${abroad}»`);
 
   return { errors, result };
 }

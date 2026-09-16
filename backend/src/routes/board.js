@@ -4,6 +4,7 @@ const { optionalAuth } = require('../middleware/auth');
 const asyncHandler = require('../asyncHandler');
 const { boardLimiter, reportLimiter } = require('../rateLimit');
 const reportsRepo = require('../reportsRepo');
+const { abroadWork } = require('../abroad');
 
 const router = express.Router();
 
@@ -74,6 +75,15 @@ router.post(
     if (text.length < MIN_TEXT) return res.status(400).json({ error: 'Напишите хотя бы пару слов о работе' });
     if (text.length > MAX_TEXT) return res.status(400).json({ error: `Слишком длинно — максимум ${MAX_TEXT} символов` });
     if (!city) return res.status(400).json({ error: 'Укажите город' });
+
+    // Только работа в Кыргызстане (см. abroad.js). Город в форме — это место
+    // работы, ему хватает одного названия; тексту нужны ещё слова про работу.
+    const abroad = abroadWork(city, { job: true }) || abroadWork(text);
+    if (abroad) {
+      return res
+        .status(400)
+        .json({ error: `Шабашка публикует только работу в Кыргызстане, а здесь указано «${abroad}»` });
+    }
 
     // Гостю номер обязателен: аккаунта у него нет, и написать ему на сайте нельзя —
     // объявление без номера осталось бы просто текстом, на который не откликнуться.

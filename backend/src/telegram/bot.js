@@ -5,6 +5,7 @@ const tg = require('./api');
 // (см. notify.js): это те же люди и тот же чат.
 const { ADMIN_IDS, isAllowed } = require('./notify');
 const extract = require('./extract');
+const { abroadWork } = require('../abroad');
 const imports = require('./imports');
 const queue = require('./queue');
 const social = require('../social');
@@ -874,12 +875,23 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
   if (id) await imports.setCard(id, chatId, sent.message_id);
 }
 
+// Отказ по загранице (см. abroad.js). Причину показываем со словом, на котором
+// сработала проверка: так сразу видно, если она ошиблась.
+function abroadText(reason) {
+  return `🚫 Не публикую: ${tg.esc(reason)}.\nШабашка выкладывает только работу в Кыргызстане.`;
+}
+
 async function handleParsed(chatId, listings, { source, rawText, priority = false, ad = false }) {
   const real = listings.filter((p) => p.is_listing && p.listing_type !== 'other');
   if (real.length === 0) {
-    // За отказом по рекламе тут же идёт публикация «как есть» — молчим, чтобы
-    // не пугать админа отказом, за которым сразу следует успех.
-    if (!ad) {
+    const abroad = listings.find((p) => p.abroad);
+    if (abroad) {
+      // Здесь молчать нельзя и по рекламе: публикации «как есть» за этим
+      // отказом не будет (см. adJob в onMessage).
+      await tg.sendMessage(chatId, abroadText(abroad.note));
+    } else if (!ad) {
+      // За отказом по рекламе тут же идёт публикация «как есть» — молчим, чтобы
+      // не пугать админа отказом, за которым сразу следует успех.
       const note = listings[0] && listings[0].note;
       await tg.sendMessage(chatId, `🚫 Не похоже на объявление.${note ? `\n${tg.esc(note)}` : ''}`);
     }
@@ -1287,6 +1299,16 @@ async function onMessage(message) {
   // доезжает до следующего сообщения такой же.
   const fast = adPrefix ? Boolean(adPrefix[1]) : Boolean(marked && marked.fast);
 
+  // Работу за границей не выкладываем и за деньги (см. abroad.js). Проверяем до
+  // всех веток рекламы: срочная, с роликом и с картинкой идут мимо модели, и
+  // другого места для проверки у них нет. Что нарисовано на самом макете, бот
+  // не читает — там проверить нечем.
+  const abroad = isAd ? abroadWork(text) : '';
+  if (abroad) {
+    await tg.sendMessage(chatId, abroadText(`работа за границей («${abroad}»)`));
+    return;
+  }
+
   // Видео и гифку модель не читает вовсе — такая реклама идёт как есть и мимо
   // очереди разбора: Groq в ней не участвует, и занимать им дорожку незачем.
   if (isAd && media && media.kind === 'video') {
@@ -1371,8 +1393,12 @@ async function onMessage(message) {
           ? await handleParsed(chatId, parsed, { source: 'telegram', rawText: text, priority: isAd, ad: isAd })
           : 0;
         // classify: false — этот же текст модель только что не осилила, второй
-        // заход кончится тем же и лишь потратит суточный лимит.
-        if (isAd && !published) await publishRawAd(chatId, message, text, null, true, { classify: false });
+        // заход кончится тем же и лишь потратит суточный лимит. Работу за
+        // границей «как есть» не выкладываем: это не сбой разбора, а отказ.
+        const refused = parsed && parsed.some((p) => p.abroad);
+        if (isAd && !published && !refused) {
+          await publishRawAd(chatId, message, text, null, true, { classify: false });
+        }
       },
       { priority: isAd, ad: isAd ? { message, text } : null }
     );

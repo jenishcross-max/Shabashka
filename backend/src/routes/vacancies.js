@@ -11,6 +11,7 @@ const reportsRepo = require('../reportsRepo');
 const { VACANCY_FIELDS } = require('../sqlFields');
 const { invalidate } = require('../cache');
 const { canCreateListing } = require('../emailGate');
+const { abroadWork } = require('../abroad');
 
 const router = express.Router();
 const EMPLOYMENT_VALUES = EMPLOYMENT_TYPES.map((t) => t.value);
@@ -239,6 +240,12 @@ async function validateVacancyFields(body, { partial }) {
   if (result.salary_min != null && result.salary_max != null && result.salary_min > result.salary_max) {
     errors.push('Минимальная зарплата не может быть больше максимальной');
   }
+
+  // Только работа в Кыргызстане (см. abroad.js). При правке смотрим то, что
+  // пришло: заграница в одном изменённом поле — тоже заграница.
+  const where = [result.title, result.description, result.city, result.requirements, result.conditions, result.schedule];
+  const abroad = abroadWork(where.filter(Boolean).join('\n'), { job: true });
+  if (abroad) errors.push(`Шабашка публикует только работу в Кыргызстане, а здесь указано «${abroad}»`);
 
   return { errors, result };
 }
