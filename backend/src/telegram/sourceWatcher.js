@@ -128,6 +128,27 @@ async function noteLimit(err) {
     .catch(() => {});
 }
 
+// Остальные отказы молчали точно так же, и хуже того — сами они не проходят.
+// Groq снял модель, и шесть часов из групп не выходило ничего, а в чате было
+// пусто: узнали только по своему же объявлению. Говорим сразу, но не на каждый
+// пост — пока ошибка повторяется, напоминаем не чаще раза в час.
+const FAILURE_NOTE_MS = 60 * 60 * 1000;
+let failureNotedAt = 0;
+
+async function noteFailure(err) {
+  if (err.rateLimited || Date.now() - failureNotedAt < FAILURE_NOTE_MS) return;
+  failureNotedAt = Date.now();
+  await tg
+    .sendMessage(
+      REPORT_CHAT_ID,
+      [
+        `⚠️ Объявление из группы не вышло: ${tg.esc(err.message)}`,
+        'Если ошибка не случайная, из групп сейчас не публикуется ничего. Пока она повторяется, напомню не чаще раза в час.',
+      ].join('\n')
+    )
+    .catch(() => {});
+}
+
 async function handleMessage(message) {
   const text = String(message.message || '').trim();
   console.log(
@@ -198,6 +219,7 @@ async function handleMessage(message) {
     } catch (err) {
       console.error('Автоимпорт из канала:', err.message);
       await noteLimit(err);
+      await noteFailure(err);
     }
   }, { background: true });
 }

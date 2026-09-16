@@ -2,6 +2,8 @@ const categoriesRepo = require('../categoriesRepo');
 const KNOWN_CITIES = require('../cities');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
 const EXPERIENCE_LEVELS = require('../experienceLevels');
+const tg = require('./api');
+const { notifyAdmins } = require('./notify');
 
 const EMPLOYMENT_VALUES = EMPLOYMENT_TYPES.map((t) => t.value);
 const EXPERIENCE_VALUES = EXPERIENCE_LEVELS.map((t) => t.value);
@@ -39,16 +41,24 @@ const LISTING_TYPES = ['order', 'vacancy', 'board', 'other'];
 // OpenAI: OmniRoute, OpenRouter, Gemini через OpenAI-совместимый адрес). Он не
 // заменяет Groq, а подхватывает перелив: когда у всех ключей Groq минутный
 // лимит выбран, разбор уходит туда. См. выбор дорожки в pickLane.
+//
+// Qwen у Groq в разделе preview, а такие модели он снимает без предупреждения и
+// даже без записи на странице устаревших. Так в сентябре 2026 пропала
+// qwen/qwen3.6-27b: на каждое объявление Groq отвечал «model does not exist»,
+// и за шесть часов из групп не вышло ни одного. Поэтому у основной модели есть
+// запасная из production — такие снимают с объявлением за месяцы. На неё бот
+// переходит сам, как только основная пропала, и пишет об этом админу (см.
+// switchModel).
 const GROQ = {
   name: 'Groq',
   url: 'https://api.groq.com/openai/v1/chat/completions',
-  model: process.env.GROQ_MODEL || 'qwen/qwen3.6-27b',
-  // Чем разбирать, если не устраивает GROQ_MODEL. Минутный лимит сменой модели
-  // не поднять — у всех обычных моделей Groq он одинаковый, 8000 на
-  // организацию. Исключение одно: groq/compound с его 70000 в минуту (правда,
-  // всего 250 запросов в сутки и с собственным веб-поиском внутри). Зрение
-  // больше не требуется, поэтому выбор не ограничен зрячими моделями.
-  textModel: process.env.GROQ_TEXT_MODEL || '',
+  // GROQ_TEXT_MODEL — старое имя той же настройки, со времён, когда картинки
+  // разбирала отдельная зрячая модель. Минутный лимит сменой модели не поднять:
+  // у всех обычных моделей Groq он одинаковый, 8000 на организацию. Исключение
+  // одно — groq/compound с 70000 в минуту (зато 250 запросов в сутки и
+  // собственный веб-поиск внутри).
+  model: process.env.GROQ_TEXT_MODEL || process.env.GROQ_MODEL || 'qwen/qwen3.8-27b',
+  backupModel: process.env.GROQ_BACKUP_MODEL || 'openai/gpt-oss-120b',
   reasoning: process.env.GROQ_REASONING || 'none',
   tokensField: 'max_completion_tokens',
   // Groq присылает остаток минутного лимита в заголовках — по ним и держим темп.
@@ -367,7 +377,7 @@ const KEY_COUNT = groqLanes.length + fallbackLanes.length;
 // потерянная запятая) никак не увидеть — бот молча работал бы на одном ключе,
 // вдвое медленнее, и выглядело бы это просто как «что-то тормозит».
 console.log(
-  `[extract] дорожек разбора: ${KEY_COUNT} — Groq ${groqLanes.length} ключ(а/ей)` +
+  `[extract] дорожек разбора: ${KEY_COUNT} — Groq ${groqLanes.length} ключ(а/ей), модель ${GROQ.model}` +
     (fallbackLanes.length ? `, ${FALLBACK.name} (${FALLBACK.model})` : ', запасного шлюза нет')
 );
 
@@ -490,31 +500,70 @@ function retryDelayMs(res, data) {
   return Math.min(reset + 1000, MAX_WAIT_MS);
 }
 
+// Размышления у моделей Groq выключаются по-разному: Qwen понимает
+// reasoning_effort «none», а gpt-oss выключить их не даёт вовсе — принимает
+// только low/medium/high и на «none» отвечает 400. Поэтому для gpt-oss
+// «выключено» значит «как можно меньше».
+function reasoningFor(provider, model) {
+  if (/gpt-oss/i.test(model) && !['low', 'medium', 'high'].includes(provider.reasoning)) return 'low';
+  return provider.reasoning;
+}
+
+// Модели больше нет: Groq её снял («does not exist», код model_not_found) или
+// объявил выведенной (model_decommissioned). Ждать тут нечего — само не пройдёт.
+function modelGone(data) {
+  const error = (data && data.error) || {};
+  return (
+    error.code === 'model_not_found' ||
+    error.code === 'model_decommissioned' ||
+    /does not exist|decommissioned/i.test(String(error.message || ''))
+  );
+}
+
+// Переход на запасную модель. Живёт в памяти процесса: после перезапуска бот
+// снова попробует основную и, если её так и нет, перейдёт ещё раз — одним
+// лишним запросом, который Groq отбивает на входе и в лимит не считает.
+// Админу пишем сразу: смену модели видно по качеству разбора, и знать, откуда
+// она взялась, надо не из логов Render.
+function switchModel(provider, detail) {
+  const from = provider.model;
+  provider.model = provider.backupModel;
+  console.error(`[extract] ${provider.name}: модели ${from} больше нет (${detail}) — перехожу на ${provider.model}`);
+  notifyAdmins(
+    [
+      `🧠 ${provider.name} убрал модель разбора ${tg.esc(from)}:`,
+      tg.esc(detail),
+      '',
+      `Перешёл на запасную — ${tg.esc(provider.model)}, объявления разбираются дальше.`,
+      'Другую модель можно задать переменной GROQ_MODEL в Render.',
+    ].join('\n')
+  ).catch(() => {});
+}
+
 // Один поход к модели по конкретной дорожке. Формат тела — OpenAI chat
 // completions, он одинаков и у Groq, и у любого шлюза, который мы можем
 // подключить запасным; различия провайдеров собраны в объекте provider.
 async function call(lane, system, content, { maxTokens = DEFAULT_MAX_TOKENS } = {}) {
   const provider = lane.provider;
+  const model = provider.model;
+  const reasoning = reasoningFor(provider, model);
 
   const body = JSON.stringify({
-    // Зрение больше не нужно, поэтому GROQ_TEXT_MODEL — не «отдельная модель для
-    // текста», а просто модель: разбираем мы теперь только текст. Не задана —
-    // работает та, что в GROQ_MODEL.
-    model: provider.textModel || provider.model,
+    model,
     temperature: 0,
     // Groq считает запрос в минутный лимит вместе с max_completion_tokens, а не
     // по фактическому ответу: при 4000 один разбор весил 8200 при лимите 8000 и
     // отбивался целиком, сколько ни жди. 2000 хватает примерно на шесть
     // объявлений из одного сообщения; ступени ниже — в TEXT_STEPS.
     [provider.tokensField]: maxTokens,
-    // Qwen3.6 — reasoning-модель, и по умолчанию размышления выключены: иначе
+    // Qwen — reasoning-модель, и по умолчанию размышления выключены: иначе
     // она пишет длинный блок рассуждений и может не добраться до JSON в пределах
     // max_completion_tokens, а сами рассуждения ещё и съедают минутный лимит.
     // Но отличить заказчика от исполнителя — как раз та задача, где размышления
     // помогают, поэтому GROQ_REASONING=low включает их без правки кода. Если
     // после этого JSON начнёт обрываться — поднимать надо и max_completion_tokens.
     // Пустое значение — поле не отправляем совсем: чужой шлюз может его не знать.
-    ...(provider.reasoning ? { reasoning_effort: provider.reasoning } : {}),
+    ...(reasoning ? { reasoning_effort: reasoning } : {}),
     messages: [
       { role: 'system', content: system },
       { role: 'user', content },
@@ -539,6 +588,17 @@ async function call(lane, system, content, { maxTokens = DEFAULT_MAX_TOKENS } = 
     if (res.ok) {
       spend(data);
       return data;
+    }
+
+    // Модель сняли. Такой запрос Groq отбивает на входе, ничего не считая, —
+    // отметки темпа возвращаем, иначе разбор на запасной модели просидел бы
+    // паузу, которой не нужно. Если другой разбор уже перешёл на запасную,
+    // пока шёл этот, — просто повторяем на ней.
+    if (provider.backupModel && model !== provider.backupModel && modelGone(data)) {
+      lane.lastCallAt = pacedAt;
+      lane.budget = budgetBefore;
+      if (provider.model === model) switchModel(provider, String(data.error.message || res.status));
+      return call(lane, system, content, { maxTokens });
     }
 
     // Лимит токенов в минуту выбирается двумя скриншотами подряд: один разбор

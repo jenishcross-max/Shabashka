@@ -26,14 +26,57 @@ function esc(text) {
     .replace(/>/g, '&gt;');
 }
 
-function sendMessage(chatId, text, extra) {
-  return call('sendMessage', {
-    chat_id: chatId,
-    text,
-    parse_mode: 'HTML',
-    disable_web_page_preview: true,
-    ...extra,
-  });
+// Больше 4096 знаков Telegram в одно сообщение не берёт и отвечает «message is
+// too long» — вместо ответа админ получал ошибку. Считает он в UTF-16, как и
+// String.length, и уже после разбора разметки, так что мерить сырой HTML — с
+// запасом. Длинное режем на части: по пустой строке, иначе по переводу строки,
+// и только в крайнем случае посреди строки — но не внутри «&amp;», не внутри
+// тега, не между открывающим и закрывающим тегом и не посреди эмодзи.
+const MAX_TEXT = 4096;
+
+function splitText(text, max = MAX_TEXT) {
+  const parts = [];
+  let rest = String(text ?? '');
+  while (rest.length > max) {
+    const head = rest.slice(0, max);
+    let cut = head.lastIndexOf('\n\n');
+    if (cut < max / 2) cut = head.lastIndexOf('\n');
+    if (cut < max / 2) {
+      cut = max;
+      if (head.lastIndexOf('&') > head.lastIndexOf(';')) cut = head.lastIndexOf('&');
+      if (head.lastIndexOf('<') > head.lastIndexOf('>')) cut = Math.min(cut, head.lastIndexOf('<'));
+      const open = [];
+      for (const tag of head.slice(0, cut).matchAll(/<(\/?)([a-z]+)[^>]*>/gi)) {
+        if (!tag[1]) open.push(tag.index);
+        else open.pop();
+      }
+      if (open.length && open[0] > 0) cut = open[0];
+      // Резать раньше некуда — лучше разрубить, чем встать в вечный цикл.
+      if (cut <= 0) cut = max;
+      if (/[\uD800-\uDBFF]/.test(rest[cut - 1] || '')) cut -= 1;
+    }
+    parts.push(rest.slice(0, cut));
+    rest = rest.slice(cut).replace(/^\n+/, '');
+  }
+  parts.push(rest);
+  return parts;
+}
+
+// Кнопки — у последней части: под ней их и ищут. Её же и возвращаем — по
+// message_id этого сообщения бот потом правит карточку.
+async function sendMessage(chatId, text, extra) {
+  const parts = splitText(text);
+  let result;
+  for (let i = 0; i < parts.length; i += 1) {
+    result = await call('sendMessage', {
+      chat_id: chatId,
+      text: parts[i],
+      parse_mode: 'HTML',
+      disable_web_page_preview: true,
+      ...(i === parts.length - 1 ? extra : {}),
+    });
+  }
+  return result;
 }
 
 function editMessageText(chatId, messageId, text, extra) {
@@ -91,6 +134,7 @@ module.exports = {
   call,
   esc,
   sendMessage,
+  splitText,
   editMessageText,
   answerCallbackQuery,
   sendVideo,
