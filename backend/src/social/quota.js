@@ -11,7 +11,9 @@ const FALLBACK_TOTAL = 100;
 // было 90). Сутки те же скользящие, что у Meta: место освобождается через 24
 // часа после каждой публикации, а не разом в полночь. Это своё ограничение, не
 // её: если Meta когда-нибудь отдаст меньше, берём её число, оно главнее.
-// Меняется INSTAGRAM_DAILY_LIMIT без правки кода.
+// Меняется INSTAGRAM_DAILY_LIMIT без правки кода. Платной рекламы (/ad) этот
+// потолок не касается: за неё заплатили, и ждать сутки она не должна — она идёт
+// до настоящего потолка площадки (см. adLimit).
 const OWN_LIMIT = Number(process.env.INSTAGRAM_DAILY_LIMIT || 50);
 
 // Сколько мест в сутках держим в запасе. Ролики идут под потолком «всего минус
@@ -51,14 +53,18 @@ function fresh() {
 }
 
 // Настоящий потолок площадки — тот, выше которого Meta ответит подкодом 2207042
-// и спишет попытку впустую.
-function hardLimit() {
+// и спишет попытку впустую. Выше него не пройдёт ничего, даже платное.
+function adLimit() {
   const r = fresh();
-  const platform = r && r.total ? r.total : FALLBACK_TOTAL;
+  return r && r.total ? r.total : FALLBACK_TOTAL;
+}
+
+// Потолок для обычных объявлений.
+function hardLimit() {
   // Из двух потолков — своего и площадочного — берём меньший: свой мы поставили
   // сами и опускать его площадка не вправе, а поднять выше её числа нельзя,
   // иначе упрёмся в 2207042 и спишем попытку впустую.
-  return Math.min(OWN_LIMIT, platform);
+  return Math.min(OWN_LIMIT, adLimit());
 }
 
 // Мягкий потолок: под ним идут ролики. Дальше объявление уезжает картинкой и
@@ -77,8 +83,8 @@ function used() {
   return attempts.length;
 }
 
-function left() {
-  return Math.max(0, dailyLimit() - used());
+function left(limit = dailyLimit()) {
+  return Math.max(0, limit - used());
 }
 
 // Спрашивает у площадки настоящие числа. fetchLimit передаётся снаружи, чтобы
@@ -115,10 +121,10 @@ function take(limit = dailyLimit()) {
 // из окна ровно через сутки после себя. Время знаем только по своим попыткам —
 // Meta отдаёт число, но не отметки времени, — поэтому пока своих нет, обещать
 // нечем.
-function freeAt() {
+function freeAt(limit = dailyLimit()) {
   sweep(Date.now());
-  if (used() < dailyLimit() || !attempts.length) return null;
+  if (used() < limit || !attempts.length) return null;
   return new Date(attempts[0].at + WINDOW_MS);
 }
 
-module.exports = { take, used, left, freeAt, sync, hardLimit, dailyLimit, RESERVE };
+module.exports = { take, used, left, freeAt, sync, adLimit, hardLimit, dailyLimit, RESERVE };

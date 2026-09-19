@@ -203,12 +203,15 @@ async function buildVideo(job) {
 // на стороне Meta, и общий с Threads часовой лимит Graph API, который тридцать
 // вызовов одного Reels выедают быстро.
 // Отказ по суточной норме — отдельной функцией: до сборки и после неё причина
-// одна и та же. Потолков два, и назвать надо тот, в который упёрлись: мягкий
-// закрывает только ролики (дальше объявление едет картинкой), настоящий — вообще
-// всё, и это уже повод ждать, пока окно сдвинется.
-function quotaFailure() {
+// одна и та же. Потолков три, и назвать надо тот, в который упёрлись: мягкий
+// закрывает только ролики (дальше объявление едет картинкой), свой суточный —
+// вообще всё обычное, а у платной рекламы он и вовсе площадочный (см. adLimit в
+// quota.js). Упёрлись в последние два — остаётся ждать, пока окно сдвинется.
+// ceiling — потолок, выше которого этому заданию уже не подняться: у обычного
+// объявления свой суточный, у платной рекламы площадочный.
+function quotaFailure(ceiling = quota.hardLimit()) {
   const used = quota.used();
-  const free = quota.freeAt();
+  const free = quota.freeAt(ceiling);
   // Часовой пояс называем явно: Render живёт по UTC, и без него срок уезжал на
   // шесть часов назад — в чат приходило «освободится к 19:03» в час ночи.
   const when = free
@@ -217,8 +220,8 @@ function quotaFailure() {
   return {
     posted: false,
     reason:
-      used >= quota.hardLimit()
-        ? `суточная норма Instagram выбрана целиком: ${used} из ${quota.hardLimit()}${when}`
+      used >= ceiling
+        ? `суточная норма Instagram выбрана целиком: ${used} из ${ceiling}${when}`
         : `норма на ролики выбрана: ${used} из ${quota.dailyLimit()}${when}`,
   };
 }
@@ -250,13 +253,18 @@ async function deliverInstagram(job) {
   // которых стоит сам Reels, один лишний ничего не значит.
   await quota.sync(instagram.publishingLimit);
 
+  // Под каким потолком идём: платная реклама — под площадочным, обычное
+  // объявление — под мягким, из-под которого оно ещё может уехать картинкой.
+  const ceiling = job.priority ? quota.adLimit() : quota.hardLimit();
+  const limit = job.priority ? ceiling : quota.dailyLimit();
+
   // Место в квоте сначала только смотрим, не занимая: если его нет, ролик и
   // собирать незачем — минута ffmpeg на бесплатном Render уйдёт впустую, — и
   // объявление сразу едет картинкой. Ей место найдётся: у картинки потолок выше
   // (см. hardLimit в quota.js), а стоит она два вызова Graph API вместо трёх
   // десятков.
-  if (!quota.left()) {
-    const failure = await withImageFallback(job, quotaFailure());
+  if (!quota.left(limit)) {
+    const failure = await withImageFallback(job, quotaFailure(ceiling));
     return failure.posted ? failure : buildForHand(job, failure);
   }
 
@@ -278,10 +286,10 @@ async function deliverInstagram(job) {
   // не дойти, нельзя. Сборка идёт минуту с лишним — за это время место мог
   // занять другой ролик, поэтому проверяем ещё раз, и снова с той же развилкой
   // на картинку.
-  if (!quota.take()) {
+  if (!quota.take(limit)) {
     // Ролик к этому моменту уже собран — buildForHand его не тронет, но и не
     // помешает: отдать админу нужно ровно то же самое.
-    const failure = await withImageFallback(job, quotaFailure());
+    const failure = await withImageFallback(job, quotaFailure(ceiling));
     return failure.posted ? failure : buildForHand(job, failure);
   }
 
@@ -316,8 +324,9 @@ async function withImageFallback(job, failure) {
   // Место в квоте — как и у ролика, вплотную к созданию контейнера: Instagram
   // считает именно контейнеры, и неудачная попытка списывает столько же, сколько
   // удачная. Потолок здесь настоящий, а не мягкий: запасной ход и нужен для
-  // случая, когда обычного места уже не осталось.
-  if (!quota.take(quota.hardLimit())) return failure;
+  // случая, когда обычного места уже не осталось. У платной рекламы он ещё выше —
+  // площадочный, свой суточный её не держит (см. adLimit в quota.js).
+  if (!quota.take(job.priority ? quota.adLimit() : quota.hardLimit())) return failure;
 
   let image;
   try {
@@ -476,15 +485,15 @@ function shareDigest(items, opts, ctx) {
 // макета, ни очереди по типам здесь нет: собирать нечего, а подпись «Заказ дня»
 // на чужом ролике была бы враньём.
 //
-// Место в суточной норме берём по настоящему потолку, а не по мягкому: мягкий
-// придерживает последние места под запасные картинки обычных объявлений, и
-// платная реклама — ровно тот случай, ради которого этот запас и держат.
+// Место в суточной норме берём по потолку площадки: свой суточный потолок
+// придерживает обычные объявления, чтобы лента не превращалась в поток, а за
+// рекламу заплатили — ждать сутки она не должна (см. adLimit в quota.js).
 async function deliverRawMedia(job) {
   const base = backendUrl();
   if (!base) return { posted: false, reason: 'не задан адрес бэкенда' };
 
   await quota.sync(instagram.publishingLimit);
-  if (!quota.take(quota.hardLimit())) return quotaFailure();
+  if (!quota.take(quota.adLimit())) return quotaFailure(quota.adLimit());
 
   const isVideo = job.kind === 'video';
   // Instagram приходит за файлом сам, по ссылке: выкладываем наружу на двадцать
