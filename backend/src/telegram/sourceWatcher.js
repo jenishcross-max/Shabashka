@@ -194,7 +194,10 @@ async function handleMessage(message) {
         return;
       }
 
-      const listings = await extract.fromText(text);
+      // background — посты из чужих групп. Они идут потоком и уступают место
+      // рекламе первыми, когда суточная норма разбора подходит к концу
+      // (см. reserveError в extract.js).
+      const listings = await extract.fromText(text, { background: true });
 
       console.log(
         `[источник] Groq разобрал: ${listings

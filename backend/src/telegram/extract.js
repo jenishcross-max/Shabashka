@@ -323,7 +323,53 @@ function usage() {
     calls: fresh ? spent.calls : 0,
     limit: TOKENS_PER_DAY * groqLanes.length,
     keys: groqLanes.length,
+    left: leftToday(),
+    reserve: AD_RESERVE,
   };
+}
+
+// Конец суточной нормы отдан платной рекламе. Норма у бесплатного Groq — около
+// сорока разборов в день, и тратит её в основном поток из чужих групп: он идёт
+// весь день и никого не ждёт. Реклама же приходит когда придёт, часто вечером,
+// и упиралась в пустую норму — объявление, за которое заплатили, висело в
+// отложенных часами.
+//
+// Поэтому порогов два. Фоновые посты из групп останавливаются первыми (за два
+// запаса до конца), пересланное админом вручную — следом (за один), а реклама
+// разбирается, пока в норме есть хоть что-то. Запас в токенах, а не в
+// процентах: разбор стоит примерно COST_ESTIMATE, и сорок тысяч — это ещё
+// около восьми объявлений.
+const AD_RESERVE = Number(process.env.GROQ_AD_RESERVE || 40000);
+
+function leftToday() {
+  const spentToday = spent.day === utcDay() ? spent.tokens : 0;
+  return Math.max(0, TOKENS_PER_DAY * groqLanes.length - spentToday);
+}
+
+// Начало следующих UTC-суток: по ним Groq обнуляет норму, по ним же считаем и мы.
+function dayResetAt() {
+  const next = new Date();
+  next.setUTCHours(24, 0, 0, 0);
+  return next.getTime();
+}
+
+// Хватает ли нормы на этот разбор. Отказ помечаем лимитным и называем срок:
+// наверху такой отказ объявление не теряет, а откладывает до утра (см. park в
+// bot.js). Счётчик живёт в памяти процесса и после перезапуска Render занижен —
+// значит, запас сработает не всегда; это лучше, чем не беречь ничего.
+function reserveError(kind) {
+  // Запасной шлюз в норму Groq не входит: пока он есть, придерживать нечего —
+  // разбор всё равно уйдёт туда (см. pickLane).
+  if (kind === 'ad' || fallbackLanes.length) return null;
+  const reserve = kind === 'background' ? AD_RESERVE * 2 : AD_RESERVE;
+  const left = leftToday();
+  if (left > reserve) return null;
+  const err = new Error(
+    `суточная норма разбора на исходе (осталось ≈${Math.round(left / 1000)}к токенов) — остаток держу под платную рекламу`
+  );
+  err.rateLimited = true;
+  err.retryAt = dayResetAt();
+  return err;
 }
 
 // Несколько бесплатных ключей — несколько независимых минутных лимитов:
@@ -764,7 +810,11 @@ const AD_SUFFIX = [
 // картинок мы не шлём, а промпт от объявления к объявлению не меняется.
 const TEXT_STEPS = [2000, 1200, 800];
 
-async function fromText(text, { ad = false } = {}) {
+async function fromText(text, { ad = false, background = false } = {}) {
+  // Норма на исходе — дальше только реклама (см. reserveError).
+  const denied = reserveError(ad ? 'ad' : background ? 'background' : 'admin');
+  if (denied) throw denied;
+
   const task = `Разбери объявления из этого сообщения чата:\n\n${text}`;
 
   let lastErr = null;
