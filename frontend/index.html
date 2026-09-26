@@ -80,15 +80,13 @@
     </script>
   </head>
   <body>
-    <noscript>
-      <div>
-        <img
-          src="https://mc.yandex.ru/watch/%VITE_YANDEX_METRIKA_ID%"
-          style="position: absolute; left: -9999px"
-          alt=""
-        />
-      </div>
-    </noscript>
+    <!-- Пиксель Метрики для браузеров без JS отсюда убран намеренно. Во-первых,
+         он здесь бесполезен: сайт — SPA, и без JS показывать всё равно нечего.
+         Во-вторых, он ломал сборку: Vite прогоняет все адреса в HTML через
+         decodeURI, а «%VITE_...%» — недопустимая escape-последовательность, и
+         пустая переменная VITE_YANDEX_METRIKA_ID валила `npm run build`
+         сообщением «URI malformed», по которому причину не найти. В <script>
+         ниже такой подстановке ничего не грозит: адреса там не разбираются. -->
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
