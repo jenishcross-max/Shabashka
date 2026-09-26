@@ -1,10 +1,12 @@
 // Публикация Reels через Instagram Graph API. Три шага, иначе никак: сначала
 // создаётся контейнер, Instagram сам скачивает ролик по ссылке и кодирует его,
 // и только готовый контейнер можно опубликовать.
-const { sleep, isRetryable, withRetry } = require('./net');
+const { sleep, isRetryable, withRetry, TIMEOUT_MS } = require('./net');
+// Токен продлевается сам и хранится в базе (см. tokens.js): переменная
+// окружения — только отправная точка.
+const tokens = require('./tokens');
 
 const USER_ID = process.env.INSTAGRAM_USER_ID || '';
-const TOKEN = process.env.INSTAGRAM_ACCESS_TOKEN || '';
 // graph.instagram.com — вариант «Instagram API with Instagram Login»: заводится
 // на самом аккаунте, без страницы в Facebook. Кому нужен доступ через Facebook
 // Login, тот ставит graph.facebook.com в этой переменной.
@@ -18,7 +20,7 @@ const POLL_INTERVAL_MS = 8000;
 const POLL_ATTEMPTS = 15;
 
 function isConfigured() {
-  return Boolean(USER_ID && TOKEN);
+  return Boolean(USER_ID && tokens.get('instagram'));
 }
 
 // step — что именно делали. Без него в чат уходит одна строка от Meta, а она
@@ -27,11 +29,14 @@ function isConfigured() {
 // единственное, по чему Meta потом найдёт сам запрос.
 async function call(step, method, path, params) {
   const url = new URL(`https://${HOST}/${VERSION}/${path}`);
-  const body = new URLSearchParams({ ...params, access_token: TOKEN });
+  const body = new URLSearchParams({ ...params, access_token: tokens.get('instagram') });
 
   const res = await fetch(method === 'GET' ? `${url}?${body}` : url, {
     method,
     body: method === 'GET' ? undefined : body,
+    // Без срока оборванный на середине запрос к Meta висит до бесконечности, а
+    // за ним стоит очередь публикаций — см. TIMEOUT_MS в net.js.
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   const data = await res.json();
   if (!res.ok || data.error) {
@@ -74,14 +79,20 @@ async function waitReady(creationId) {
   throw new Error('ролик слишком долго обрабатывается');
 }
 
+// «Контейнер ещё не готов» — подкод 2207027. Встречается и у картинки, которую
+// Meta будто бы отдаёт готовой сразу: в логах Render это «The media is not ready
+// for publishing, please wait for a moment», после чего пост уходил в
+// автоповторы на часы. Ждать тут надо секунды, а не часы.
+const NOT_READY = 2207027;
+const NOT_READY_ATTEMPTS = 4;
+
 // Единственный шаг, который нельзя повторять слепо: если запрос до Instagram
 // дошёл, а ответ потерялся по дороге, второй такой же запрос выложит второй
 // ролик. Поэтому на сетевом сбое сначала спрашиваем контейнер, не опубликован
 // ли он уже, и повторяем только если нет.
 async function publishContainer(creationId) {
   try {
-    const { id } = await call('публикация', 'POST', `${USER_ID}/media_publish`, { creation_id: creationId });
-    return id;
+    return await publishWhenReady(creationId);
   } catch (err) {
     if (!isRetryable(err)) throw err;
     console.log(`[insta] публикация не прошла (${err.message}) — проверяю контейнер`);
@@ -92,6 +103,21 @@ async function publishContainer(creationId) {
     }
     const { id } = await call('публикация', 'POST', `${USER_ID}/media_publish`, { creation_id: creationId });
     return id;
+  }
+}
+
+// Публикация с терпением к «ещё не готов»: такой отказ ничего не публикует и
+// квоту не тратит, так что повторять его безопасно.
+async function publishWhenReady(creationId) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      const { id } = await call('публикация', 'POST', `${USER_ID}/media_publish`, { creation_id: creationId });
+      return id;
+    } catch (err) {
+      if (err.subcode !== NOT_READY || attempt >= NOT_READY_ATTEMPTS) throw err;
+      console.log(`[insta] контейнер ${creationId} ещё не готов — жду и пробую снова`);
+      await sleep(POLL_INTERVAL_MS);
+    }
   }
 }
 

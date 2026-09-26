@@ -3,10 +3,11 @@ const { domainToUnicode } = require('url');
 const tg = require('./api');
 // Кто имеет право публиковать через бота. Список общий с уведомлениями о жалобах
 // (см. notify.js): это те же люди и тот же чат.
-const { ADMIN_IDS, isAllowed } = require('./notify');
+const { ADMIN_IDS, isAllowed, notifyAdmins } = require('./notify');
 const extract = require('./extract');
 const { abroadWork } = require('../abroad');
 const imports = require('./imports');
+const deferred = require('./deferred');
 const queue = require('./queue');
 const social = require('../social');
 const digestRepo = require('../digestRepo');
@@ -244,10 +245,14 @@ async function shareToSocial(chatId, parsed, listingType, siteLink, priority = f
     }
 
     if (result.queued) {
+      // Ролик выходит по расписанию, а не сразу (см. RELEASE_INTERVAL_MS в
+      // social/index.js), и молчание Instagram читалось бы как сбой. Поэтому
+      // говорим и сколько объявлений ждёт вместе с этим, и когда ближайший
+      // выпуск. У платной рекламы расписания нет — она уезжает сразу.
       lines.push(
-        result.waiting === 0
-          ? `🎬 «${tg.esc(result.collection)}» — собираю ролик`
-          : `🎬 «${tg.esc(result.collection)}»: ${result.waiting} из ${social.BATCH_SIZE}`
+        result.releaseInMin
+          ? `🎬 «${tg.esc(result.collection)}»: в очереди ${result.waiting}, до ${social.BATCH_SIZE} в ролике, выпуск раз в ${result.releaseInMin} мин`
+          : `🎬 «${tg.esc(result.collection)}» — собираю ролик`
       );
     }
 
@@ -260,20 +265,54 @@ async function shareToSocial(chatId, parsed, listingType, siteLink, priority = f
 // Отчёт по посту в Threads. Как и у ролика, приходит не в ответ на объявление,
 // а когда до поста дошла очередь, — поэтому называем заголовок, иначе непонятно,
 // за какое из объявлений оно отчитывается.
-social.onThreads(async ({ title, ctx, posted, reason, hardLimit, retryId, id }) => {
+social.onThreads(async ({ title, ctx, posted, reason, hardLimit, retryId, id, text }) => {
   const chatId = ctx && ctx.chatId;
   // Запоминаем до отчёта и независимо от него: чат мог отвалиться, а пост уже
-  // висит, и снимать его потом всё равно придётся.
-  if (posted && ctx && ctx.importId) {
+  // висит, и снимать его потом всё равно придётся. Повтор рекламы (campaignId)
+  // карточку на сайте не заменяет — снимать по ней надо первый пост.
+  if (posted && ctx && ctx.importId && !ctx.campaignId) {
     await imports.setPosts(ctx.importId, { threadsPostId: id }).catch((err) =>
       console.error('[снятие] id поста Threads не записан:', err.message)
     );
   }
+
+  // Реклама: пост заводит кампанию, за которой бот следит сутки и потом
+  // отчитывается просмотрами (см. social/adTracker.js). Повтор кнопкой
+  // «поднять» добавляется к той же кампании — просмотры складываются.
+  let tracked = false;
+  if (posted && ctx && (ctx.ad || ctx.campaignId)) {
+    try {
+      if (ctx.campaignId) {
+        await social.adTracker.addPost(ctx.campaignId, id);
+      } else {
+        await social.adTracker.track({
+          chatId,
+          importId: ctx.importId || null,
+          title,
+          threadsText: text,
+          media: ctx.adMedia || null,
+          card: ctx.card || null,
+          postId: id,
+        });
+      }
+      tracked = true;
+    } catch (err) {
+      console.error('[реклама] кампания не заведена:', err.message);
+    }
+  }
+
   if (!chatId) return;
   const what = tg.esc(clamp(title || 'без заголовка', 80));
 
   if (posted) {
-    await tg.sendMessage(chatId, `🧵 Threads — опубликовано: ${what}`).catch(() => {});
+    const lines = [`🧵 Threads — опубликовано: ${what}`];
+    if (tracked && !ctx.campaignId) {
+      lines.push(
+        `📊 Слежу за просмотрами: через ${Math.round(social.adTracker.WARN_AFTER_MS / 3600000)} ч скажу, если реклама отстаёт, через сутки пришлю отчёт.`
+      );
+    }
+    if (tracked && ctx.campaignId) lines.push('📊 Просмотры этого поста сложатся с первым в отчёте.');
+    await tg.sendMessage(chatId, lines.join('\n')).catch(() => {});
     return;
   }
 
@@ -527,6 +566,36 @@ async function onFlushCommand(chatId) {
   await tg.sendMessage(chatId, '🎬 Ролика ждут объявления разных типов. Что выпускаем?', flushMenu(byType));
 }
 
+// «14:05» по Бишкеку — Render живёт по UTC, и без часового пояса срок уезжал бы
+// на шесть часов назад.
+function clock(ms) {
+  return new Date(ms).toLocaleTimeString('ru-RU', { timeZone: 'Asia/Bishkek', hour: '2-digit', minute: '2-digit' });
+}
+
+// Короткое имя модели для строки в чате: «qwen3.8-27b», а не «qwen/qwen3.8-27b».
+const shortModel = (model) => String(model).split('/').pop();
+
+// Лесенка моделей одной-двумя строками. Пока всё работает, хватает перечня;
+// строка нужна, чтобы с утра было видно, на какой модели бот сейчас.
+function modelLines(models) {
+  if (!models || !models.length) return [];
+  const parts = models.map((m) => {
+    const name = `${shortModel(m.model)}${m.reserve ? ' (резерв)' : ''}`;
+    if (m.gone) return `${name} ✖ пропала`;
+    if (m.until) return `${name} ⏳ до ${clock(m.until)}`;
+    return `${name} ✅`;
+  });
+  return [`🪜 Модели: ${parts.join(' · ')}`];
+}
+
+// Резерв «в деле»: все модели, кроме последней, выбраны или пропали.
+function reserveOnly(models) {
+  if (!models || models.length < 2) return false;
+  const regular = models.slice(0, -1);
+  const reserve = models[models.length - 1];
+  return regular.every((m) => m.gone || m.until) && !reserve.gone && !reserve.until;
+}
+
 // Итог дня: сколько ушло на сайт и сколько роликов ещё едет на площадки.
 // Второе число живёт только в памяти процесса — после перезапуска Render оно
 // честно нулевое, потому что вместе с процессом умирают и сами сборки.
@@ -542,35 +611,34 @@ async function statsText() {
   const byType = social.queuedByType();
   const waitingLine = byType.length
     ? byType
-        .map((q) => `${social.collectionTitle(q.listingType).toLowerCase()} ${q.count}/${social.BATCH_SIZE}`)
+        .map((q) => `${social.collectionTitle(q.listingType).toLowerCase()} ${q.count}`)
         .join(', ')
     : 'пусто';
-  // Суточная норма Groq — то, во что упирается весь поток объявлений, и до
-  // этой строки увидеть её было негде: минутный лимит виден в заголовках, а
-  // суточный не виден нигде. Показываем в тысячах: точность тут ни к чему,
-  // важен сам порядок — «половина» или «на исходе».
+  // Суточная норма Groq — то, во что упирается весь поток объявлений. Норма у
+  // каждой модели своя, и бот спускается по лесенке моделей, когда верхняя
+  // выбрана (см. modelLadder в extract.js), — поэтому и показываем лесенку: что
+  // работает, что выбрано и до какого часа, что пропало совсем.
   const groq = extract.usage();
   const k = (n) => `${Math.round(n / 1000)}к`;
 
   return [
     `📊 Сегодня опубликовано: ${today}`,
-    `🧠 Разборов: ${groq.calls}, токенов ≈${k(groq.tokens)} из ${k(groq.limit)}${
-      groq.keys > 1 ? ` (${groq.keys} ключа)` : ''
-    }`,
-    // Конец нормы отдан рекламе (см. reserveError в extract.js). Пока до него
-    // далеко, молчим: в обычный день эта строка ничего не добавляет.
-    ...(groq.left <= groq.reserve * 2
-      ? [
-          groq.left <= groq.reserve
-            ? '🅰️ Норма на исходе — разбираю только платную рекламу'
-            : '🅰️ Норма к концу — посты из групп больше не разбираю, берегу остаток под рекламу',
-        ]
+    `🧠 Разборов: ${groq.calls}, токенов ≈${k(groq.tokens)}${groq.keys > 1 ? ` (${groq.keys} ключа)` : ''}`,
+    ...modelLines(groq.models),
+    // Строка про резерв — только когда он и правда в деле: обычные модели
+    // выбраны, и посты из групп стоят, а реклама ещё разбирается.
+    ...(reserveOnly(groq.models)
+      ? ['🅰️ Обычные модели выбраны — посты из групп жду, последнюю берегу под рекламу']
       : []),
     // Строку показываем только когда есть что показать: в обычный день
     // отложенных нет, и «отложено: 0» было бы лишним шумом каждый раз.
     ...(pending.size ? [`⏳ Отложено до лимита: ${pending.size}`] : []),
+    // Зависшая задача — не лимит, а поломка: запрос ушёл и не вернулся, дорожку
+    // пришлось отобрать силой (см. JOB_TIMEOUT_MS в queue.js). Снаружи молчащий
+    // бот выглядит одинаково в обоих случаях, а лечится по-разному.
+    ...(queue.stalled() ? [`⚠️ Зависших разборов: ${queue.stalled()} — запрос ушёл и не вернулся`] : []),
     `🎬 Роликов в работе: ${social.pending()}`,
-    `⏳ Ждут ролика: ${waitingLine}`,
+    `⏳ Ждут ролика: ${waitingLine} (до ${social.BATCH_SIZE} в ролике, выпуск раз в ${social.RELEASE_INTERVAL_MIN} мин)`,
     `🧵 Ждут очереди в Threads: ${social.threadsQueued()}`,
     // Показываем тот потолок, под которым идём сейчас: после мягкого объявления
     // уходят картинкой и добирают остаток до настоящего (см. quota.js).
@@ -603,7 +671,8 @@ async function limitsText() {
     '',
     // Свой потолок называем отдельно: по одной строке Meta «12 из 100» казалось
     // бы, что бот выложит сотню, а он остановится раньше (см. OWN_LIMIT в quota.js).
-    `Сам бот выкладывает в Instagram не больше ${social.quota.hardLimit()} публикаций за сутки.`,
+    `Сам бот выкладывает в Instagram не больше ${social.quota.hardLimit()} публикаций за сутки —`,
+    `по ролику раз в ${social.RELEASE_INTERVAL_MIN} минут, до ${social.BATCH_SIZE} объявлений в каждом.`,
     `Последние ${social.quota.RESERVE} из них — только картинками: ролики до них не дотягиваются.`,
     'Платная реклама по /ad идёт сверх этого потолка — до нормы Meta выше.',
     '',
@@ -627,8 +696,11 @@ async function publishOne(chatId, id, parsed, priority = false) {
   const shown = prettyLink(siteLink);
   // Текст без ссылки: в сообщения Telegram она добавляется тегом отдельно, а в
   // WhatsApp уходит обычной строкой — разметку там показывать нечем.
-  const body = publicText(ready, result.type, '');
-  const publicMsg = publicText(ready, result.type, shown);
+  // Платное объявление и в канале, и в WhatsApp помечено так же, как в соцсетях
+  // (см. adLine в social/video.js).
+  const adMark = priority && social.adLine() ? `${social.adLine()}\n` : '';
+  const body = `${adMark}${publicText(ready, result.type, '')}`;
+  const publicMsg = `${adMark}${publicText(ready, result.type, shown)}`;
   const linkTag = siteLink ? `\n\n<a href="${siteLink}">${tg.esc(shown)}</a>` : '';
 
   // Канал — необязательный шаг: если пост туда не ушёл (бот не админ, канал
@@ -817,9 +889,10 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
       // Копией, а не своей отправкой: пересобирая контент, мы потеряли бы всё,
       // чего не умеем — кружок, альбом, гифку. Подпись в канале при этом своя,
       // со ссылкой на сайт. У Telegram она ограничена 1024 знаками.
+      const adMark = priority && social.adLine() ? `${tg.esc(social.adLine())}\n\n` : '';
       const inChannel = media
-        ? await tg.copyMessage(CHANNEL_ID, chatId, message.message_id, `${tg.esc(clamp(text, 900))}${linkTag}`)
-        : await tg.sendMessage(CHANNEL_ID, `${tg.esc(text)}${linkTag}`);
+        ? await tg.copyMessage(CHANNEL_ID, chatId, message.message_id, `${adMark}${tg.esc(clamp(text, 880))}${linkTag}`)
+        : await tg.sendMessage(CHANNEL_ID, `${adMark}${tg.esc(text)}${linkTag}`);
       await imports.setPosts(id, { channelMessageId: inChannel.message_id });
       lines.push('📢 Выложено в Telegram-канал');
     } catch (err) {
@@ -830,10 +903,19 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
   if (media) {
     try {
       const buffer = await tg.downloadFile(media.fileId);
-      const caption = `${text}${shown ? `\n\n${shown}` : ''}`.trim();
-      const result = social.shareMedia({ kind: media.kind, buffer, caption }, { chatId }, { priority });
+      // Подписи для площадок собирает social: в Instagram — целиком, в Threads —
+      // ужатой до его пятисот знаков. В ctx — всё, что нужно для отчёта по
+      // просмотрам и для повтора: карточка на сайте и сам файл в Telegram.
+      const result = social.shareMedia(
+        { kind: media.kind, buffer, text, siteLink: shown, title: headline(text) },
+        { chatId, importId: id, adMedia: priority ? { kind: media.kind, fileId: media.fileId } : null },
+        { priority }
+      );
+      const caption = result.caption || text;
       for (const name of result.skipped) lines.push(`${SITE_LABELS[name]}: не настроен`);
-      if (result.threadsQueued) lines.push('🧵 Threads: публикую текстом');
+      if (result.threadsQueued) {
+        lines.push(media.kind === 'video' ? '🧵 Threads: отправляю ваш ролик' : '🧵 Threads: отправляю картинку');
+      }
       if (result.instagramQueued) {
         lines.push(media.kind === 'video' ? '🎬 Instagram: отправляю ваш ролик' : '📸 Instagram: отправляю картинку');
         // Ответ площадки придёт через минуты — отдельным сообщением, как и у
@@ -1045,17 +1127,46 @@ function pendingText(delay) {
   })}`;
 }
 
-function park(chatId, job, retryAt, attempt, priority, ad) {
+// Строку в базе убираем ровно один раз: и когда до объявления дошли руки, и
+// когда его выложили кнопкой, не дожидаясь. Ошибку глотаем — объявление к
+// этому моменту уже в работе, и падать из-за неубранной строки незачем.
+function forget(entry) {
+  if (!entry.rowId) return;
+  const id = entry.rowId;
+  entry.rowId = null;
+  deferred.remove(id).catch((err) => console.error('[отложенное] строка не убрана:', err.message));
+}
+
+// row — строка из базы, если объявление вернулось после перезапуска: тогда
+// заново её писать не надо, надо дожить до срока и убрать старую.
+function park(chatId, job, retryAt, attempt, priority, ad, rowId = null) {
   const delay = Math.min(
     Math.max(retryAt - Date.now(), 0) + PENDING_MARGIN_MS,
     PENDING_MAX_DELAY_MS
   );
 
-  const entry = { delay, done: false };
+  const entry = { delay, done: false, rowId };
   pending.add(entry);
+
+  // В базу — чтобы обещание «вернусь сам» пережило перезапуск Render
+  // (см. deferred.js). Намеренно без await: ответ админу ждать записи не
+  // должен, а таймер ниже всё равно сработает не раньше чем через минуту.
+  if (!rowId && ad) {
+    deferred
+      .add({ chatId, messageId: ad.message && ad.message.message_id, text: ad.text, ad: true, attempt, retryAt })
+      .then((id) => {
+        // Кнопка могла сработать, пока шла запись, — тогда строку надо сразу
+        // и убрать, иначе она воскреснет после перезапуска уже выложенной.
+        entry.rowId = id;
+        if (entry.done) forget(entry);
+      })
+      .catch((err) => console.error('[отложенное] не записал:', err.message));
+  }
+
   entry.timer = setTimeout(() => {
     entry.done = true;
     pending.delete(entry);
+    forget(entry);
     // Обратно в ту же очередь, а не мимо неё: к этому моменту админ мог
     // прислать новую пачку, и отложенное должно встать в общий ряд.
     enqueue(chatId, job, { attempt: attempt + 1, priority, ad });
@@ -1072,12 +1183,52 @@ function park(chatId, job, retryAt, attempt, priority, ad) {
 let adNowSeq = 0;
 const adNow = new Map();
 
+// Кнопку, до которой не дошли руки, надо однажды забыть: бот вернулся к
+// объявлению сам, сообщение уехало вверх по чату, а запись о нём вместе с
+// текстом объявления осталась бы в памяти до перезапуска. Чистим при добавлении
+// новой — отдельный таймер ради пары объектов в день заводить незачем.
+function sweepAdNow() {
+  for (const [key, ad] of adNow) {
+    if (ad.parked.done) adNow.delete(key);
+  }
+}
+
 function cancelPending(entry) {
   clearTimeout(entry.timer);
   entry.done = true;
   pending.delete(entry);
+  forget(entry);
 }
 
+
+// Что бот делает с присланным текстом: разбирает, публикует, а рекламу, которую
+// модель не осилила, выкладывает как есть. Отдельной функцией, а не замыканием
+// внутри обработчика сообщения, потому что та же работа запускается ещё в двух
+// местах: из отложенного, когда лимит отпустил, и после перезапуска, когда
+// отложенное поднимают из базы (см. restoreDeferred). message нужен только
+// рекламе — с него снимается копия в канал; у воскрешённого объявления от него
+// остаётся один message_id, и этого достаточно.
+function parseJob(chatId, message, text, isAd) {
+  return async () => {
+    let parsed = null;
+    try {
+      parsed = await extract.fromText(text, { ad: isAd });
+    } catch (err) {
+      if (!isAd || err.retryAt) throw err;
+      await tg.sendMessage(chatId, `⚠️ Разобрать не вышло: ${tg.esc(err.message)}`);
+    }
+    const published = parsed
+      ? await handleParsed(chatId, parsed, { source: 'telegram', rawText: text, priority: isAd, ad: isAd })
+      : 0;
+    // classify: false — этот же текст модель только что не осилила, второй
+    // заход кончится тем же и лишь потратит суточный лимит. Работу за
+    // границей «как есть» не выкладываем: это не сбой разбора, а отказ.
+    const refused = parsed && parsed.some((p) => p.abroad);
+    if (isAd && !published && !refused) {
+      await publishRawAd(chatId, message, text, null, true, { classify: false });
+    }
+  };
+}
 
 // Разбор ставим в очередь и отвечаем сразу: пачка из десятка объявлений
 // разбирается несколько минут, и держать всё это время обработчик апдейта
@@ -1098,6 +1249,7 @@ function enqueue(chatId, job, { attempt = 0, priority = false, ad = null } = {})
         let markup;
         if (ad) {
           const key = String((adNowSeq += 1));
+          sweepAdNow();
           adNow.set(key, { ...ad, chatId, parked });
           lines.push('', 'Ждать не обязательно — кнопка выложит рекламу сразу, без разбора.');
           markup = {
@@ -1227,17 +1379,24 @@ async function onMessage(message) {
         '',
         'В соцсети объявление уходит не мгновенно, и это нарочно: в Threads —',
         `по одному, но не чаще раза в ${social.THREADS_INTERVAL_MIN} минут (иначе он ловит антиспам),`,
-        'в Instagram — своим роликом на каждое, с названием по типу: «Вакансия дня»,',
-        '«Заказ дня», «Объявление дня». Ждать компанию объявлению больше не нужно,',
-        'ролик собирается сразу. Про каждое напишу отдельно, когда дойдёт очередь.',
+        `в Instagram — роликом раз в ${social.RELEASE_INTERVAL_MIN} минут, по ${social.BATCH_SIZE} объявления в каждом,`,
+        'с названием по типу: «Вакансии дня», «Заказы дня», «Объявления дня».',
+        '',
+        'Почему не сразу и не по одному: полсотни почти одинаковых роликов в сутки',
+        'Instagram читает как рассылку и перестаёт показывать их тем, кто на нас',
+        'не подписан. По расписанию выходит 8–10 постов в день — столько же, сколько',
+        'у аккаунта, который ведут руками, — а объявлений в них едет втрое больше.',
+        'Компанию объявление при этом не ждёт: подошло время — ролик уезжает хоть',
+        'с одной карточкой. Про каждый напишу отдельно, когда дойдёт очередь.',
+        'Не дожидаться расписания — /now.',
       ],
       [
         '/ad — платная реклама. Пришлите её следующим сообщением или сразу вместе',
         'с командой: «/ad Открылся салон…», а к картинке или видео — подписью.',
         'Такое объявление идёт вне очереди (разбор, Threads, ролик) и не',
-        'отбраковывается отсевом — кроме запрещённого. Остаток суточной нормы',
-        'разбора берегу под него: посты из групп и пересланное вручную',
-        'перестают разбираться раньше, чем реклама.',
+        'отбраковывается отсевом — кроме запрещённого. Под неё отложена последняя',
+        'модель разбора: посты из групп её не трогают, и когда они выберут',
+        'суточную норму остальных, реклама всё равно разберётся.',
         '',
         'Рекламой можно прислать что угодно: готовый ролик, гифку, макет картинкой.',
         'Файл уйдёт в канал и в Instagram своим видом, без нашего макета, а подпись',
@@ -1286,6 +1445,27 @@ async function onMessage(message) {
         '/limits — суточные нормы Instagram и Threads числами от самой Meta:',
         'сколько уже потрачено и сколько осталось.',
       ],
+      [
+        '📣 Реклама в Threads',
+        '',
+        'Реклама уходит в Threads с картинкой: своей, если прислали, или',
+        'карточкой объявления. Ролик в Instagram у неё свой, без попутчиков',
+        'и без расписания.',
+        '',
+        `За каждой рекламой слежу. Через ${Math.round(social.adTracker.WARN_AFTER_MS / 3600000)} ч смотрю, как она идёт, и если к`,
+        `суткам до ${social.adTracker.GOAL} просмотров может не дотянуть — пишу и даю кнопку`,
+        '🔁 «Поднять в Threads»: реклама выйдет ещё раз, и просмотры сложатся.',
+        `Поднимать можно до ${social.adTracker.MAX_BOOSTS} раз. Через сутки присылаю отчёт — просмотры,`,
+        'лайки, ответы и выполнена ли гарантия. Его можно переслать рекламодателю.',
+        '',
+        '/ads — реклама за три дня с числами и кнопками отчёта по каждой.',
+        '/threads — статистика аккаунта за сутки и неделю, в среднем на пост:',
+        'этими числами удобно отвечать тем, кто спрашивает про рекламу.',
+        '',
+        'Если под постом в Threads спрашивают про рекламу («сколько стоит',
+        'разместить», «прайс»), пришлю этот ответ сюда со ссылкой — чтобы заявка',
+        'не потерялась среди вопросов про вакансии.',
+      ],
     ];
     for (const part of help) await tg.sendMessage(chatId, part.join('\n'));
     return;
@@ -1298,6 +1478,17 @@ async function onMessage(message) {
 
   if (text === '/limits') {
     await tg.sendMessage(chatId, await limitsText());
+    return;
+  }
+
+  if (text === '/ads') {
+    const { text: report, extra } = await adsText();
+    await tg.sendMessage(chatId, report, extra);
+    return;
+  }
+
+  if (text === '/threads') {
+    await tg.sendMessage(chatId, await threadsStatsText());
     return;
   }
 
@@ -1412,29 +1603,10 @@ async function onMessage(message) {
       return;
     }
 
-    const position = enqueue(
-      chatId,
-      async () => {
-        let parsed = null;
-        try {
-          parsed = await extract.fromText(text, { ad: isAd });
-        } catch (err) {
-          if (!isAd || err.retryAt) throw err;
-          await tg.sendMessage(chatId, `⚠️ Разобрать не вышло: ${tg.esc(err.message)}`);
-        }
-        const published = parsed
-          ? await handleParsed(chatId, parsed, { source: 'telegram', rawText: text, priority: isAd, ad: isAd })
-          : 0;
-        // classify: false — этот же текст модель только что не осилила, второй
-        // заход кончится тем же и лишь потратит суточный лимит. Работу за
-        // границей «как есть» не выкладываем: это не сбой разбора, а отказ.
-        const refused = parsed && parsed.some((p) => p.abroad);
-        if (isAd && !published && !refused) {
-          await publishRawAd(chatId, message, text, null, true, { classify: false });
-        }
-      },
-      { priority: isAd, ad: isAd ? { message, text } : null }
-    );
+    const position = enqueue(chatId, parseJob(chatId, message, text, isAd), {
+      priority: isAd,
+      ad: isAd ? { message, text } : null,
+    });
     if (isAd) {
       await tg.sendMessage(chatId, '📣 Реклама — разбираю вне очереди.');
     } else if (position > 1) {
@@ -1507,6 +1679,44 @@ async function onCallback(query) {
     publishRawAd(ad.chatId, ad.message, ad.text, null, true, { classify: false }).catch(async (err) => {
       console.error('Реклама без разбора:', err);
       await tg.sendMessage(chatId, `⚠️ Ошибка: ${tg.esc(err.message)}`).catch(() => {});
+    });
+    return;
+  }
+
+  if (action === 'ab') {
+    // Кнопку убираем сразу: второе нажатие подняло бы рекламу второй раз.
+    await tg.answerCallbackQuery(query.id, 'Поднимаю рекламу в Threads');
+    await tg
+      .call('editMessageReplyMarkup', { chat_id: chatId, message_id: messageId })
+      .catch(() => {});
+    boostAd(chatId, rawId).catch(async (err) => {
+      console.error('Повтор рекламы:', err);
+      await tg.sendMessage(chatId, `⚠️ Поднять не вышло: ${tg.esc(err.message)}`).catch(() => {});
+    });
+    return;
+  }
+
+  if (action === 'ar') {
+    await tg.answerCallbackQuery(query.id, 'Собираю отчёт');
+    (async () => {
+      const campaign = await social.adTracker.get(Number(rawId));
+      if (!campaign) {
+        await tg.sendMessage(chatId, '📊 Этой рекламы уже нет в базе.');
+        return;
+      }
+      let posts;
+      let totals;
+      try {
+        ({ posts, totals } = await social.adTracker.refresh(campaign, { force: true }));
+      } catch (err) {
+        posts = await social.adTracker.postsOf(campaign.id);
+        totals = social.adTracker.totalsOf(posts);
+      }
+      const final = social.adTracker.ageOf(campaign) >= social.adTracker.REPORT_AFTER_MS;
+      await tg.sendMessage(chatId, adReportText(campaign, totals, posts, { final }));
+    })().catch(async (err) => {
+      console.error('Отчёт по рекламе:', err);
+      await tg.sendMessage(chatId, `⚠️ Отчёт не собрать: ${tg.esc(err.message)}`).catch(() => {});
     });
     return;
   }
@@ -1602,6 +1812,293 @@ async function unpublishLines(row) {
   return lines;
 }
 
+// Поднять отложенное после перезапуска. Зовётся один раз при старте бота
+// (см. telegram/index.js): таймеры и текст объявлений умерли вместе с прошлым
+// процессом, а обещание «вернусь сам» осталось — и строки в базе вместе с ним.
+//
+// Объявления не разбираем прямо сейчас, а ставим на тот же срок, который
+// назвала модель: лимит, из-за которого объявление и отложили, перезапуском не
+// отпускает. Срок уже прошёл — park поставит минимальную паузу и вернётся к
+// нему почти сразу.
+async function restoreDeferred() {
+  let rows;
+  try {
+    rows = await deferred.restorable();
+  } catch (err) {
+    console.error('[отложенное] не прочитать из базы:', err.message);
+    return 0;
+  }
+  if (!rows.length) return 0;
+
+  const byChat = new Map();
+  for (const row of rows) {
+    const message = { message_id: row.messageId };
+    const ad = row.ad ? { message, text: row.text } : null;
+    const job = parseJob(row.chatId, message, row.text, row.ad);
+    park(row.chatId, job, row.retryAt, row.attempt, row.ad, ad, row.id);
+    byChat.set(row.chatId, (byChat.get(row.chatId) || 0) + 1);
+  }
+
+  console.log(`[отложенное] после перезапуска вернул ${rows.length} объявление(й)`);
+  // Говорим в тот же чат, где обещали вернуться: иначе выходит, что бот молчал
+  // всё время простоя, а потом объявление появилось само и непонятно откуда.
+  for (const [chatId, count] of byChat) {
+    await tg
+      .sendMessage(
+        chatId,
+        `♻️ Сервер перезапускался. Отложенных объявлений не потерял: ${count} — вернусь к ним, как обещал.`
+      )
+      .catch(() => {});
+  }
+  return rows.length;
+}
+
+// Числа по-русски: «1 842», а не «1842». Пробел — неразрывный, как и положено
+// разделителю разрядов, так что в узком чате число не разорвётся.
+const num = (n) => Number(n || 0).toLocaleString('ru-RU');
+
+// «25 сентября, 14:05» по Бишкеку.
+function whenText(at) {
+  return new Date(at).toLocaleString('ru-RU', {
+    timeZone: 'Asia/Bishkek',
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function viewsWord(n) {
+  const mod100 = n % 100;
+  const mod10 = n % 10;
+  if (mod100 >= 11 && mod100 <= 14) return 'просмотров';
+  if (mod10 === 1) return 'просмотр';
+  if (mod10 >= 2 && mod10 <= 4) return 'просмотра';
+  return 'просмотров';
+}
+
+// Отчёт по рекламе. Сделан так, чтобы его можно было переслать рекламодателю
+// как есть: название, когда вышла, сколько набрала и выполнена ли гарантия.
+function adReportText(campaign, totals, posts, { final }) {
+  const link = (posts.find((post) => post.permalink) || {}).permalink;
+  const hours = Math.max(1, Math.round(social.adTracker.ageOf(campaign) / 3600000));
+  const goal = Number(campaign.goal) || social.adTracker.GOAL;
+  const lines = [
+    final ? '📊 Отчёт по рекламе в Threads' : `📊 Реклама в Threads — ${hours} ч с публикации`,
+    `«${tg.esc(clamp(campaign.title || 'реклама', 80))}»`,
+    `Вышла: ${whenText(campaign.created_at)}`,
+    `👁 ${num(totals.views)} ${viewsWord(totals.views)} · ❤️ ${num(totals.likes)} · 💬 ${num(totals.replies)} · 🔁 ${num(
+      totals.reposts + totals.quotes
+    )}`,
+  ];
+  if (totals.boosts) lines.push(`Постов: ${totals.posts} (повторов: ${totals.boosts})`);
+  if (totals.views >= goal) {
+    lines.push(final ? `✅ Гарантия ${num(goal)}+ просмотров за сутки выполнена` : `✅ ${num(goal)} уже набрано`);
+  } else {
+    lines.push(
+      final
+        ? `⚠️ До гарантии ${num(goal)} не хватило ${num(goal - totals.views)}`
+        : `До ${num(goal)} осталось ${num(goal - totals.views)}`
+    );
+  }
+  if (link) lines.push(`<a href="${link}">Пост в Threads</a>`);
+  return lines.join('\n');
+}
+
+function boostKeyboard(campaignId) {
+  return {
+    reply_markup: {
+      inline_keyboard: [[{ text: '🔁 Поднять в Threads', callback_data: `ab:${campaignId}` }]],
+    },
+  };
+}
+
+// Итог через сутки. Если не дотянули — кнопка повтора: повтор после суток уже
+// не «добирает» гарантию, но рекламодателю можно отдать обещанное.
+async function onAdReport(campaign, totals, posts, { boostable }) {
+  const short = totals.views < (Number(campaign.goal) || social.adTracker.GOAL);
+  await tg.sendMessage(
+    campaign.chat_id,
+    adReportText(campaign, totals, posts, { final: true }),
+    short && boostable ? boostKeyboard(campaign.id) : undefined
+  );
+}
+
+// Реклама отстаёт — предлагаем поднять, пока сутки не прошли.
+async function onAdWarn(campaign, totals, posts, { boostable }) {
+  const goal = Number(campaign.goal) || social.adTracker.GOAL;
+  const hours = Math.round(social.adTracker.ageOf(campaign) / 3600000);
+  const lines = [
+    `⏳ Реклама «${tg.esc(clamp(campaign.title || 'реклама', 60))}» за ${hours} ч набрала ${num(totals.views)} ${viewsWord(
+      totals.views
+    )} — к суткам до ${num(goal)} может не дотянуть.`,
+  ];
+  if (boostable) lines.push('Поднять её повтором? Просмотры нового поста сложатся с этими.');
+  await tg.sendMessage(campaign.chat_id, lines.join('\n'), boostable ? boostKeyboard(campaign.id) : undefined);
+}
+
+async function onAdStatsDenied() {
+  await notifyAdmins(
+    [
+      '📊 Threads не отдаёт статистику постов: у токена нет разрешения threads_manage_insights.',
+      'Отчёты по просмотрам рекламы заработают, когда это разрешение будет включено в приложении Meta',
+      'и в Render будет вписан новый токен.',
+    ].join('\n')
+  );
+}
+
+// Заявка из ответов под постом (см. social/leads.js).
+async function onLead(reply) {
+  const lines = [
+    '💬 Похоже на заявку на рекламу — ответ в Threads',
+    `${reply.username ? `@${tg.esc(reply.username)}: ` : ''}«${tg.esc(clamp(reply.text, 400))}»`,
+  ];
+  if (reply.permalink) lines.push(`<a href="${reply.permalink}">Открыть и ответить</a>`);
+  await notifyAdmins(lines.join('\n'));
+}
+
+async function onLeadsDenied() {
+  await notifyAdmins(
+    '💬 Ответы под постами Threads не читаются: у токена нет разрешения threads_read_replies — заявки из комментариев бот не видит.'
+  );
+}
+
+// Запускается вместе с ботом (см. telegram/index.js): слежка за рекламой и за
+// ответами в Threads отчитываются в Telegram, поэтому без бота им некуда.
+function startWatchers() {
+  social.adTracker.start({ onReport: onAdReport, onWarn: onAdWarn, onDenied: onAdStatsDenied });
+  social.leads.start({ onLead, onDenied: onLeadsDenied });
+}
+
+// Повтор рекламы кнопкой. Выходит тем же постом, что и первый: с файлом
+// рекламодателя (его заново берём из Telegram по file_id), с карточкой или
+// просто текстом. Только в Threads — гарантию даём по нему.
+async function boostAd(chatId, campaignId) {
+  const campaign = await social.adTracker.get(Number(campaignId));
+  if (!campaign) {
+    await tg.sendMessage(chatId, '🔁 Этой рекламы уже нет в базе.');
+    return;
+  }
+  if (!(await social.adTracker.canBoost(campaign))) {
+    await tg.sendMessage(
+      chatId,
+      `🔁 «${tg.esc(clamp(campaign.title, 60))}» уже поднимали ${social.adTracker.MAX_BOOSTS} раза — больше не буду, это уже засоряет ленту.`
+    );
+    return;
+  }
+
+  let media = null;
+  let card = null;
+  const note = [];
+  if ((campaign.media_kind === 'image' || campaign.media_kind === 'video') && campaign.media_file_id) {
+    try {
+      media = { kind: campaign.media_kind, buffer: await tg.downloadFile(campaign.media_file_id) };
+    } catch (err) {
+      note.push(`Файл рекламы не скачать (${tg.esc(err.message)}) — подниму текстом.`);
+    }
+  } else if (campaign.media_kind === 'card' && campaign.card) {
+    card = typeof campaign.card === 'string' ? JSON.parse(campaign.card) : campaign.card;
+  }
+
+  const waiting = social.postToThreads(
+    { text: campaign.threads_text, media, card },
+    campaign.title,
+    { chatId, campaignId: campaign.id, ad: true },
+    { priority: true }
+  );
+  if (waiting === null) {
+    await tg.sendMessage(chatId, '🧵 Threads не настроен — поднимать некуда.');
+    return;
+  }
+  await tg.sendMessage(
+    chatId,
+    [
+      `🔁 Поднимаю «${tg.esc(clamp(campaign.title, 60))}» в Threads новым постом${
+        waiting > 1 ? ` — ${waiting}-й в очереди` : ''
+      }.`,
+      'Просмотры сложатся с первым постом в отчёте.',
+      ...note,
+    ].join('\n')
+  );
+}
+
+// /ads — реклама за три дня: сколько набрала и что с гарантией. Под списком —
+// кнопки с отчётом по каждой: его можно переслать рекламодателю, не дожидаясь
+// суток.
+async function adsText() {
+  const campaigns = await social.adTracker.recent(3);
+  if (!campaigns.length) return { text: '📣 За три дня рекламы в Threads не было.' };
+
+  const lines = ['📣 Реклама в Threads за 3 дня:'];
+  const buttons = [];
+  let denied = false;
+  for (const [i, campaign] of campaigns.slice(0, 8).entries()) {
+    let totals;
+    try {
+      ({ totals } = await social.adTracker.refresh(campaign));
+    } catch (err) {
+      if (err.permission) denied = true;
+      totals = social.adTracker.totalsOf(await social.adTracker.postsOf(campaign.id));
+    }
+    const goal = Number(campaign.goal) || social.adTracker.GOAL;
+    const hours = Math.round(social.adTracker.ageOf(campaign) / 3600000);
+    const status = campaign.reported_at
+      ? totals.views >= goal
+        ? '✅'
+        : '⚠️ недобор'
+      : totals.views >= goal
+        ? `✅ за ${hours} ч`
+        : `⏳ ${hours} ч`;
+    lines.push(`${i + 1}. «${tg.esc(clamp(campaign.title, 50))}» — 👁 ${num(totals.views)} ${status}`);
+    buttons.push({ text: `📊 ${i + 1}`, callback_data: `ar:${campaign.id}` });
+  }
+  if (denied) lines.push('', 'Свежих чисел нет: у токена Threads нет разрешения threads_manage_insights.');
+
+  const rows = [];
+  for (let i = 0; i < buttons.length; i += 4) rows.push(buttons.slice(i, i + 4));
+  return { text: lines.join('\n'), extra: { reply_markup: { inline_keyboard: rows } } };
+}
+
+// /threads — статистика аккаунта. Этими числами реклама и продаётся: в шапке
+// профиля обещано «1000+ просмотров за сутки», и здесь видно, насколько
+// обещание честное — сколько лента набирает в целом и в среднем на пост.
+async function threadsStatsText() {
+  if (!social.threadsConfigured()) return '🧵 Threads не настроен.';
+  const now = Math.floor(Date.now() / 1000);
+  let day;
+  let week;
+  try {
+    [day, week] = await Promise.all([
+      social.accountInsights({ since: now - 24 * 3600, until: now }),
+      social.accountInsights({ since: now - 7 * 24 * 3600, until: now }),
+    ]);
+  } catch (err) {
+    if (social.isPermissionError(err)) {
+      return '🧵 Статистику Threads не отдаёт: у токена нет разрешения threads_manage_insights.';
+    }
+    return `🧵 Статистику Threads не получить: ${tg.esc(err.message)}`;
+  }
+
+  const [posts, ads] = await Promise.all([
+    imports.countThreadsPosts(7).catch(() => 0),
+    social.adTracker.summary(7).catch(() => ({ reported: 0, met: 0 })),
+  ]);
+
+  const lines = [
+    '🧵 Threads',
+    `За сутки: 👁 ${num(day.views)} · ❤️ ${num(day.likes)} · 💬 ${num(day.replies)}`,
+    `За 7 дней: 👁 ${num(week.views)} · ❤️ ${num(week.likes)} · 💬 ${num(week.replies)} · 🔁 ${num(
+      week.reposts + week.quotes
+    )}`,
+  ];
+  if (week.followers !== null) lines.push(`Подписчиков: ${num(week.followers)}`);
+  // Просмотры аккаунта — это все посты, а в posts только объявления бота;
+  // посты руками из приложения сюда не попадают. Поэтому «примерно».
+  if (posts) lines.push(`В среднем на пост за неделю: ≈${num(Math.round(week.views / posts))} (${num(posts)} постов)`);
+  if (ads.reported) lines.push(`Реклама за неделю: ${ads.reported}, гарантию набрали ${ads.met}`);
+  return lines.join('\n');
+}
+
 async function handleUpdate(update) {
   try {
     if (update.message) await onMessage(update.message);
@@ -1621,6 +2118,8 @@ async function handleUpdate(update) {
 
 module.exports = {
   handleUpdate,
+  restoreDeferred,
+  startWatchers,
   isConfigured: () => tg.hasToken() && ADMIN_IDS.size > 0,
   // Тот же путь публикации, которым идут скриншоты из личных сообщений —
   // используется автоимпортом из чужого канала (см. sourceWatcher.js), чтобы

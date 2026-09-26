@@ -5,6 +5,7 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
+    "test": "node --test test/*.test.js",
     "dev": "node --watch src/server.js",
     "create-admin": "node src/createAdmin.js",
     "seed": "node src/seed.js",

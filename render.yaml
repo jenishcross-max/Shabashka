@@ -21,6 +21,10 @@ services:
       # скриншоты разбираются параллельно, по одному на ключ.
       - key: GROQ_API_KEY
         sync: false
+      # Лесенка моделей разбора через запятую: у каждой модели своя суточная
+      # норма, последняя — резерв под рекламу. Пусто — значения по умолчанию.
+      - key: GROQ_MODELS
+        sync: false
       # Запасной шлюз на случай, когда минутный лимит Groq выбран (см. README,
       # «Запасной шлюз»). Любой сервис с форматом OpenAI: OmniRoute, OpenRouter
       # и т.п. Без FALLBACK_API_URL и FALLBACK_MODEL бот работает на одном Groq.
@@ -53,11 +57,23 @@ services:
       # Группы через запятую (@username или числовой id).
       - key: SOURCE_CHANNEL
         sync: false
-      # Какие типы публикуем: vacancy,order,board или all. По умолчанию vacancy,order.
+      # Какие типы публикуем: vacancy,order,board или all. По умолчанию all.
       - key: SOURCE_LISTING_TYPE
         sync: false
       # Куда слать отчёт о публикации. Пусто — первому админу из TELEGRAM_ADMIN_IDS.
       - key: SOURCE_REPORT_CHAT_ID
+        sync: false
+      # Домены, которым разрешены запросы к API. Не задан — CORS открыт для всех.
+      - key: CORS_ORIGIN
+        sync: false
+      # Письма подтверждения почты: Render блокирует исходящий SMTP, поэтому
+      # через HTTP API Resend. Без ключа ссылка просто печатается в лог.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      # От чьего имени бот публикует объявления. Пусто — первый админ сайта.
+      - key: BOT_OWNER_EMAIL
         sync: false
       # Не публиковать объявления старше стольких часов, по умолчанию 12.
       - key: SOURCE_MAX_AGE_HOURS
@@ -68,8 +84,28 @@ services:
         sync: false
       - key: INSTAGRAM_ACCESS_TOKEN
         sync: false
+      # Свой суточный потолок публикаций (по умолчанию 10) и как часто выезжает
+      # ролик в минутах (по умолчанию 150). См. README, «Сколько роликов в сутки».
+      - key: INSTAGRAM_DAILY_LIMIT
+        sync: false
+      - key: INSTAGRAM_RELEASE_MINUTES
+        sync: false
       # Тот же ролик в Threads. Доступ отдельный от инстаграмного.
       - key: THREADS_USER_ID
         sync: false
       - key: THREADS_ACCESS_TOKEN
+        sync: false
+      # Тег темы в Threads (по умолчанию «шабашка») и кому там карточка-картинка
+      # (ads — только рекламе, all, none).
+      - key: THREADS_TOPIC_TAG
+        sync: false
+      - key: THREADS_CARDS
+        sync: false
+      # Платная реклама: пометка (по умолчанию нет), обещанные просмотры за
+      # сутки (1000) и через сколько часов проверять, не отстаёт ли (6).
+      - key: AD_LABEL
+        sync: false
+      - key: AD_VIEWS_GOAL
+        sync: false
+      - key: AD_WARN_HOURS
         sync: false

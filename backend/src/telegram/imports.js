@@ -300,6 +300,17 @@ async function countToday() {
   return rows[0].n;
 }
 
+// Сколько объявлений ушло в Threads за последние дни — для /threads: по нему
+// считается, сколько в среднем просмотров набирает один пост.
+async function countThreadsPosts(days = 7) {
+  const { rows } = await db.query(
+    `SELECT COUNT(*)::int AS n FROM imported_listings
+      WHERE threads_post_id IS NOT NULL AND published_at > NOW() - ($1 || ' days')::interval`,
+    [String(days)]
+  );
+  return rows[0].n;
+}
+
 // Снять уже опубликованное объявление с сайта. Подтверждения перед публикацией
 // больше нет, поэтому убрать лишнее нужно уметь после неё — иначе чужой телефон
 // останется в ленте навсегда.
@@ -339,5 +350,6 @@ module.exports = {
   validate,
   applyDefaults,
   countToday,
+  countThreadsPosts,
   remove,
 };

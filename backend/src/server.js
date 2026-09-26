@@ -18,6 +18,7 @@ const sourceWatcher = require('./telegram/sourceWatcher');
 const social = require('./social');
 const metaRoutes = require('./meta');
 const keepalive = require('./keepalive');
+const { notifyAdmins } = require('./telegram/notify');
 const { apiLimiter } = require('./rateLimit');
 
 const app = express();
@@ -77,6 +78,10 @@ app.use((err, _req, res, _next) => {
 
 async function bootstrap() {
   await db.init();
+  // Продлённые токены Meta — из базы, до первой публикации: токен из
+  // переменной окружения мог уже устареть, а продлённый лежит там
+  // (см. social/tokens.js). Раз в сутки проверяем, не пора ли продлить снова.
+  await social.tokens.start(notifyAdmins).catch((err) => console.error('Токены Meta:', err));
   app.listen(PORT, () => {
     console.log(`Шабашка КГ API запущен на порту ${PORT}`);
   });
@@ -85,6 +90,8 @@ async function bootstrap() {
   // Автоимпорт из канала-источника — тоже необязательный шаг: без него всё
   // работает как раньше, просто объявления публикует только сам админ.
   sourceWatcher.start().catch((err) => console.error('Автоимпорт из канала не запустился:', err));
+  // Ролики выходят по расписанию, а не по наполнению очереди (см. social/index.js).
+  social.startReleases();
   keepalive.start();
 }
 

@@ -115,15 +115,55 @@ async function encode(items, opts) {
   }
 }
 
-// Заголовок объявления в подписи. Третий тип — «Объявление»: продажа, аренда,
-// свои услуги. Работы там не предлагают, и называть такое заказом нельзя.
 // Хэштеги по типу: под объявлением о продаже дома «#подработкабишкек» приводит
 // не тех людей, а лента у нас общая — теги её и разделяют.
-const HASHTAGS = {
-  order: '#шабашка #работабишкек #жумуш #подработкабишкек #кыргызстан #заказы',
-  vacancy: '#шабашка #работабишкек #жумуш #вакансиибишкек #кыргызстан',
-  board: '#шабашка #бишкек #кыргызстан #объявлениябишкек #доскаобъявлений #жарнама',
+//
+// Набор не фиксированный, а собирается каждый раз заново. Раньше под всеми
+// постами одного типа стоял слово в слово один и тот же хвост, и вместе с
+// одинаковым макетом это делало ленту машинной: у площадки есть, за что
+// зацепиться, чтобы счесть аккаунт рассылкой. Два тега постоянные — по ним нас
+// находят и по ним же лента остаётся узнаваемой, — остальные берутся из набора.
+const CORE_TAGS = {
+  order: ['#шабашка', '#подработкабишкек'],
+  vacancy: ['#шабашка', '#вакансиибишкек'],
+  board: ['#шабашка', '#объявлениябишкек'],
 };
+
+const TAG_POOL = {
+  order: ['#работабишкек', '#жумуш', '#заказы', '#кыргызстан', '#бишкек', '#подработка', '#мастербишкек'],
+  vacancy: ['#работабишкек', '#жумуш', '#кыргызстан', '#бишкек', '#вакансии', '#работавбишкеке', '#жумушбар'],
+  board: ['#бишкек', '#кыргызстан', '#доскаобъявлений', '#жарнама', '#объявления', '#бишкекобъявления'],
+};
+
+// Сколько тегов добираем из набора сверх постоянных. Три-четыре: больше десятка
+// тегов под постом сами по себе выглядят спамом, а Instagram давно не раздаёт
+// показы за их количество.
+const EXTRA_TAGS = 3;
+
+// Случайные n штук из списка, не повторяясь. Перемешиваем копию: сам список
+// общий на весь процесс, и портить его порядок нельзя.
+function some(list, n) {
+  const rest = [...list];
+  const out = [];
+  while (out.length < n && rest.length) {
+    out.push(rest.splice(Math.floor(Math.random() * rest.length), 1)[0]);
+  }
+  return out;
+}
+
+const oneOf = (list) => list[Math.floor(Math.random() * list.length)];
+
+// Концовка подписи. Тоже вразнобой и по той же причине, что и теги: строка,
+// повторённая слово в слово под сотней постов, — признак рассылки, а не
+// объявления. Смысл у всех вариантов один: ссылка кликабельной в подписи
+// Instagram не бывает, поэтому зовём в шапку профиля.
+const CTA_LINES = [
+  'Откликнуться — на Шабашка.com, ссылка в шапке профиля.',
+  'Все объявления целиком — на Шабашка.com, ссылка в шапке профиля.',
+  'Звоните по номеру выше или заходите на Шабашка.com — ссылка в шапке профиля.',
+  'Больше заказов и вакансий — на Шабашка.com, ссылка в шапке профиля.',
+  'Свежие объявления каждый день — Шабашка.com, ссылка в шапке профиля.',
+];
 
 function label(listingType) {
   if (listingType === 'vacancy') return '💼 Вакансия';
@@ -156,7 +196,9 @@ function clampText(text, max) {
 function hashtagsFor(items) {
   const tags = new Set();
   for (const { listingType } of items) {
-    for (const tag of (HASHTAGS[listingType] || HASHTAGS.order).split(' ')) tags.add(tag);
+    const type = CORE_TAGS[listingType] ? listingType : 'order';
+    for (const tag of CORE_TAGS[type]) tags.add(tag);
+    for (const tag of some(TAG_POOL[type], EXTRA_TAGS)) tags.add(tag);
   }
   return [...tags].join(' ');
 }
@@ -181,6 +223,27 @@ function captionBlock({ parsed, listingType, siteLink }, index, total) {
   return lines.join('\n');
 }
 
+// Настройка, которую можно выключить. «Выключено» пишется словом — off (или
+// пустым значением): Render не всегда даёт сохранить переменную без значения.
+function optional(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const value = String(raw).trim();
+  return /^(off|none|no|нет|-)$/i.test(value) ? '' : value;
+}
+
+// Пометка платного объявления первой строкой поста — «📣 Реклама». По
+// умолчанию её нет: так решил владелец (сентябрь 2026), реклама выходит тем же
+// видом, что и обычные объявления. Включается переменной AD_LABEL со словом
+// пометки — например, AD_LABEL=Реклама. Стоит помнить, что правила Meta
+// требуют отмечать оплаченное продвижение, а закон о рекламе — делать рекламу
+// узнаваемой.
+const AD_LABEL = optional('AD_LABEL', '');
+
+function adLine() {
+  return AD_LABEL ? `📣 ${AD_LABEL}` : '';
+}
+
 // Подпись под постом. items — [{ parsed, listingType, siteLink }, ...], те же
 // объявления и в том же порядке, что и карточки в ролике.
 function caption(items, credit, opts = {}) {
@@ -190,6 +253,7 @@ function caption(items, credit, opts = {}) {
     `📋 ${opts.collection || card.collectionTitle(items[0] && items[0].listingType)} · ${opts.day || card.dayLabel()}`,
     '',
   ];
+  if (opts.ad && adLine()) lines.unshift(adLine());
   lines.push(items.map((item, i) => captionBlock(item, i, items.length)).join('\n\n'));
   // Призыв тот же, что и на концовке ролика: у дайджеста он называет, сколько
   // всего объявлений ждёт на сайте, у обычного выпуска — просто зовёт откликнуться.
@@ -197,7 +261,7 @@ function caption(items, credit, opts = {}) {
     '',
     opts.cta
       ? `${opts.cta[0].toUpperCase()}${opts.cta.slice(1)} — Шабашка.com, ссылка в шапке профиля.`
-      : 'Откликнуться — на Шабашка.com, ссылка в шапке профиля.'
+      : oneOf(CTA_LINES)
   );
   // Автора трека называем обязательно: музыка в фонотеке под Creative Commons,
   // и указание автора — условие, на котором её вообще можно использовать.
@@ -218,32 +282,26 @@ function weight(text) {
 
 const THREADS_LIMIT = 500;
 
-// В Threads тегов меньше: пост короткий, и каждый тег отбирает место у описания.
-const THREADS_HASHTAGS = {
-  order: '#шабашка #подработкабишкек #жумуш',
-  vacancy: '#шабашка #вакансиибишкек #жумуш',
-  board: '#шабашка #объявлениябишкек #кыргызстан',
-};
-
-// Текст поста в Threads. От инстаграмной подписи отличается двумя вещами:
-// он короче и в нём есть прямая ссылка на объявление — Threads делает ссылки
-// кликабельными, поэтому звать в шапку профиля здесь незачем.
-function threadsText(parsed, listingType, siteLink, credit) {
+// Текст поста в Threads. От инстаграмной подписи отличается тремя вещами: он
+// короче, в нём есть прямая ссылка на объявление — Threads делает ссылки
+// кликабельными, поэтому звать в шапку профиля здесь незачем, — и в нём нет
+// хештегов. Тег у Threads один на пост и уходит отдельным полем (см. cleanTag в
+// threads.js); решётки в тексте, кроме первой, оставались просто словами и
+// занимали место у описания.
+function threadsText(parsed, listingType, siteLink, { ad = false } = {}) {
   const isVacancy = listingType === 'vacancy';
   const head = [`${label(listingType)}: ${parsed.title || ''}`.trim()];
+  if (ad && adLine()) head.unshift(adLine());
 
   const meta = metaLine(parsed, listingType);
   if (meta) head.push(meta);
   if (parsed.budget) head.push(`💰 ${money(parsed.budget)} сом${isVacancy ? ' (от)' : ''}`);
   if (parsed.phone) head.push(`📞 ${parsed.phone}`);
 
-  // Хвост собираем раньше описания: ссылка, номер и указание автора трека
-  // обязательны (последнее — условие лицензии на музыку), а описание ужимается
+  // Хвост собираем раньше описания: ссылка обязательна, а описание ужимается
   // под остаток.
   const tail = [];
   if (siteLink) tail.push(siteLink);
-  if (credit) tail.push(credit);
-  tail.push(THREADS_HASHTAGS[listingType] || THREADS_HASHTAGS.order);
 
   const fixed = weight([...head, '', ...tail].join('\n'));
   // Блок описания добавляет к посту сам текст и два перевода строки — пустую
@@ -262,7 +320,26 @@ function threadsText(parsed, listingType, siteLink, credit) {
     if (text) body.push('', text);
   }
 
-  return [...head, ...body, '', ...tail].join('\n');
+  return [...head, ...body, ...(tail.length ? ['', ...tail] : [])].join('\n');
+}
+
+// Подпись к рекламе с готовым файлом — для Threads. Рекламу присылают как
+// есть, и подпись у неё бывает на тысячу знаков, а Threads берёт пятьсот: пост
+// с длинной подписью он просто отбивал, и реклама, за которую заплатили, не
+// выходила туда вовсе. Поэтому режем описание по словам, а пометку рекламы и
+// ссылку на карточку сохраняем целыми.
+function threadsCaption(text, siteLink, { ad = false } = {}) {
+  const head = ad && adLine() ? [adLine(), ''] : [];
+  const tail = siteLink ? ['', siteLink] : [];
+  const room = THREADS_LIMIT - weight([...head, ...tail].join('\n')) - 1;
+
+  let body = String(text || '').trim();
+  if (weight(body) > room) {
+    body = body.slice(0, room);
+    while (body && weight(`${body}…`) > room) body = body.slice(0, -1).replace(/\s+\S*$/, '');
+    body = body ? `${body}…` : '';
+  }
+  return [...head, body, ...tail].join('\n').trim();
 }
 
 function fileName() {
@@ -273,6 +350,11 @@ module.exports = {
   build,
   caption,
   threadsText,
+  adLine,
+  optional,
+  threadsCaption,
+  weight,
+  THREADS_LIMIT,
   fileName,
   COVER_MS: Math.round(card.COVER_AT * 1000),
 };

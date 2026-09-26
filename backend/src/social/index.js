@@ -5,6 +5,9 @@ const instagram = require('./instagram');
 const threads = require('./threads');
 const net = require('./net');
 const quota = require('./quota');
+const tokens = require('./tokens');
+const adTracker = require('./adTracker');
+const leads = require('./leads');
 
 // Публичный адрес самого бэкенда — по нему площадки придут за роликом. Отдельной
 // переменной не заводим: адрес уже известен из настроек вебхука, а на Render его
@@ -14,26 +17,62 @@ function backendUrl() {
   return url.replace(/\/$/, '');
 }
 
-// Сколько объявлений едет в одном ролике. Раньше было три: квота Instagram
-// считает посты, а не объявления, и тройка в одном ролике втрое поднимала
-// дневную пропускную способность. Отказались сознательно — у тройки была цена,
-// которую платило каждое объявление: ролик не выезжал, пока не наберётся полная
-// пачка своего типа, и объявление, присланное первым, ждало ещё двух таких же.
-// Тип, которого приходит по одному в день, не доезжал до Instagram вовсе.
-// Теперь ролик уходит сразу, а суточный потолок площадки (см. quota.js) до
-// такого потока всё равно далеко.
-const BATCH_SIZE = 1;
+// Сколько объявлений едет в одном ролике.
+//
+// Было по одному, стало снова три — и причина в том, как Instagram смотрит на
+// аккаунт. Полсотни почти одинаковых роликов в сутки — это поведение не живого
+// человека, а рассылки, и лента такому аккаунту показывается по остаточному
+// принципу: просмотров нет, хотя формально ничего не нарушено. Тройка в одном
+// ролике даёт те же объявления втрое меньшим числом постов.
+//
+// Прежняя цена тройки — «объявление ждёт компанию и может не дождаться вовсе» —
+// снята расписанием: пачка выезжает по часам, а не по наполнению, и неполная
+// уезжает точно так же (см. RELEASE_INTERVAL_MS).
+const BATCH_SIZE = 3;
+
+// Как часто выпускаем ролик. Два с половиной часа — это 9–10 постов в сутки,
+// ровным потоком, а не залпом на десять минут. Столько же примерно выкладывает
+// живой аккаунт, который ведут руками.
+const RELEASE_INTERVAL_MS = Number(process.env.INSTAGRAM_RELEASE_MINUTES || 150) * 60 * 1000;
+
+// Сколько объявление ждёт своего ролика, прежде чем его выбросят из очереди.
+// Из групп за день приходит больше, чем влезает в суточную норму постов, и без
+// этого срока очередь росла бы до бесконечности, а в ролик попадало бы
+// позавчерашнее. На сайте, в канале и в Threads объявление к этому моменту уже
+// есть — Instagram ему не единственная дорога.
+const QUEUE_TTL_MS = 6 * 60 * 60 * 1000;
 
 // Объявления, ждущие своего ролика, — по очереди на каждый тип. Ролик выходит
-// выпуском: «Вакансия дня», «Заказ дня», «Объявление дня», и мешать в одном
-// разные типы нельзя. При BATCH_SIZE = 1 очередь сквозная: объявление кладётся
-// в неё и тут же забирается — очереди остались потому, что размер пачки живёт в
-// одной константе, и вернуть его к трём должно быть правкой в одну строку.
+// выпуском: «Вакансии дня», «Заказы дня», «Объявления дня», и мешать в одном
+// разные типы нельзя: заголовок выпуска тогда пришлось бы делать общим, а
+// хештеги — смешанными, и по объявлению о продаже дома приходили бы искать
+// работу.
 const waiting = new Map();
 
 function queueFor(listingType) {
   if (!waiting.has(listingType)) waiting.set(listingType, []);
   return waiting.get(listingType);
+}
+
+// Выбрасываем то, что уже не дождётся. Возвращает, сколько выбросили, — это
+// видно в логе: молчащая очередь и очередь, из которой всё утекает по сроку,
+// выглядят одинаково, а значат разное.
+//
+// Платное не выбрасываем никогда. Дожить до срока оно, вообще говоря, не
+// успевает — реклама уезжает сразу, мимо расписания (см. shareListing), — но
+// проверка тут стоит не ради обычного хода дел, а ради всех прочих: за неё
+// заплатили, и потеряться по таймеру она не должна ни при каких.
+function dropStale(now = Date.now()) {
+  let dropped = 0;
+  for (const [listingType, q] of waiting) {
+    const fresh = q.filter((entry) => now - entry.at < QUEUE_TTL_MS || entry.priority);
+    dropped += q.length - fresh.length;
+    waiting.set(listingType, fresh);
+  }
+  if (dropped) {
+    console.log(`[очередь роликов] ${dropped} объявление(й) прождали больше ${QUEUE_TTL_MS / 3600000} ч — в ролик уже не беру`);
+  }
+  return dropped;
 }
 
 // Threads суточной квоты на публикации почти не имеет, зато у него есть защита
@@ -44,6 +83,19 @@ function queueFor(listingType) {
 // человека: после паузы первый пост уходит сразу, ждёт только то, что пришло
 // следом.
 const THREADS_INTERVAL_MS = 10 * 60 * 1000;
+
+// Тег темы у поста в Threads. У нас он был «шабашка» с самого начала — первым
+// хештегом в тексте, — и именно с ним лента набирает свои миллионы просмотров,
+// так что менять его без причины незачем. Теперь он уходит отдельным полем
+// (см. cleanTag в threads.js), а текст остаётся без хвоста из решёток.
+// THREADS_TOPIC_TAG=off — посты без тега.
+const THREADS_TOPIC_TAG = video.optional('THREADS_TOPIC_TAG', 'шабашка');
+
+// Каким объявлениям в Threads идёт картинка-карточка. Обычные объявления уходят
+// текстом: так они и набирают просмотры, и менять работающее незачем. Рекламе —
+// карточка: за неё платят, чтобы её заметили, а картинку в ленте замечают
+// раньше текста. all — карточка у всех, none — ни у кого.
+const THREADS_CARDS = (process.env.THREADS_CARDS || 'ads').trim();
 
 // Ни ролик, ни пост в Threads не уезжают в тот же момент, когда админ прислал
 // объявление: ролик надо собрать и дождаться обработки у Meta, пост — своей
@@ -314,8 +366,13 @@ async function withImageFallback(job, failure) {
   // не спасёт объявление, а место в квоте спишет.
   if (failure.hardLimit || failure.code === 190) return failure;
 
-  // Кадр показывает одно объявление. В дайджесте с сайта их пять, и подменять
-  // такой выпуск одной карточкой — врать и подписью, и содержимым.
+  // Кадр показывает одно объявление. В дайджесте с сайта их пять, в обычном
+  // выпуске — до трёх, и подменять такой ролик одной карточкой — врать и
+  // подписью, и содержимым. Пачка из нескольких объявлений поэтому запасного
+  // хода не имеет: если ролик не доехал, её вытянут автоповторы
+  // (см. AUTO_RETRY_DELAYS в telegram/bot.js), а объявления к этому моменту
+  // уже на сайте, в канале и в Threads. Сделать тут по-честному можно было бы
+  // каруселью из нескольких картинок — это отдельная работа с Graph API.
   if (job.items.length !== 1) return failure;
 
   const base = backendUrl();
@@ -380,12 +437,17 @@ async function retry(id) {
     // Повтор идёт через ту же очередь, что и обычная публикация: антиспам
     // Threads считает все посты подряд, и повтор без паузы продлил бы ровно ту
     // блокировку, из-за которой первая попытка и не прошла.
-    result.threads = await paceThreads(() => post('threads', () => threads.publishText(job.threadsText)));
+    result.threads = await paceThreads(() => post('threads', () => publishToThreads(job.threadsItem)), {
+      priority: Boolean(job.priority),
+    });
   }
   // Ролика может не быть вовсе: первая попытка могла оборваться ещё на сборке.
   // Пересоберёт его deliverInstagram — там же, где он и нужен.
+  // priority у повтора тот же, что и у первой попытки: платное объявление не
+  // должно терять место в голове очереди только потому, что площадка отбила
+  // его с первого раза, — оно и так вышло позже всех.
   if (job.targets.includes('instagram')) {
-    result.instagram = await scheduleInstagram(job);
+    result.instagram = await scheduleInstagram(job, job.priority);
   }
 
   const failed = job.targets.filter((name) => result[name] && !result[name].posted);
@@ -417,6 +479,10 @@ async function runBatch(entries, opts = {}) {
     // для отказа по норме: рекламе ролик собирают даже тогда, когда публиковать
     // его некуда, — чтобы админ выложил руками (см. buildForHand).
     priority: entries.some((entry) => entry.priority),
+    // Ролик целиком рекламный — подпись начинается с пометки (см. adLine в
+    // video.js). Реклама едет своим роликом, без попутчиков (см. shareListing),
+    // так что смешанной пачки здесь не бывает.
+    ad: entries.length > 0 && entries.every((entry) => entry.priority),
   };
   // Реклама едет вперёд остальных: между публикациями в Instagram полторы
   // минуты, и в тихий день их не видно, а на пачке скриншотов платное
@@ -434,14 +500,46 @@ async function runBatch(entries, opts = {}) {
   });
 }
 
-// Пускает ролик, как только в очереди набрался BATCH_SIZE. Намеренно без await:
-// сборка и обработка на стороне Meta занимают минуты, а следующее объявление
-// из пачки не должно их ждать.
-function flush(listingType) {
-  const q = queueFor(listingType);
-  if (q.length < BATCH_SIZE) return;
-  const entries = q.splice(0, BATCH_SIZE);
+// Ролик выходит по часам, а не по наполнению очереди (см. RELEASE_INTERVAL_MS).
+// За один раз — одна пачка, и берём её у того типа, чьё объявление ждёт дольше
+// всех: иначе оживлённая очередь заказов не давала бы выйти единственной за
+// день вакансии. Неполная пачка уезжает так же, как полная, — в этом и смысл
+// расписания: ничто не ждёт компанию дольше своего срока.
+//
+// Намеренно без await: сборка и обработка на стороне Meta занимают минуты, а
+// таймер должен вернуться сразу.
+function release() {
+  dropStale();
+  const queues = [...waiting.values()].filter((q) => q.length);
+  if (!queues.length) return 0;
+  // Платное объявление ставится в голову своей очереди (см. shareListing), так
+  // что по первому элементу видно и срочность, и возраст.
+  queues.sort((a, b) => (b[0].priority ? 1 : 0) - (a[0].priority ? 1 : 0) || a[0].at - b[0].at);
+  const entries = queues[0].splice(0, BATCH_SIZE);
   runBatch(entries).catch((err) => console.error('Автопостинг (ролик):', err));
+  return entries.length;
+}
+
+// Расписание живёт, пока жив процесс. Перезапуск Render теряет вместе с ним и
+// саму очередь — объявления из неё к этому моменту уже на сайте, в канале и в
+// Threads, так что терять нечего.
+let releaseTimer = null;
+
+function startReleases() {
+  if (releaseTimer || !instagram.isConfigured()) return;
+  releaseTimer = setInterval(release, RELEASE_INTERVAL_MS);
+  // Таймер не должен сам по себе держать процесс живым: его держит express.
+  releaseTimer.unref();
+  console.log(
+    `[очередь роликов] выпуск раз в ${Math.round(RELEASE_INTERVAL_MS / 60000)} мин, до ${BATCH_SIZE} объявлений в ролике`
+  );
+}
+
+// Сколько минут до ближайшего выпуска — для ответа в чат. Точность тут не
+// важна: человеку нужно понять, ждать ему минуты или часы.
+function nextReleaseInMin() {
+  if (!releaseTimer) return 0;
+  return Math.max(1, Math.round(RELEASE_INTERVAL_MS / 60000));
 }
 
 // Выпускает ролик из того, что уже стоит в очереди, не дожидаясь полной пачки.
@@ -452,6 +550,7 @@ function flush(listingType) {
 //
 // Возвращает, сколько объявлений уехало, — 0 значит «очередь этого типа пуста».
 function flushNow(listingType) {
+  dropStale();
   const q = queueFor(listingType);
   if (!q.length) return 0;
   // Больше пачки не берём даже по команде: BATCH_SIZE — это не только квота, но
@@ -512,16 +611,28 @@ async function deliverRawMedia(job) {
 // Реклама «как есть» на площадки. Возвращает расписку о приёме и обещание
 // (done), которое сбудется, когда Instagram ответит: между публикациями
 // полторы минуты, столько ждать ответом на сообщение нельзя.
-function shareMedia({ kind, buffer, caption }, ctx, { priority = false } = {}) {
+//
+// text — подпись рекламодателя, siteLink — адрес карточки на сайте. Подписи
+// собираются здесь, для каждой площадки своя: Instagram берёт её целиком, а в
+// Threads влезает пятьсот знаков (см. threadsCaption в video.js).
+function shareMedia({ kind, buffer, text = '', siteLink = '', title = 'реклама' }, ctx, { priority = false } = {}) {
   const skipped = [];
   const result = { skipped, done: Promise.resolve(null) };
+  const ad = Boolean(priority);
 
-  // Пустая подпись — не повод молчать в Threads, но и постить туда нечего:
-  // картинок он от нас не принимает, а пост из одной ссылки бесполезен.
+  // Раньше в Threads уходила одна подпись, текстом: «картинок он от нас не
+  // принимает». Принимает — и для рекламы это главное: за неё платят, чтобы её
+  // увидели, и ролик или макет рекламодателя должны выйти там такими, какими
+  // их прислали. Рекламу у Шабашки заказывают именно в Threads.
   if (!threads.isConfigured()) skipped.push('threads');
-  else if (caption) {
+  else {
     result.threadsQueued = true;
-    result.threadsWaiting = scheduleThreads(caption, 'реклама', ctx, priority);
+    result.threadsWaiting = scheduleThreads(
+      { text: video.threadsCaption(text, siteLink, { ad }), media: { kind, buffer } },
+      title,
+      { ...ctx, ad },
+      priority
+    );
   }
 
   if (!instagram.isConfigured()) {
@@ -529,7 +640,9 @@ function shareMedia({ kind, buffer, caption }, ctx, { priority = false } = {}) {
     return result;
   }
 
+  const caption = [ad && video.adLine(), text, siteLink].filter(Boolean).join('\n\n').trim();
   result.instagramQueued = true;
+  result.caption = caption;
   result.done = schedule(
     async () => {
       inFlight += 1;
@@ -544,16 +657,66 @@ function shareMedia({ kind, buffer, caption }, ctx, { priority = false } = {}) {
   return result;
 }
 
+// Один пост в Threads: текстом, картинкой или роликом. Файл выкладываем наружу
+// здесь, вплотную к публикации, а не когда объявление встало в очередь: между
+// постами до десяти минут, а ссылка живёт двадцать (см. hosting.js), и перед
+// рекламой в очереди может стоять несколько других.
+//
+// Не вышло с файлом — пробуем тем же текстом: реклама без картинки лучше, чем
+// реклама, которой нет. Упор в антиспам (подкод 2207051) не обходим — вторая
+// попытка его только продлит.
+async function publishToThreads(item) {
+  const opts = { topicTag: THREADS_TOPIC_TAG };
+  const base = backendUrl();
+
+  let media = null;
+  if (base && item.media && item.media.buffer) {
+    const isVideo = item.media.kind === 'video';
+    const name = hosting.put(isVideo ? video.fileName() : card.stillName(), item.media.buffer);
+    media = { isVideo, url: `${base}/api/social/${isVideo ? 'video' : 'image'}/${name}` };
+  } else if (base && item.card) {
+    try {
+      const image = await card.renderStill(item.card, {});
+      media = { isVideo: false, url: `${base}/api/social/image/${hosting.put(card.stillName(), image)}` };
+    } catch (err) {
+      console.log(`[threads] карточка не нарисовалась (${err.message}) — пост уйдёт текстом`);
+    }
+  }
+
+  if (media) {
+    try {
+      return media.isVideo
+        ? await threads.publishVideo(media.url, item.text, opts)
+        : await threads.publishImage(media.url, item.text, opts);
+    } catch (err) {
+      if (net.isHardLimit(err) || !item.text) throw err;
+      console.log(`[threads] с ${media.isVideo ? 'роликом' : 'картинкой'} не вышло (${err.message}) — публикую текстом`);
+    }
+  }
+  return threads.publishText(item.text, opts);
+}
+
 // Ставит пост в очередь Threads и отчитывается сам, когда до него дошло: между
 // постами до десяти минут, столько ждать ответом на сообщение нельзя.
-function scheduleThreads(text, title, ctx, priority = false) {
-  paceThreads(() => post('threads', () => threads.publishText(text)), { priority })
+// item — { text, media?: { kind, buffer }, card?: { parsed, listingType } }.
+// Текст уходит в отчёт: по нему рекламу потом можно выложить ещё раз
+// (см. adTracker.js).
+function scheduleThreads(item, title, ctx, priority = false) {
+  paceThreads(() => post('threads', () => publishToThreads(item)), { priority })
     .then(async (result) => {
-      const retryId = result.posted ? null : remember({ threadsText: text }, ['threads']);
-      if (threadsHandler) await threadsHandler({ ...result, title, ctx, retryId });
+      const retryId = result.posted ? null : remember({ threadsItem: item, priority }, ['threads']);
+      if (threadsHandler) await threadsHandler({ ...result, title, ctx, retryId, text: item.text });
     })
     .catch((err) => console.error('Автопостинг (threads):', err));
   return paceThreads.queued();
+}
+
+// Пост только в Threads — для повтора рекламы, которая недобирает просмотры
+// (см. кнопку «поднять» в telegram/bot.js). В Instagram повтор не идёт: там у
+// нас потолок постов в сутки, а гарантию просмотров мы даём по Threads.
+function postToThreads(item, title, ctx, { priority = true } = {}) {
+  if (!threads.isConfigured()) return null;
+  return scheduleThreads(item, title, ctx, priority);
 }
 
 // Объявление уходит в Threads по одному и текстом, а в очередь на ролик — ждать
@@ -569,17 +732,30 @@ async function shareListing(parsed, listingType, siteLink, ctx, { priority = fal
   const result = { threads: null, skipped, batchSize: BATCH_SIZE };
 
   if (threads.isConfigured()) {
-    const text = video.threadsText(parsed, listingType, siteLink);
+    const text = video.threadsText(parsed, listingType, siteLink, { ad: priority });
+    const withCard = THREADS_CARDS === 'all' || (THREADS_CARDS === 'ads' && priority);
     result.threadsQueued = true;
-    result.threadsWaiting = scheduleThreads(text, parsed.title, ctx, priority);
+    result.threadsWaiting = scheduleThreads(
+      { text, card: withCard ? { parsed, listingType } : null },
+      parsed.title,
+      // card в ctx — чтобы повтор рекламы (кнопка «поднять») вышел таким же
+      // постом, как первый: с той же карточкой или тем же текстом.
+      { ...ctx, ad: priority, card: withCard ? { parsed, listingType } : null },
+      priority
+    );
   } else {
     skipped.push('threads');
     console.log('[threads] не настроен — пропускаю');
   }
 
   if (instagram.isConfigured()) {
-    const entry = { parsed, listingType, siteLink, ctx, priority };
-    if (priority) queueFor(listingType).unshift(entry);
+    // at — когда объявление встало в очередь: по нему выбирается, чья пачка
+    // выезжает следующей, и по нему же очередь чистится от просроченных.
+    const entry = { parsed, listingType, siteLink, ctx, priority, at: Date.now() };
+    // Реклама едет своим роликом, без попутчиков и без расписания: за неё
+    // заплатили, и ни ждать два с половиной часа, ни делить ролик с чужими
+    // объявлениями она не должна — рекламодатель платит за свой пост.
+    if (priority) runBatch([entry]).catch((err) => console.error('Автопостинг (реклама):', err));
     else queueFor(listingType).push(entry);
     result.queued = true;
     // Название с оглядкой на размер пачки: ролик из одного объявления называется
@@ -596,10 +772,18 @@ async function shareListing(parsed, listingType, siteLink, ctx, { priority = fal
   // тут нечего, дело не в сбое, а в незаданных переменных окружения.
   if (skipped.length === 2) result.reason = 'Ни Threads, ни Instagram не настроены';
 
-  // Считаем очередь до отправки: flush заберёт из неё пачку, и админу надо
-  // сказать, сколько объявлений ждёт после этого объявления, а не до него.
-  result.waiting = queueFor(listingType).length % BATCH_SIZE;
-  flush(listingType);
+  // Сколько объявлений этого типа ждёт ролика вместе с этим и когда выйдет
+  // ближайший: объявление больше не уезжает в ту же секунду, и сказать об этом
+  // надо прямо, иначе молчание Instagram читается как сбой.
+  result.waiting = queueFor(listingType).length;
+  result.releaseInMin = nextReleaseInMin();
+
+  // Реклама уже уехала сама (см. выше) — ни очереди, ни расписания у неё нет.
+  if (priority) {
+    result.waiting = 0;
+    result.releaseInMin = 0;
+  }
+
   return result;
 }
 
@@ -663,9 +847,13 @@ async function unpublish({ threadsPostId, instagramMediaId }) {
 module.exports = {
   shareListing,
   shareMedia,
+  postToThreads,
   unpublish,
   shareDigest,
   flushNow,
+  startReleases,
+  release,
+  nextReleaseInMin,
   limits,
   syncQuota,
   retry,
@@ -677,7 +865,15 @@ module.exports = {
   collectionTitle: card.collectionTitle,
   threadsQueued: () => paceThreads.queued(),
   quota,
+  tokens,
+  adTracker,
+  leads,
+  threadsConfigured: () => threads.isConfigured(),
+  adLine: () => video.adLine(),
+  accountInsights: (range) => threads.accountInsights(range),
+  isPermissionError: (err) => threads.isPermissionError(err),
   BATCH_SIZE,
+  RELEASE_INTERVAL_MIN: Math.round(RELEASE_INTERVAL_MS / 60000),
   THREADS_INTERVAL_MIN: Math.round(THREADS_INTERVAL_MS / 60000),
   router: hosting.router,
 };

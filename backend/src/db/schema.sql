@@ -209,3 +209,68 @@ CREATE INDEX IF NOT EXISTS idx_board_posts_user ON board_posts(user_id);
 CREATE INDEX IF NOT EXISTS idx_imported_dedup
   ON imported_listings(dedup_hash) WHERE dedup_hash IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_imported_status ON imported_listings(status);
+
+-- Отложенный разбор: объявление пришло, а суточная или минутная норма модели
+-- была выбрана — бот обещал вернуться к нему сам и должен сдержать обещание
+-- даже после перезапуска. Раньше это жило только в памяти процесса, и на
+-- бесплатном Render платная реклама исчезала молча (см. telegram/deferred.js).
+-- Здесь только исходный текст: разбора ещё нет, до модели дело не дошло.
+CREATE TABLE IF NOT EXISTS deferred_parses (
+  id         SERIAL PRIMARY KEY,
+  chat_id    BIGINT NOT NULL,   -- куда отчитываться, когда дойдут руки
+  message_id BIGINT,            -- само сообщение: рекламу «как есть» копируем в канал по нему
+  text       TEXT NOT NULL,
+  is_ad      BOOLEAN NOT NULL DEFAULT FALSE, -- платная реклама ждёт дольше и выходит даже без разбора
+  attempt    INTEGER NOT NULL DEFAULT 0,     -- сколько заходов уже было (см. PENDING_MAX_ATTEMPTS)
+  retry_at   TIMESTAMPTZ NOT NULL,           -- когда модель обещала отпустить
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_deferred_retry ON deferred_parses(retry_at);
+
+-- Настройки, которые приложение меняет само. Сейчас это продлённые токены Meta:
+-- переменную окружения на Render изнутри не поменять, а токен живёт шестьдесят
+-- дней и продлевается раз в неделю (см. social/tokens.js).
+CREATE TABLE IF NOT EXISTS app_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Платная реклама в Threads и её просмотры. Рекламу у Шабашки покупают с
+-- обещанием «1000+ просмотров за сутки», и проверить обещание можно только
+-- статистикой самого поста. Кампания — одна реклама; постов у неё может быть
+-- несколько: если она недобирает, её поднимают повтором, и просмотры
+-- складываются (см. social/adTracker.js).
+CREATE TABLE IF NOT EXISTS ad_campaigns (
+  id            SERIAL PRIMARY KEY,
+  chat_id       BIGINT NOT NULL,     -- куда слать отчёт
+  import_id     INTEGER,             -- карточка на сайте, если реклама стала объявлением
+  title         TEXT NOT NULL,
+  threads_text  TEXT NOT NULL,       -- что ушло в Threads: по нему делается повтор
+  media_kind    TEXT,                -- image | video | card | NULL (просто текст)
+  media_file_id TEXT,                -- файл рекламодателя в Telegram: скачать заново для повтора
+  card          JSONB,               -- { parsed, listingType } — нарисовать карточку заново
+  goal          INTEGER NOT NULL DEFAULT 1000,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  warned_at     TIMESTAMPTZ,         -- предупреждение о недоборе уже было
+  reported_at   TIMESTAMPTZ          -- итоговый отчёт за сутки уже отправлен
+);
+
+CREATE TABLE IF NOT EXISTS ad_posts (
+  id              SERIAL PRIMARY KEY,
+  campaign_id     INTEGER NOT NULL REFERENCES ad_campaigns(id) ON DELETE CASCADE,
+  threads_post_id TEXT NOT NULL,
+  permalink       TEXT,
+  posted_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  views           INTEGER NOT NULL DEFAULT 0,
+  likes           INTEGER NOT NULL DEFAULT 0,
+  replies         INTEGER NOT NULL DEFAULT 0,
+  reposts         INTEGER NOT NULL DEFAULT 0,
+  quotes          INTEGER NOT NULL DEFAULT 0,
+  shares          INTEGER NOT NULL DEFAULT 0,
+  checked_at      TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_ad_posts_campaign ON ad_posts(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_ad_campaigns_open ON ad_campaigns(created_at) WHERE reported_at IS NULL;

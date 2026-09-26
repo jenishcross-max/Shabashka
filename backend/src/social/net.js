@@ -4,9 +4,21 @@
 // надо повторять, а «токен протух» или «ролик слишком длинный» — не надо,
 // повтор только потратит время.
 const NETWORK_ERROR =
-  /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|socket hang up|terminated|timeout/i;
+  /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|socket hang up|terminated|timeout|aborted/i;
 
+// Сколько ждём ответа Meta, прежде чем считать запрос зависшим. Срок нужен не
+// для скорости, а чтобы очередь публикаций не встала навсегда: у fetch в Node
+// своего ограничения нет, и соединение, оборванное без закрытия, держит за
+// собой весь поток роликов и постов. Полторы минуты — с запасом: самый долгий
+// вызов здесь создаёт контейнер, а кодирование ролика Meta делает уже у себя,
+// и его мы ждём отдельными запросами статуса.
+const TIMEOUT_MS = 90 * 1000;
+
+// Превышённый срок — это тоже сетевой сбой: запрос до той стороны мог и не
+// дойти, и повторить его стоит. Node зовёт такую ошибку TimeoutError, а имя,
+// в отличие от текста, не зависит ни от версии, ни от языка.
 function isNetworkError(err) {
+  if (err && (err.name === 'TimeoutError' || err.name === 'AbortError')) return true;
   return NETWORK_ERROR.test((err && err.message) || '');
 }
 
@@ -52,4 +64,4 @@ async function withRetry(label, attempts, fn, retryable = isNetworkError) {
   }
 }
 
-module.exports = { sleep, isNetworkError, isTransientApiError, isRetryable, isHardLimit, withRetry };
+module.exports = { sleep, isNetworkError, isTransientApiError, isRetryable, isHardLimit, withRetry, TIMEOUT_MS };

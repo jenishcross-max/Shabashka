@@ -43,23 +43,51 @@ const LISTING_TYPES = ['order', 'vacancy', 'board', 'other'];
 // заменяет Groq, а подхватывает перелив: когда у всех ключей Groq минутный
 // лимит выбран, разбор уходит туда. См. выбор дорожки в pickLane.
 //
-// Qwen у Groq в разделе preview, а такие модели он снимает без предупреждения и
-// даже без записи на странице устаревших. Так в сентябре 2026 пропала
-// qwen/qwen3.6-27b: на каждое объявление Groq отвечал «model does not exist»,
-// и за шесть часов из групп не вышло ни одного. Поэтому у основной модели есть
-// запасная из production — такие снимают с объявлением за месяцы. На неё бот
-// переходит сам, как только основная пропала, и пишет об этом админу (см.
-// switchModel).
+// Модели — лесенкой, а не одна. Суточная норма у Groq считается отдельно на
+// каждую модель: в отказе так и написано — «Rate limit reached for model
+// `qwen/…` … on tokens per day (TPD)». Раньше бот знал одну модель и, выбрав её
+// двести тысяч токенов, стоял до следующих суток, а вместе с ним и реклама: к
+// вечеру 25 сентября оба ключа показывали «Used 199145 из 200000», а нормы
+// gpt-oss и llama на тех же ключах лежали нетронутыми. Теперь, упёршись в
+// суточную норму одной модели, разбор уходит на следующую, а к первой бот
+// возвращается, когда Groq скажет, что она освободилась.
+//
+// Порядок — по качеству разбора: первой идёт та, на которой отлажен промпт.
+// Последняя — резерв под рекламу: посты из чужих групп её не трогают, и
+// платное объявление, пришедшее вечером, разбирается даже тогда, когда поток
+// из групп выбрал всё остальное (см. modelsFor).
+//
+// Отсюда же и защита от пропажи модели. Qwen у Groq в разделе preview, а такие
+// он снимает без предупреждения: так в сентябре 2026 пропала qwen/qwen3.6-27b,
+// и за шесть часов из групп не вышло ни одного объявления. Пропавшую модель бот
+// вычёркивает из лесенки сам и пишет об этом админу (см. markGone).
+//
+// GROQ_MODELS задаёт лесенку целиком, через запятую. Без неё — основная из
+// GROQ_MODEL (старое имя — GROQ_TEXT_MODEL, со времён отдельной зрячей модели),
+// дальше две production-модели со своими нормами и в конце резерв из
+// GROQ_BACKUP_MODEL. Минутный лимит сменой модели не поднять: у обычных
+// моделей он одинаковый, 8000; исключение — groq/compound с 70000 в минуту
+// (зато 250 запросов в сутки и собственный веб-поиск внутри).
+function modelLadder() {
+  const explicit = String(process.env.GROQ_MODELS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const list = explicit.length
+    ? explicit
+    : [
+        process.env.GROQ_TEXT_MODEL || process.env.GROQ_MODEL || 'qwen/qwen3.8-27b',
+        'openai/gpt-oss-20b',
+        'llama-3.3-70b-versatile',
+        process.env.GROQ_BACKUP_MODEL || 'openai/gpt-oss-120b',
+      ];
+  return [...new Set(list)];
+}
+
 const GROQ = {
   name: 'Groq',
   url: 'https://api.groq.com/openai/v1/chat/completions',
-  // GROQ_TEXT_MODEL — старое имя той же настройки, со времён, когда картинки
-  // разбирала отдельная зрячая модель. Минутный лимит сменой модели не поднять:
-  // у всех обычных моделей Groq он одинаковый, 8000 на организацию. Исключение
-  // одно — groq/compound с 70000 в минуту (зато 250 запросов в сутки и
-  // собственный веб-поиск внутри).
-  model: process.env.GROQ_TEXT_MODEL || process.env.GROQ_MODEL || 'qwen/qwen3.8-27b',
-  backupModel: process.env.GROQ_BACKUP_MODEL || 'openai/gpt-oss-120b',
+  models: modelLadder(),
   reasoning: process.env.GROQ_REASONING || 'none',
   tokensField: 'max_completion_tokens',
   // Groq присылает остаток минутного лимита в заголовках — по ним и держим темп.
@@ -268,6 +296,13 @@ function repairJson(json) {
 
 const RETRIES = 2;
 const MAX_WAIT_MS = 40000;
+
+// Сколько ждём ответа модели, прежде чем считать запрос зависшим. Срок нужен
+// не для скорости: разбор идёт из очереди по одной дорожке, и запрос, который
+// не отвечает и не обрывается, останавливает весь поток объявлений молча —
+// снаружи это выглядит как «бот перестал отвечать». Минуты Groq хватает с
+// запасом: с выключенными размышлениями ответ приходит за секунды.
+const CALL_TIMEOUT_MS = 60 * 1000;
 // Граница между «минутный лимит» и «суточный»: до неё ждём на месте, дальше
 // считаем дорожку выбывшей до названного часа и берём другую.
 const MINUTE_LIMIT_MAX_MS = 5 * 60 * 1000;
@@ -288,13 +323,13 @@ const PACE_MS = 35000;
 const COST_ESTIMATE = 4500;
 const MAX_CAPACITY_WAIT_MS = 70000;
 
-// Суточный расход токенов. Упираемся мы на самом деле в него, а не в минуту:
-// у бесплатного Groq это 200 000 на организацию в сутки, и в заголовках его,
-// в отличие от минутного, нет вовсе — узнать остаток можно, только посчитав
-// самому. Считаем по UTC-суткам: по ним Groq суточные квоты и обнуляет.
-// Счётчик живёт в памяти процесса, так что после перезапуска Render он занижен;
-// это не страшно — он нужен, чтобы видеть порядок величины, а не для решений.
-const TOKENS_PER_DAY = Number(process.env.GROQ_DAILY_TOKENS || 200000);
+// Сколько потрачено за сутки — только для /stats. Решений по этому числу бот
+// больше не принимает: счётчик живёт в памяти процесса и после каждого
+// перезапуска Render начинается с нуля. Запас под рекламу раньше считался
+// именно по нему — и не срабатывал: сервис перезапускался, счётчик показывал
+// «почти ничего не потрачено», а Groq в это время отвечал «Used 199145 из
+// 200000». Теперь запас держится не числом, а целой моделью (см. modelsFor), а
+// выбранность нормы бот узнаёт из отказов самого Groq.
 const spent = { day: null, tokens: 0, calls: 0 };
 
 const utcDay = () => new Date().toISOString().slice(0, 10);
@@ -312,64 +347,47 @@ function spend(data) {
   spent.tokens += Number.isFinite(used) && used > 0 ? used : COST_ESTIMATE;
 }
 
-// Для /stats. Суточную норму умножаем на число ключей Groq — но верно это
-// только если ключи с РАЗНЫХ аккаунтов: норма считается на организацию, и два
-// ключа одного аккаунта делят одну на двоих. Запасной шлюз в счёт не идёт,
-// у него свои правила.
+// Модели, которые Groq снял совсем («does not exist»). Живёт в памяти: после
+// перезапуска бот попробует такую модель ещё раз — одним лишним запросом,
+// который Groq отбивает на входе и в лимит не считает.
+const goneModels = new Set();
+
+// Резерв — последняя модель лесенки. Постам из чужих групп она не достаётся:
+// они идут потоком весь день и выбрали бы её так же, как все остальные, а
+// платное объявление пришло бы к пустой норме. Пересланное админом и реклама
+// берут всю лесенку. Если модель в лесенке одна, резерва нет — делить нечего.
+function modelsFor(provider, kind) {
+  const { models } = provider;
+  const reserve = models.length > 1 ? models[models.length - 1] : null;
+  return models.filter((model) => !(kind === 'background' && model === reserve));
+}
+
+// Для /stats: что сейчас с каждой моделью. Выбранной модель считается, только
+// если норма кончилась на всех ключах — пока хоть один ключ её тянет, разбор на
+// ней идёт.
+function modelStatus() {
+  const now = Date.now();
+  return GROQ.models.map((model, i) => {
+    const until = groqLanes.length
+      ? Math.min(...groqLanes.map((lane) => (lane.out.get(model) || 0)))
+      : 0;
+    return {
+      model,
+      reserve: GROQ.models.length > 1 && i === GROQ.models.length - 1,
+      gone: goneModels.has(model),
+      until: until > now ? until : null,
+    };
+  });
+}
+
 function usage() {
   const fresh = spent.day === utcDay();
   return {
     tokens: fresh ? spent.tokens : 0,
     calls: fresh ? spent.calls : 0,
-    limit: TOKENS_PER_DAY * groqLanes.length,
     keys: groqLanes.length,
-    left: leftToday(),
-    reserve: AD_RESERVE,
+    models: modelStatus(),
   };
-}
-
-// Конец суточной нормы отдан платной рекламе. Норма у бесплатного Groq — около
-// сорока разборов в день, и тратит её в основном поток из чужих групп: он идёт
-// весь день и никого не ждёт. Реклама же приходит когда придёт, часто вечером,
-// и упиралась в пустую норму — объявление, за которое заплатили, висело в
-// отложенных часами.
-//
-// Поэтому порогов два. Фоновые посты из групп останавливаются первыми (за два
-// запаса до конца), пересланное админом вручную — следом (за один), а реклама
-// разбирается, пока в норме есть хоть что-то. Запас в токенах, а не в
-// процентах: разбор стоит примерно COST_ESTIMATE, и сорок тысяч — это ещё
-// около восьми объявлений.
-const AD_RESERVE = Number(process.env.GROQ_AD_RESERVE || 40000);
-
-function leftToday() {
-  const spentToday = spent.day === utcDay() ? spent.tokens : 0;
-  return Math.max(0, TOKENS_PER_DAY * groqLanes.length - spentToday);
-}
-
-// Начало следующих UTC-суток: по ним Groq обнуляет норму, по ним же считаем и мы.
-function dayResetAt() {
-  const next = new Date();
-  next.setUTCHours(24, 0, 0, 0);
-  return next.getTime();
-}
-
-// Хватает ли нормы на этот разбор. Отказ помечаем лимитным и называем срок:
-// наверху такой отказ объявление не теряет, а откладывает до утра (см. park в
-// bot.js). Счётчик живёт в памяти процесса и после перезапуска Render занижен —
-// значит, запас сработает не всегда; это лучше, чем не беречь ничего.
-function reserveError(kind) {
-  // Запасной шлюз в норму Groq не входит: пока он есть, придерживать нечего —
-  // разбор всё равно уйдёт туда (см. pickLane).
-  if (kind === 'ad' || fallbackLanes.length) return null;
-  const reserve = kind === 'background' ? AD_RESERVE * 2 : AD_RESERVE;
-  const left = leftToday();
-  if (left > reserve) return null;
-  const err = new Error(
-    `суточная норма разбора на исходе (осталось ≈${Math.round(left / 1000)}к токенов) — остаток держу под платную рекламу`
-  );
-  err.rateLimited = true;
-  err.retryAt = dayResetAt();
-  return err;
 }
 
 // Несколько бесплатных ключей — несколько независимых минутных лимитов:
@@ -401,7 +419,7 @@ const FALLBACK = FALLBACK_URL && process.env.FALLBACK_MODEL
   ? {
       name: process.env.FALLBACK_NAME || 'запасной шлюз',
       url: FALLBACK_URL,
-      model: process.env.FALLBACK_MODEL,
+      models: [process.env.FALLBACK_MODEL],
       // reasoning_effort понимают не все — по умолчанию не отправляем вовсе.
       reasoning: process.env.FALLBACK_REASONING || '',
       // max_tokens понимают все, max_completion_tokens — только новые. У шлюза
@@ -418,11 +436,15 @@ const FALLBACK = FALLBACK_URL && process.env.FALLBACK_MODEL
 // своё время последнего звонка, мешать их в одну переменную нельзя, иначе
 // пауза считалась бы так, будто ключ один. GROQ_API_KEY и FALLBACK_API_KEY
 // могут содержать несколько ключей через запятую — тогда дорожек столько же.
+// out — модель → до какого момента её суточная норма на этом ключе выбрана.
+// Норма считается на организацию и на модель, поэтому и помнить её надо парой
+// «ключ + модель»: у второго ключа та же модель может быть ещё свободна.
 const groqLanes = splitKeys(process.env.GROQ_API_KEY).map((key) => ({
   provider: GROQ,
   key,
   budget: null,
   lastCallAt: 0,
+  out: new Map(),
 }));
 
 // Ключ у запасного шлюза может быть и не нужен: OmniRoute, поднятый локально,
@@ -432,7 +454,7 @@ const fallbackLanes = FALLBACK
   ? (splitKeys(process.env.FALLBACK_API_KEY).length
       ? splitKeys(process.env.FALLBACK_API_KEY)
       : ['']
-    ).map((key) => ({ provider: FALLBACK, key, budget: null, lastCallAt: 0 }))
+    ).map((key) => ({ provider: FALLBACK, key, budget: null, lastCallAt: 0, out: new Map() }))
   : [];
 
 // Сколько разборов можно вести одновременно (см. queue.js): по одному на дорожку.
@@ -442,8 +464,8 @@ const KEY_COUNT = groqLanes.length + fallbackLanes.length;
 // потерянная запятая) никак не увидеть — бот молча работал бы на одном ключе,
 // вдвое медленнее, и выглядело бы это просто как «что-то тормозит».
 console.log(
-  `[extract] дорожек разбора: ${KEY_COUNT} — Groq ${groqLanes.length} ключ(а/ей), модель ${GROQ.model}` +
-    (fallbackLanes.length ? `, ${FALLBACK.name} (${FALLBACK.model})` : ', запасного шлюза нет')
+  `[extract] дорожек разбора: ${KEY_COUNT} — Groq ${groqLanes.length} ключ(а/ей), модели ${GROQ.models.join(' → ')}` +
+    (fallbackLanes.length ? `, ${FALLBACK.name} (${FALLBACK.models[0]})` : ', запасного шлюза нет')
 );
 
 let groqTurn = 0;
@@ -467,13 +489,25 @@ function pickLane() {
   return nextGroq();
 }
 
-// Порядок обхода дорожек для одного разбора: выбранная первой, затем все
-// остальные — начиная с тех, у кого лимит свободен прямо сейчас.
-function lanesFrom(first) {
-  const rest = [...groqLanes, ...fallbackLanes]
-    .filter((lane) => lane !== first)
-    .sort((a, b) => waitMs(a) - waitMs(b));
-  return [first, ...rest];
+// Порядок попыток для одного разбора — пары «ключ + модель». Сначала лучшая
+// модель на всех ключах, и только потом следующая: пока у второго ключа
+// основная модель свободна, спускаться по лесенке незачем — разбор на ней
+// точнее. Ключи внутри модели — начиная с выбранного по кругу, дальше те, у
+// кого минутный лимит свободен прямо сейчас.
+//
+// Запасной шлюз — в конце, а если все ключи Groq заняты по минутному лимиту
+// (pickLane вернул шлюз) — в начале: так было и до лесенки.
+function attempts(first, kind) {
+  const groqOrder = [
+    ...groqLanes.filter((lane) => lane === first),
+    ...groqLanes.filter((lane) => lane !== first).sort((a, b) => waitMs(a) - waitMs(b)),
+  ];
+  const fallback = fallbackLanes.map((lane) => ({ lane, model: lane.provider.models[0] }));
+  const groq = [];
+  for (const model of modelsFor(GROQ, kind)) {
+    for (const lane of groqOrder) groq.push({ lane, model });
+  }
+  return first && first.provider !== GROQ ? [...fallback, ...groq] : [...groq, ...fallback];
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -569,9 +603,31 @@ function retryDelayMs(res, data) {
 // reasoning_effort «none», а gpt-oss выключить их не даёт вовсе — принимает
 // только low/medium/high и на «none» отвечает 400. Поэтому для gpt-oss
 // «выключено» значит «как можно меньше».
+//
+// У остальных моделей Groq (llama и прочие без размышлений) поля нет вовсе, и
+// на reasoning_effort они отвечают 400 — поэтому не шлём его совсем.
 function reasoningFor(provider, model) {
-  if (/gpt-oss/i.test(model) && !['low', 'medium', 'high'].includes(provider.reasoning)) return 'low';
+  if (/gpt-oss/i.test(model)) {
+    return ['low', 'medium', 'high'].includes(provider.reasoning) ? provider.reasoning : 'low';
+  }
+  if (provider === GROQ && !/qwen/i.test(model)) return '';
   return provider.reasoning;
+}
+
+// Суточная это норма или минутная. Groq называет её прямо в тексте отказа —
+// «on tokens per day (TPD)», «requests per day (RPD)», — и этому верим в
+// первую очередь; срок в часы без названия тоже значит сутки.
+//
+// Отличать надо не только у 429. Когда до конца суточной нормы остаётся меньше,
+// чем просит разбор, Groq отвечает 413 «Request too large», и бот принимал это
+// за слишком длинное объявление: урезал потолок ответа, пробовал снова и в
+// конце концов терял объявление с ошибкой про «минутный лимит». В логах Render
+// за один вечер набралось полсотни таких «не влез» — на сообщениях в две
+// строки.
+function isDaily(message, reset) {
+  if (/\((?:TPD|RPD)\)|per day/i.test(message)) return true;
+  if (/\((?:TPM|RPM)\)|per minute/i.test(message)) return false;
+  return reset !== null && reset > MINUTE_LIMIT_MAX_MS;
 }
 
 // Модели больше нет: Groq её снял («does not exist», код model_not_found) или
@@ -585,22 +641,22 @@ function modelGone(data) {
   );
 }
 
-// Переход на запасную модель. Живёт в памяти процесса: после перезапуска бот
-// снова попробует основную и, если её так и нет, перейдёт ещё раз — одним
-// лишним запросом, который Groq отбивает на входе и в лимит не считает.
-// Админу пишем сразу: смену модели видно по качеству разбора, и знать, откуда
-// она взялась, надо не из логов Render.
-function switchModel(provider, detail) {
-  const from = provider.model;
-  provider.model = provider.backupModel;
-  console.error(`[extract] ${provider.name}: модели ${from} больше нет (${detail}) — перехожу на ${provider.model}`);
+// Модель пропала — вычёркиваем её из лесенки. Админу пишем сразу: смену модели
+// видно по качеству разбора, и знать, откуда она взялась, надо не из логов
+// Render.
+function markGone(provider, model, detail) {
+  if (goneModels.has(model)) return;
+  goneModels.add(model);
+  const next = provider.models.find((m) => !goneModels.has(m));
+  console.error(`[extract] ${provider.name}: модели ${model} больше нет (${detail})${next ? ` — дальше ${next}` : ''}`);
   notifyAdmins(
     [
-      `🧠 ${provider.name} убрал модель разбора ${tg.esc(from)}:`,
+      `🧠 ${provider.name} убрал модель разбора ${tg.esc(model)}:`,
       tg.esc(detail),
       '',
-      `Перешёл на запасную — ${tg.esc(provider.model)}, объявления разбираются дальше.`,
-      'Другую модель можно задать переменной GROQ_MODEL в Render.',
+      next
+        ? `Разбираю дальше на ${tg.esc(next)}. Свою лесенку моделей можно задать переменной GROQ_MODELS в Render.`
+        : 'Других моделей в лесенке не осталось — задайте GROQ_MODELS в Render.',
     ].join('\n')
   ).catch(() => {});
 }
@@ -608,9 +664,8 @@ function switchModel(provider, detail) {
 // Один поход к модели по конкретной дорожке. Формат тела — OpenAI chat
 // completions, он одинаков и у Groq, и у любого шлюза, который мы можем
 // подключить запасным; различия провайдеров собраны в объекте provider.
-async function call(lane, system, content, { maxTokens = DEFAULT_MAX_TOKENS } = {}) {
+async function callModel(lane, model, system, content, { maxTokens = DEFAULT_MAX_TOKENS } = {}) {
   const provider = lane.provider;
-  const model = provider.model;
   const reasoning = reasoningFor(provider, model);
 
   const body = JSON.stringify({
@@ -647,7 +702,24 @@ async function call(lane, system, content, { maxTokens = DEFAULT_MAX_TOKENS } = 
     // вернуть на место (см. ниже).
     const pacedAt = lane.lastCallAt;
     const budgetBefore = lane.budget;
-    const res = await fetch(provider.url, { method: 'POST', headers, body });
+    let res;
+    try {
+      res = await fetch(provider.url, {
+        method: 'POST',
+        headers,
+        body,
+        signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+      });
+    } catch (err) {
+      // Превышенный срок Node называет TimeoutError с текстом «The operation was
+      // aborted» — в чате такая строка не говорит ни о чём. Переписываем её:
+      // наверху по ней видно, что дело не в лимитах и не в модели, а в том, что
+      // дорожка не ответила, — и объявление уйдёт на следующую (см. ask).
+      if (err && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+        throw new Error(`${provider.name}: не ответил за ${Math.round(CALL_TIMEOUT_MS / 1000)} с`);
+      }
+      throw err;
+    }
     const data = await res.json().catch(() => null);
     readBudget(lane, res);
     if (res.ok) {
@@ -655,15 +727,36 @@ async function call(lane, system, content, { maxTokens = DEFAULT_MAX_TOKENS } = 
       return data;
     }
 
+    const detail = String((data && data.error && data.error.message) || res.status);
+
     // Модель сняли. Такой запрос Groq отбивает на входе, ничего не считая, —
-    // отметки темпа возвращаем, иначе разбор на запасной модели просидел бы
-    // паузу, которой не нужно. Если другой разбор уже перешёл на запасную,
-    // пока шёл этот, — просто повторяем на ней.
-    if (provider.backupModel && model !== provider.backupModel && modelGone(data)) {
+    // отметки темпа возвращаем, иначе следующая модель лесенки просидела бы
+    // паузу, которой не нужно. Что делать дальше, решает ask.
+    if (modelGone(data)) {
       lane.lastCallAt = pacedAt;
       lane.budget = budgetBefore;
-      if (provider.model === model) switchModel(provider, String(data.error.message || res.status));
-      return call(lane, system, content, { maxTokens });
+      const err = new Error(`${provider.name}: модели ${model} больше нет`);
+      err.modelGone = true;
+      err.detail = detail;
+      throw err;
+    }
+
+    // Суточная норма этой модели выбрана — по этому ключу до названного срока
+    // она не заработает, сколько ни жди. Отказ ничего не стоил, поэтому и темп
+    // возвращаем на место: следующая модель лесенки пойдёт без паузы. Срок
+    // Groq называет сам («try again in 11m15s»): норма у него скользящая, а не
+    // до полуночи. Не назвал — возвращаемся через час.
+    if (res.status === 429 || res.status === 413) {
+      const reset = retryResetMs(res, data);
+      if (isDaily(detail, reset)) {
+        lane.lastCallAt = pacedAt;
+        lane.budget = budgetBefore;
+        const err = new Error(`${provider.name}: ${detail}`);
+        err.daily = true;
+        err.rateLimited = true;
+        err.retryAt = Date.now() + (reset === null ? 60 * 60 * 1000 : reset + 1000);
+        throw err;
+      }
     }
 
     // Лимит токенов в минуту выбирается двумя скриншотами подряд: один разбор
@@ -679,7 +772,6 @@ async function call(lane, system, content, { maxTokens = DEFAULT_MAX_TOKENS } = 
 
     const wait = res.status === 429 && attempt < RETRIES ? retryDelayMs(res, data) : 0;
     if (!wait) {
-      const detail = String((data && data.error && data.error.message) || res.status);
       // «Request too large» — не про скорость, а про размер: ждать бесполезно,
       // столько же попросим и в следующий раз. Говорим, что с этим делать.
       if (/request too large/i.test(detail)) {
@@ -689,6 +781,10 @@ async function call(lane, system, content, { maxTokens = DEFAULT_MAX_TOKENS } = 
         // просидел бы минуту в waitForCapacity ради паузы, которой не нужно.
         lane.lastCallAt = pacedAt;
         lane.budget = budgetBefore;
+        // Сам отказ — в лог целиком: по нему видно, какой лимит имелся в виду.
+        // Раньше его не было нигде, и полсотни «не влез» за вечер не с чем было
+        // сопоставить.
+        console.error(`[extract] ${provider.name} ${model}: ${detail}`);
         // Числа Groq называет сам («Limit 8000, Requested 9163») — переносим их
         // в ошибку. Без них «слишком большой» на трёхстрочном объявлении звучит
         // как выдумка, а по ним сразу видно, насколько не хватило и стоит ли
@@ -719,52 +815,82 @@ async function call(lane, system, content, { maxTokens = DEFAULT_MAX_TOKENS } = 
 
 // Единственное место, где мы ходим к модели. content — текст user-сообщения.
 // Возвращает массив разобранных объявлений (обычно один элемент).
-async function ask(content, systemSuffix, { maxTokens = DEFAULT_MAX_TOKENS } = {}) {
-  const lane = pickLane();
-  if (!lane) throw new Error('Не задан GROQ_API_KEY (или FALLBACK_API_URL)');
+async function ask(content, systemSuffix, { maxTokens = DEFAULT_MAX_TOKENS, kind = 'admin' } = {}) {
+  const first = pickLane();
+  if (!first) throw new Error('Не задан GROQ_API_KEY (или FALLBACK_API_URL)');
 
   const categories = await categoriesRepo.listNames();
   const base = buildSystem(categories);
   const system = systemSuffix ? `${base}\n\n${systemSuffix}` : base;
 
-  let data;
+  let data = null;
   let lastErr = null;
-  // Самый ранний момент, когда хоть одна дорожка снова заработает. Нужен не
-  // здесь, а наверху: разбор, упёршийся в лимит, не теряется, а откладывается
-  // до этого времени.
+  // Самый ранний момент, когда хоть одна подходящая пара «ключ + модель» снова
+  // заработает. Нужен не здесь, а наверху: разбор, упёршийся в лимит, не
+  // теряется, а откладывается до этого времени (см. park в bot.js).
   let retryAt = null;
-  // Отказ одной дорожки — не повод терять объявление. Раньше запасной ключ
-  // Groq не пробовался вовсе: перебор был написан только для чужого шлюза, а
-  // ошибка Groq летела админу сразу. Из-за этого выбранный по кругу ключ с
-  // выбранным суточным лимитом отбивал разбор, хотя второй ключ был свободен.
-  // Теперь обходим все дорожки: сначала выбранную, потом остальные — самые
-  // свободные первыми.
-  for (const next of lanesFrom(lane)) {
-    if (next !== lane || next.provider !== GROQ) {
-      console.log(`[extract] разбираю через ${next.provider.name} (${next.provider.model})`);
+  const earliest = (at) => {
+    retryAt = retryAt === null ? at : Math.min(retryAt, at);
+  };
+
+  // Отказ одной пары — не повод терять объявление: обходим все. Выбранные по
+  // суточной норме пропускаем без запроса — их срок мы уже знаем.
+  for (const { lane, model } of attempts(first, kind)) {
+    if (goneModels.has(model)) continue;
+    const until = lane.out.get(model) || 0;
+    if (until > Date.now()) {
+      earliest(until);
+      continue;
+    }
+    if (lane !== first || model !== lane.provider.models[0]) {
+      console.log(`[extract] разбираю через ${lane.provider.name} (${model})`);
     }
     try {
-      data = await call(next, system, content, { maxTokens });
+      data = await callModel(lane, model, system, content, { maxTokens });
       lastErr = null;
       break;
     } catch (err) {
-      lastErr = err;
-      // Слишком большой запрос на другой дорожке будет ровно таким же —
+      // Слишком большой запрос на другой паре будет ровно таким же —
       // перебирать их значило бы держать админа лишние минуты ради того же
       // отказа. Эту ошибку отдаём сразу.
       if (/слишком большой/i.test(err.message)) throw err;
-      if (err.retryAt) retryAt = retryAt === null ? err.retryAt : Math.min(retryAt, err.retryAt);
-      console.error(`[extract] ${next.provider.name} не ответил (${err.message})`);
+      lastErr = err;
+      if (err.modelGone) {
+        markGone(lane.provider, model, err.detail);
+        continue;
+      }
+      if (err.daily) {
+        lane.out.set(model, err.retryAt);
+        const at = new Date(err.retryAt).toLocaleTimeString('ru-RU', {
+          timeZone: 'Asia/Bishkek',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        console.log(`[extract] ${lane.provider.name} ${model}: суточная норма выбрана до ${at} — беру следующую`);
+      }
+      if (err.retryAt) earliest(err.retryAt);
+      if (!err.daily) console.error(`[extract] ${lane.provider.name} (${model}) не ответил (${err.message})`);
     }
   }
-  if (lastErr) {
-    // Ошибку отдаём последнюю, а срок — самый ранний из всех: ждать дольше, чем
-    // нужно первой освободившейся дорожке, незачем.
-    if (retryAt) {
-      lastErr.rateLimited = true;
-      lastErr.retryAt = retryAt;
+
+  if (!data) {
+    // Все подходящие пары выбраны — и, может быть, ещё до этого разбора, так
+    // что своей ошибки у него нет. Объясняем словами: для постов из групп
+    // последняя модель отложена под рекламу, и «лимит выбран» без этого
+    // выглядело бы враньём, когда реклама в ту же минуту разбирается.
+    const err =
+      lastErr && !lastErr.daily
+        ? lastErr
+        : new Error(
+            kind === 'background'
+              ? 'суточная норма разбора выбрана на всех моделях, кроме резервной — её держу под платную рекламу'
+              : 'суточная норма разбора выбрана на всех моделях'
+          );
+    if (retryAt !== null) {
+      err.rateLimited = true;
+      err.retryAt = retryAt;
     }
-    throw lastErr;
+    throw err;
   }
 
   const text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
@@ -811,16 +937,14 @@ const AD_SUFFIX = [
 const TEXT_STEPS = [2000, 1200, 800];
 
 async function fromText(text, { ad = false, background = false } = {}) {
-  // Норма на исходе — дальше только реклама (см. reserveError).
-  const denied = reserveError(ad ? 'ad' : background ? 'background' : 'admin');
-  if (denied) throw denied;
-
+  // Посты из групп не берут резервную модель лесенки (см. modelsFor).
+  const kind = ad ? 'ad' : background ? 'background' : 'admin';
   const task = `Разбери объявления из этого сообщения чата:\n\n${text}`;
 
   let lastErr = null;
   for (const maxTokens of TEXT_STEPS) {
     try {
-      return await ask(task, ad ? AD_SUFFIX : undefined, { maxTokens });
+      return await ask(task, ad ? AD_SUFFIX : undefined, { maxTokens, kind });
     } catch (err) {
       // Подвинуться можно только местом, зарезервированным под ответ.
       // Остальные отказы на второй попытке повторятся один в один.
@@ -834,7 +958,7 @@ async function fromText(text, { ad = false, background = false } = {}) {
     // Про «взять модель побольше» тут не советуем: минутный лимит у обычных
     // моделей Groq одинаковый и считается на организацию. Помогает либо другой
     // аккаунт (свой лимит), либо groq/compound с его 70000 в минуту.
-    `Объявление не влезает в бесплатный минутный лимит модели (${lastErr.message}). Помогут ключ на другом аккаунте Groq или GROQ_TEXT_MODEL=groq/compound.`
+    `Объявление не влезает в бесплатный минутный лимит модели (${lastErr.message}). Помогут ключ на другом аккаунте Groq или GROQ_MODELS=groq/compound.`
   );
 }
 

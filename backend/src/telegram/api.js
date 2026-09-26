@@ -4,11 +4,23 @@
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const BASE = `https://api.telegram.org/bot${TOKEN}`;
 
+// Сколько ждём ответа, прежде чем считать запрос зависшим. Без этого срока
+// оборванное на середине соединение висит, пока его не закроет та сторона, —
+// а вызывают эти методы из очереди разбора, и один такой запрос останавливал
+// бота молча: объявления копились, а в чат не приходило ничего.
+// Обычному вызову хватает минуты, но getUpdates — длинный опрос и сам держит
+// соединение полминуты, так что срок тут общий и с запасом.
+const CALL_TIMEOUT_MS = 60 * 1000;
+// Ролик заливается файлом, а 20-мегабайтная реклама качается обратно, — этим
+// минуты мало, особенно с бесплатного Render.
+const UPLOAD_TIMEOUT_MS = 3 * 60 * 1000;
+
 async function call(method, payload) {
   const res = await fetch(`${BASE}/${method}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload || {}),
+    signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
   });
   const data = await res.json();
   if (!data.ok) {
@@ -101,7 +113,11 @@ async function sendVideo(chatId, buffer, caption) {
   form.append('caption', caption || '');
   form.append('video', new Blob([buffer], { type: 'video/mp4' }), 'shabashka.mp4');
 
-  const res = await fetch(`${BASE}/sendVideo`, { method: 'POST', body: form });
+  const res = await fetch(`${BASE}/sendVideo`, {
+    method: 'POST',
+    body: form,
+    signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
+  });
   const data = await res.json();
   if (!data.ok) throw new Error(`Telegram sendVideo: ${data.description || res.status}`);
   return data.result;
@@ -125,7 +141,9 @@ function copyMessage(chatId, fromChatId, messageId, caption) {
 // Картинка приходит как file_id — реальный файл нужно забрать в два шага.
 async function downloadFile(fileId) {
   const file = await call('getFile', { file_id: fileId });
-  const res = await fetch(`https://api.telegram.org/file/bot${TOKEN}/${file.file_path}`);
+  const res = await fetch(`https://api.telegram.org/file/bot${TOKEN}/${file.file_path}`, {
+    signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
+  });
   if (!res.ok) throw new Error(`Не удалось скачать файл: ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
 }
