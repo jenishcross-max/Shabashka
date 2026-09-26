@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { relativeDate } from '../formatDate';
+import { bumpHint } from '../bump';
 import { formatSalary } from '../components/VacancyCard';
 import MyListingsTabs from '../components/MyListingsTabs';
 import { SkeletonMyOrderRow } from '../components/Skeleton';
@@ -94,7 +95,16 @@ export default function MyVacancies() {
             </div>
             <div className="my-order-actions">
               <Link to={`/vacancies/${vacancy.id}/edit`}>Изменить</Link>
-              <button onClick={() => bump(vacancy)}>⬆ Поднять</button>
+              {/* Поднимать можно раз в сутки (см. bump.js). Кнопку в этот срок не
+                  прячем, а гасим с подсказкой: исчезнувшая кнопка читается как
+                  поломка, а не как правило. */}
+              <button
+                onClick={() => bump(vacancy)}
+                disabled={Boolean(bumpHint(vacancy))}
+                title={bumpHint(vacancy) || 'Вернуть объявление в начало ленты'}
+              >
+                ⬆ Поднять
+              </button>
               <button disabled={togglingId === vacancy.id} onClick={() => toggleStatus(vacancy)}>
                 {togglingId === vacancy.id
                   ? '…'

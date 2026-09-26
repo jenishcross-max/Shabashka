@@ -12,6 +12,7 @@ const { VACANCY_FIELDS } = require('../sqlFields');
 const { invalidate } = require('../cache');
 const { canCreateListing } = require('../emailGate');
 const { abroadWork } = require('../abroad');
+const bump = require('../bump');
 
 const router = express.Router();
 const EMPLOYMENT_VALUES = EMPLOYMENT_TYPES.map((t) => t.value);
@@ -395,6 +396,11 @@ router.post(
   asyncHandler(async (req, res) => {
     const vacancy = await loadOwnedVacancy(req, res);
     if (!vacancy) return;
+
+    // Раз в сутки, не чаще: иначе кнопка превращается в способ занять верх
+    // ленты навсегда (см. bump.js).
+    const early = bump.tooSoon(vacancy);
+    if (early) return res.status(429).json(early);
 
     await db.query('UPDATE vacancies SET bumped_at = NOW() WHERE id = $1', [vacancy.id]);
     invalidate('home:');

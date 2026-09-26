@@ -10,6 +10,7 @@ const { ORDER_FIELDS } = require('../sqlFields');
 const { invalidate } = require('../cache');
 const { canCreateListing } = require('../emailGate');
 const { abroadWork } = require('../abroad');
+const bump = require('../bump');
 
 const router = express.Router();
 
@@ -407,6 +408,11 @@ router.post(
   asyncHandler(async (req, res) => {
     const order = await loadOwnedOrder(req, res);
     if (!order) return;
+
+    // Раз в сутки, не чаще: иначе кнопка превращается в способ занять верх
+    // ленты навсегда (см. bump.js).
+    const early = bump.tooSoon(order);
+    if (early) return res.status(429).json(early);
 
     await db.query('UPDATE orders SET bumped_at = NOW() WHERE id = $1', [order.id]);
     invalidate('home:');

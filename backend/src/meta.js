@@ -21,6 +21,15 @@ function baseUrl(req) {
   return process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
 }
 
+// В адресе может стоять что угодно: у сайта есть и /orders/new, и /orders/12/edit,
+// а ссылку на такую страницу тоже пересылают в WhatsApp. Postgres на строку
+// вместо числа отвечает ошибкой запроса, и превью этой страницы возвращало
+// пятисотую вместо того, чтобы просто отдать обычную SPA-страницу.
+function toId(raw) {
+  const n = Number.parseInt(raw, 10);
+  return Number.isInteger(n) && n > 0 && String(n) === String(raw) ? n : null;
+}
+
 // Превью-карточка для мессенджеров/соцсетей (WhatsApp, Telegram и т.п.) —
 // им нужен статический HTML с og:-тегами, SPA они не рендерят.
 router.get(
@@ -29,7 +38,10 @@ router.get(
     const ua = req.headers['user-agent'] || '';
     if (!BOT_UA_RE.test(ua)) return next();
 
-    const { rows } = await db.query('SELECT * FROM orders WHERE id = $1', [req.params.id]);
+    const id = toId(req.params.id);
+    if (id === null) return next();
+
+    const { rows } = await db.query('SELECT * FROM orders WHERE id = $1', [id]);
     const order = rows[0];
     if (!order) return next();
 
@@ -67,7 +79,10 @@ router.get(
     const ua = req.headers['user-agent'] || '';
     if (!BOT_UA_RE.test(ua)) return next();
 
-    const { rows } = await db.query('SELECT * FROM vacancies WHERE id = $1', [req.params.id]);
+    const id = toId(req.params.id);
+    if (id === null) return next();
+
+    const { rows } = await db.query('SELECT * FROM vacancies WHERE id = $1', [id]);
     const vacancy = rows[0];
     if (!vacancy) return next();
 
