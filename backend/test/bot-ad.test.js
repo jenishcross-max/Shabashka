@@ -12,7 +12,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { install, at, chat } = require('./helpers/stub');
+const { install, dmStub, statsStub, at, chat } = require('./helpers/stub');
 
 // Час ожидания превращается в доли секунды: проверяем поведение, а не сроки.
 const realSetTimeout = global.setTimeout;
@@ -23,6 +23,7 @@ process.env.TELEGRAM_CHANNEL_ID = '@shabashka';
 process.env.PUBLIC_URL = 'https://xn--80aaac0cyed.com';
 
 const tg = chat();
+const stats = statsStub();
 const published = [];
 // Вместо базы — список строк в памяти: проверяем, что бот пишет и убирает
 // отложенное, а не то, как это делает Postgres.
@@ -42,7 +43,6 @@ const requireSrc = install({
     fromText: (...args) => parse(...args),
   },
   [at('telegram/imports.js')]: {
-    countToday: async () => 0,
     create: async ({ parsed }) => {
       published.push(parsed.title);
       return 7;
@@ -68,6 +68,11 @@ const requireSrc = install({
     },
     restorable: async () => rows.map((r) => ({ ...r })),
   },
+  // Директ ходит в базу — боту в этих тестах он не нужен.
+  [at('dm/index.js')]: dmStub(),
+  // Счётчики сводки и чёрный список номеров — тоже база.
+  [at('telegram/feedStats.js')]: stats.feedStats,
+  [at('telegram/blocklist.js')]: stats.blocklist,
   [at('social/index.js')]: {
     onThreads: () => {},
     onReel: () => {},

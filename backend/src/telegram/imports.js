@@ -288,18 +288,6 @@ async function publish(id) {
   return { type: 'order', id: orderId };
 }
 
-// Сколько объявлений ушло на сайт сегодня. День считаем по Бишкеку, а не по UTC:
-// сервер живёт в UTC, и после полуночи по местному времени счётчик ещё шесть
-// часов показывал бы вчерашний итог.
-async function countToday() {
-  const { rows } = await db.query(
-    `SELECT COUNT(*)::int AS n FROM imported_listings
-      WHERE status = 'published'
-        AND (published_at AT TIME ZONE 'Asia/Bishkek')::date = (NOW() AT TIME ZONE 'Asia/Bishkek')::date`
-  );
-  return rows[0].n;
-}
-
 // Сколько объявлений ушло в Threads за последние дни — для /threads: по нему
 // считается, сколько в среднем просмотров набирает один пост.
 async function countThreadsPosts(days = 7) {
@@ -309,6 +297,21 @@ async function countThreadsPosts(days = 7) {
     [String(days)]
   );
   return rows[0].n;
+}
+
+// Последние опубликованные из одного источника — для /last. Посты из групп бот
+// выкладывает молча, без карточки на каждый, и снять лишнее можно только из
+// этого списка. Сутки — дальше записки с доски всё равно пропадают сами.
+async function recentPublished(source = 'channel', limit = 10) {
+  const { rows } = await db.query(
+    `SELECT id, parsed, published_at, vacancy_id, order_id, board_post_id
+       FROM imported_listings
+      WHERE source = $1 AND status = 'published' AND published_at > NOW() - INTERVAL '24 hours'
+      ORDER BY published_at DESC
+      LIMIT $2`,
+    [source, limit]
+  );
+  return rows;
 }
 
 // Снять уже опубликованное объявление с сайта. Подтверждения перед публикацией
@@ -349,7 +352,7 @@ module.exports = {
   publish,
   validate,
   applyDefaults,
-  countToday,
   countThreadsPosts,
+  recentPublished,
   remove,
 };

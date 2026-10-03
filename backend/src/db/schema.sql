@@ -273,4 +273,71 @@ CREATE TABLE IF NOT EXISTS ad_posts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ad_posts_campaign ON ad_posts(campaign_id);
+
+-- ИИ-продавец рекламы в директе Threads (см. src/dm). Разговор живёт в базе:
+-- человек, которому бот отправил номер МБанка, пришлёт чек и через час, а
+-- Render к тому времени может перезапуститься. history — последние реплики
+-- (кто, текст, была ли картинка), seen — ключи уже разобранных сообщений,
+-- payment — что модель прочитала на чеке и что проверить не удалось.
+CREATE TABLE IF NOT EXISTS dm_chats (
+  id            SERIAL PRIMARY KEY,
+  channel       TEXT NOT NULL DEFAULT 'threads',
+  peer          TEXT NOT NULL,              -- имя пользователя собеседника
+  peer_name     TEXT,
+  stage         TEXT NOT NULL DEFAULT 'new', -- см. src/dm/agent.js
+  lang          TEXT NOT NULL DEFAULT 'ru',  -- ru | ky
+  ad_text       TEXT,                        -- текст рекламы, который выложим
+  ad_image      BYTEA,                       -- фото к рекламе, если прислали
+  history       JSONB NOT NULL DEFAULT '[]',
+  seen          JSONB NOT NULL DEFAULT '[]',
+  payment       JSONB,
+  receipt_fails INTEGER NOT NULL DEFAULT 0,
+  paused_until  TIMESTAMPTZ,                 -- владелец или админ ведёт разговор сам
+  campaign_id   INTEGER,                     -- реклама, которую он оплатил (ad_campaigns)
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (channel, peer)
+);
+
+CREATE INDEX IF NOT EXISTS idx_dm_chats_campaign ON dm_chats(campaign_id) WHERE campaign_id IS NOT NULL;
+
+-- Что бот пишет сам, не в ответ: ссылку на вышедший пост, отчёт за сутки.
+-- Расширение забирает это при каждом обходе директа и отмечает отправленным.
+CREATE TABLE IF NOT EXISTS dm_outbox (
+  id         SERIAL PRIMARY KEY,
+  chat_id    INTEGER NOT NULL REFERENCES dm_chats(id) ON DELETE CASCADE,
+  text       TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  sent_at    TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_dm_outbox_pending ON dm_outbox(id) WHERE sent_at IS NULL;
+
+-- Принятые чеки: хеш картинки и номер операции. Один чек — одна реклама.
+CREATE TABLE IF NOT EXISTS dm_receipts (
+  key        TEXT PRIMARY KEY,
+  chat_id    INTEGER,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 CREATE INDEX IF NOT EXISTS idx_ad_campaigns_open ON ad_campaigns(created_at) WHERE reported_at IS NULL;
+
+-- Счётчики событий за день (по Бишкеку) для сводки в Telegram: сколько вышло
+-- из групп, сколько отсеяно и почему, сколько ушло в Threads и Instagram
+-- (см. telegram/feedStats.js). Посты из групп бот больше не расписывает по
+-- одному — вместо пяти сообщений на пост раз в несколько часов приходит сводка.
+CREATE TABLE IF NOT EXISTS bot_counters (
+  day DATE NOT NULL,
+  key TEXT NOT NULL,
+  n   INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, key)
+);
+
+-- Номера, с которых в группы шлют сетевой найм и прочий мусор (см.
+-- telegram/blocklist.js). Посты с ними из групп не разбираются вовсе. Срок —
+-- потому что номер может смениться хозяином, а фильтр — ошибиться.
+CREATE TABLE IF NOT EXISTS blocked_phones (
+  phone      TEXT PRIMARY KEY,   -- +996XXXXXXXXX
+  reason     TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL
+);

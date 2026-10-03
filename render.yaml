@@ -78,6 +78,12 @@ services:
       # Не публиковать объявления старше стольких часов, по умолчанию 12.
       - key: SOURCE_MAX_AGE_HOURS
         sync: false
+      # Часы сводки по Бишкеку (по умолчанию 9,13,17,21; off — только /stats).
+      - key: SUMMARY_HOURS
+        sync: false
+      # summary (по умолчанию) — посты из групп молча, итог сводкой; full — по каждому.
+      - key: SOURCE_REPORTS
+        sync: false
       # Автопостинг роликов в Instagram. Без них бот просто присылает готовый
       # mp4 в Telegram, чтобы опубликовать вручную.
       - key: INSTAGRAM_USER_ID
@@ -108,4 +114,14 @@ services:
       - key: AD_VIEWS_GOAL
         sync: false
       - key: AD_WARN_HOURS
+        sync: false
+      # ИИ-продавец в директе Threads: ключ моста к расширению в Chrome
+      # (tools/threads-dm), номер и имя получателя в МБанке, цена рекламы.
+      - key: DM_BRIDGE_KEY
+        sync: false
+      - key: MBANK_NUMBER
+        sync: false
+      - key: MBANK_NAME
+        sync: false
+      - key: AD_PRICE
         sync: false

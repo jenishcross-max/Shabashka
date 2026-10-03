@@ -5,9 +5,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { install, at, chat } = require('./helpers/stub');
+const { install, dmStub, statsStub, at, chat } = require('./helpers/stub');
 
 const tg = chat();
+const stats = statsStub();
 
 const requireSrc = install({
   [at('telegram/api.js')]: tg.api,
@@ -26,8 +27,13 @@ const requireSrc = install({
     phoneFrom: () => null,
     fromText: async () => [],
   },
-  [at('telegram/imports.js')]: { countToday: async () => 0, get: async () => null },
+  [at('telegram/imports.js')]: { get: async () => null },
   [at('telegram/deferred.js')]: { add: async () => 1, remove: async () => {}, restorable: async () => [] },
+  // Директ ходит в базу — боту в этих тестах он не нужен.
+  [at('dm/index.js')]: dmStub(),
+  // Счётчики сводки и чёрный список номеров — тоже база.
+  [at('telegram/feedStats.js')]: stats.feedStats,
+  [at('telegram/blocklist.js')]: stats.blocklist,
   [at('social/index.js')]: {
     onThreads: () => {},
     onReel: () => {},

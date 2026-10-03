@@ -10,7 +10,13 @@ const imports = require('./imports');
 const deferred = require('./deferred');
 const queue = require('./queue');
 const social = require('../social');
+const dm = require('../dm');
+const spam = require('../spam');
 const digestRepo = require('../digestRepo');
+const feedStats = require('./feedStats');
+const blocklist = require('./blocklist');
+const summary = require('./summary');
+const rejected = require('./rejected');
 const { money } = require('../money');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
 const EXPERIENCE_LEVELS = require('../experienceLevels');
@@ -24,6 +30,14 @@ const SITE_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
 const CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID || '';
 
 const LISTING_PATHS = { vacancy: 'vacancies', order: 'orders' };
+
+// Посты из чужих групп бот публикует молча: карточку, очередь площадок и
+// отчёты по ним не присылает, а считает для сводки (см. summary.js). Из групп
+// их выходит под сотню в день, и по пять сообщений на каждый топили в чате то,
+// что требует решения: оплату рекламы, отказ площадки, вопрос из директа.
+// Снять лишнее можно из /last. SOURCE_REPORTS=full возвращает отчёт по каждому.
+const GROUP_REPORTS = String(process.env.SOURCE_REPORTS || 'summary').trim();
+const isQuiet = (source) => source === 'channel' && GROUP_REPORTS !== 'full';
 
 // Текст объявления для публикации — без внутренних пометок вроде ⚠️ note,
 // которые имеют смысл только админу. Возвращает обычный текст без HTML-разметки:
@@ -152,7 +166,15 @@ const LIMIT_RETRY_DELAY_MS = 10 * 60 * 60 * 1000;
 // ролик в памяти дальше незачем — остаётся кнопка.
 const LIMIT_RETRY_MAX = 2;
 
-function scheduleAutoRetry(chatId, retryId, attempt = 0, waited = 0) {
+// Повтор удался — в счётчики сводки. Провал повтора не считаем: он уже
+// посчитан с первой попытки, а девять неудачных заходов — это одна неудача.
+function countRetried(result) {
+  if (result.threads && result.threads.posted) feedStats.bump('th.ok');
+  if (result.instagram && result.instagram.posted) feedStats.bump(result.instagram.asImage ? 'ig.image' : 'ig.reel');
+}
+
+// quiet — пост из группы: повторяем так же, но в чат об этом не пишем.
+function scheduleAutoRetry(chatId, retryId, attempt = 0, waited = 0, quiet = false) {
   // Ожидание нормы идёт своим сроком и не тратит попытку каскада: вернувшись
   // через десять часов, бот начинает расписание заново, как с первой публикации.
   const delay = attempt === 0 && waited ? LIMIT_RETRY_DELAY_MS : AUTO_RETRY_DELAYS[attempt];
@@ -165,6 +187,7 @@ function scheduleAutoRetry(chatId, retryId, attempt = 0, waited = 0) {
       return;
     }
     if (!result) return; // ролик выветрился из памяти — дальше только вручную, из сообщения выше
+    countRetried(result);
 
     const { sites, failed, lines } = socialReport(result);
     // reason — это причина, по которой до площадок вообще не дошло (ни одна не
@@ -172,7 +195,7 @@ function scheduleAutoRetry(chatId, retryId, attempt = 0, waited = 0) {
     if (result.reason) lines.push(`🎬 ${tg.esc(result.reason)}`);
 
     if (!failed.length && !result.reason) {
-      if (sites.length) {
+      if (sites.length && !quiet) {
         await tg
           .sendMessage(chatId, `${sites.map((n) => SITE_LABELS[n]).join(' и ')} — опубликовано (сам, с повторной попытки)`)
           .catch(() => {});
@@ -185,7 +208,8 @@ function scheduleAutoRetry(chatId, retryId, attempt = 0, waited = 0) {
       // попытки каждые 5-60 минут только жгли бы её впустую. Каскад обнуляем и
       // возвращаемся к ролику через десять часов, когда окно сдвинется.
       if (waited < LIMIT_RETRY_MAX && result.retryId) {
-        scheduleAutoRetry(chatId, result.retryId, 0, waited + 1);
+        scheduleAutoRetry(chatId, result.retryId, 0, waited + 1, quiet);
+        if (quiet) return;
         await tg
           .sendMessage(
             chatId,
@@ -194,6 +218,7 @@ function scheduleAutoRetry(chatId, retryId, attempt = 0, waited = 0) {
           .catch(() => {});
         return;
       }
+      if (quiet) return;
       await tg
         .sendMessage(
           chatId,
@@ -204,11 +229,12 @@ function scheduleAutoRetry(chatId, retryId, attempt = 0, waited = 0) {
     }
 
     if (attempt + 1 < AUTO_RETRY_DELAYS.length && result.retryId) {
-      scheduleAutoRetry(chatId, result.retryId, attempt + 1, waited);
+      scheduleAutoRetry(chatId, result.retryId, attempt + 1, waited, quiet);
       return;
     }
 
     // Автопопытки кончились — дальше только руками по кнопке в исходном сообщении.
+    if (quiet) return;
     await tg
       .sendMessage(chatId, `⚠️ Само не получилось за ${AUTO_RETRY_SPAN}: ${lines.join('; ')}`)
       .catch(() => {});
@@ -223,15 +249,26 @@ function scheduleAutoRetry(chatId, retryId, attempt = 0, waited = 0) {
 // importId едет в ctx до самых отчётов: пост в Threads и ролик уходят минутами
 // позже, и связать их с объявлением можно только так. Без этого снятие
 // объявления знало бы про один сайт (см. imports.setPosts).
-async function shareToSocial(chatId, parsed, listingType, siteLink, priority = false, importId = null) {
+// dmChatId — реклама оплачена в директе Threads (см. src/dm): когда пост выйдет,
+// ссылку на него получит сам рекламодатель.
+// quiet — пост из группы (см. isQuiet): на площадки уходит так же, но расписки
+// о приёме в чат нет.
+async function shareToSocial(
+  chatId,
+  parsed,
+  listingType,
+  siteLink,
+  { priority = false, importId = null, dmChatId = null, quiet = false } = {}
+) {
   try {
     const result = await social.shareListing(
       parsed,
       listingType,
       siteLink,
-      { chatId, importId },
+      { chatId, importId, ...(quiet ? { quiet: true } : {}), ...(dmChatId ? { dmChatId, dmLink: siteLink } : {}) },
       { priority }
     );
+    if (quiet) return;
     const lines = [];
     if (result.reason) lines.push(`🎬 ${tg.esc(result.reason)}`);
     for (const name of result.skipped || []) lines.push(`${SITE_LABELS[name]}: не настроен`);
@@ -258,6 +295,10 @@ async function shareToSocial(chatId, parsed, listingType, siteLink, priority = f
 
     if (lines.length) await tg.sendMessage(chatId, lines.join('\n'));
   } catch (err) {
+    if (quiet) {
+      console.error('Соцсети (пост из группы):', err.message);
+      return;
+    }
     await tg.sendMessage(chatId, `⚠️ Соцсети: ${tg.esc(err.message)}`);
   }
 }
@@ -267,6 +308,7 @@ async function shareToSocial(chatId, parsed, listingType, siteLink, priority = f
 // за какое из объявлений оно отчитывается.
 social.onThreads(async ({ title, ctx, posted, reason, hardLimit, retryId, id, text }) => {
   const chatId = ctx && ctx.chatId;
+  feedStats.bump(posted ? 'th.ok' : 'th.fail');
   // Запоминаем до отчёта и независимо от него: чат мог отвалиться, а пост уже
   // висит, и снимать его потом всё равно придётся. Повтор рекламы (campaignId)
   // карточку на сайте не заменяет — снимать по ней надо первый пост.
@@ -280,12 +322,13 @@ social.onThreads(async ({ title, ctx, posted, reason, hardLimit, retryId, id, te
   // отчитывается просмотрами (см. social/adTracker.js). Повтор кнопкой
   // «поднять» добавляется к той же кампании — просмотры складываются.
   let tracked = false;
+  let campaignId = null;
   if (posted && ctx && (ctx.ad || ctx.campaignId)) {
     try {
       if (ctx.campaignId) {
         await social.adTracker.addPost(ctx.campaignId, id);
       } else {
-        await social.adTracker.track({
+        campaignId = await social.adTracker.track({
           chatId,
           importId: ctx.importId || null,
           title,
@@ -301,7 +344,23 @@ social.onThreads(async ({ title, ctx, posted, reason, hardLimit, retryId, id, te
     }
   }
 
+  // Реклама из директа: ссылку на пост — рекламодателю, туда же, где он платил.
+  // Своим ходом: отчёт админу ждать её незачем.
+  if (posted && ctx && ctx.dmChatId && !ctx.campaignId) {
+    social
+      .threadsPermalink(id)
+      .catch(() => '')
+      .then((link) => dm.onPosted(ctx.dmChatId, link || ctx.dmLink || '', campaignId))
+      .catch((err) => console.error('[директ] ссылка на пост не ушла:', err.message));
+  }
+
   if (!chatId) return;
+  // Пост из группы: в чат не пишем, в сводке он уже посчитан. Не вышел —
+  // повторяем так же, как обычный, только молча.
+  if (ctx.quiet) {
+    if (!posted && retryId) scheduleAutoRetry(chatId, retryId, 0, hardLimit ? 1 : 0, true);
+    return;
+  }
   const what = tg.esc(clamp(title || 'без заголовка', 80));
 
   if (posted) {
@@ -401,8 +460,20 @@ social.onReel(async (result) => {
     }
   }
 
-  const chats = [...new Set((result.contexts || []).map((c) => c && c.chatId).filter(Boolean))];
+  if (result.instagram) {
+    feedStats.bump(!result.instagram.posted ? 'ig.fail' : result.instagram.asImage ? 'ig.image' : 'ig.reel');
+  }
+
+  // Отчёт — только туда, где ролик ждут: посты из групп в нём идут молча.
+  const contexts = (result.contexts || []).filter(Boolean);
+  const chats = [...new Set(contexts.filter((c) => !c.quiet).map((c) => c.chatId).filter(Boolean))];
   for (const chatId of chats) await reportReel(chatId, result);
+  // Ролик целиком из постов групп: отчёта нет, но не вышел — повторяем молча.
+  if (!chats.length && result.retryId) {
+    const quietChat = contexts.map((c) => c.chatId).find(Boolean);
+    const stuck = Boolean(result.instagram && result.instagram.hardLimit);
+    if (quietChat) scheduleAutoRetry(quietChat, result.retryId, 0, stuck ? 1 : 0, true);
+  }
 });
 
 // Повтор по кнопке. Ролик уже собран и лежит в памяти процесса, заново кодировать
@@ -566,88 +637,19 @@ async function onFlushCommand(chatId) {
   await tg.sendMessage(chatId, '🎬 Ролика ждут объявления разных типов. Что выпускаем?', flushMenu(byType));
 }
 
-// «14:05» по Бишкеку — Render живёт по UTC, и без часового пояса срок уезжал бы
-// на шесть часов назад.
-function clock(ms) {
-  return new Date(ms).toLocaleTimeString('ru-RU', { timeZone: 'Asia/Bishkek', hour: '2-digit', minute: '2-digit' });
-}
-
-// Короткое имя модели для строки в чате: «qwen3.8-27b», а не «qwen/qwen3.8-27b».
-const shortModel = (model) => String(model).split('/').pop();
-
-// Лесенка моделей одной-двумя строками. Пока всё работает, хватает перечня;
-// строка нужна, чтобы с утра было видно, на какой модели бот сейчас.
-function modelLines(models) {
-  if (!models || !models.length) return [];
-  const parts = models.map((m) => {
-    const name = `${shortModel(m.model)}${m.reserve ? ' (резерв)' : ''}`;
-    if (m.gone) return `${name} ✖ пропала`;
-    if (m.until) return `${name} ⏳ до ${clock(m.until)}`;
-    return `${name} ✅`;
-  });
-  return [`🪜 Модели: ${parts.join(' · ')}`];
-}
-
-// Резерв «в деле»: все модели, кроме последней, выбраны или пропали.
-function reserveOnly(models) {
-  if (!models || models.length < 2) return false;
-  const regular = models.slice(0, -1);
-  const reserve = models[models.length - 1];
-  return regular.every((m) => m.gone || m.until) && !reserve.gone && !reserve.until;
-}
-
-// Итог дня: сколько ушло на сайт и сколько роликов ещё едет на площадки.
-// Второе число живёт только в памяти процесса — после перезапуска Render оно
-// честно нулевое, потому что вместе с процессом умирают и сами сборки.
+// /stats — та же сводка, что приходит по расписанию (см. summary.js), плюс
+// технические строки: очереди, ролики в работе, квота Instagram. По ним видно,
+// почему бот замолчал. Перед показом подтягиваем настоящее число публикаций у
+// Instagram: свой счётчик обнуляется вместе с процессом.
 async function statsText() {
-  const today = await imports.countToday();
-  // Перед показом подтягиваем настоящее число публикаций у Instagram: свой
-  // счётчик обнуляется вместе с процессом, а на бесплатном Render тот засыпает
-  // каждую ночь — без этого строка про квоту врала бы каждое утро.
   await social.syncQuota();
-  // Очередь на ролик — по типам: ролик выходит выпуском одного типа, и общее
-  // число ничего не сказало бы о том, какой выпуск вот-вот наберётся, а какой
-  // стоит с одним объявлением.
-  const byType = social.queuedByType();
-  const waitingLine = byType.length
-    ? byType
-        .map((q) => `${social.collectionTitle(q.listingType).toLowerCase()} ${q.count}`)
-        .join(', ')
-    : 'пусто';
-  // Суточная норма Groq — то, во что упирается весь поток объявлений. Норма у
-  // каждой модели своя, и бот спускается по лесенке моделей, когда верхняя
-  // выбрана (см. modelLadder в extract.js), — поэтому и показываем лесенку: что
-  // работает, что выбрано и до какого часа, что пропало совсем.
-  const groq = extract.usage();
-  const k = (n) => `${Math.round(n / 1000)}к`;
+  const { text } = await summary.build({ tech: true, extra: pendingLines() });
+  return text;
+}
 
-  return [
-    `📊 Сегодня опубликовано: ${today}`,
-    `🧠 Разборов: ${groq.calls}, токенов ≈${k(groq.tokens)}${groq.keys > 1 ? ` (${groq.keys} ключа)` : ''}`,
-    ...modelLines(groq.models),
-    // Строка про резерв — только когда он и правда в деле: обычные модели
-    // выбраны, и посты из групп стоят, а реклама ещё разбирается.
-    ...(reserveOnly(groq.models)
-      ? ['🅰️ Обычные модели выбраны — посты из групп жду, последнюю берегу под рекламу']
-      : []),
-    // Строку показываем только когда есть что показать: в обычный день
-    // отложенных нет, и «отложено: 0» было бы лишним шумом каждый раз.
-    ...(pending.size ? [`⏳ Отложено до лимита: ${pending.size}`] : []),
-    // Зависшая задача — не лимит, а поломка: запрос ушёл и не вернулся, дорожку
-    // пришлось отобрать силой (см. JOB_TIMEOUT_MS в queue.js). Снаружи молчащий
-    // бот выглядит одинаково в обоих случаях, а лечится по-разному.
-    ...(queue.stalled() ? [`⚠️ Зависших разборов: ${queue.stalled()} — запрос ушёл и не вернулся`] : []),
-    `🎬 Роликов в работе: ${social.pending()}`,
-    `⏳ Ждут ролика: ${waitingLine} (до ${social.BATCH_SIZE} в ролике, выпуск раз в ${social.RELEASE_INTERVAL_MIN} мин)`,
-    `🧵 Ждут очереди в Threads: ${social.threadsQueued()}`,
-    // Показываем тот потолок, под которым идём сейчас: после мягкого объявления
-    // уходят картинкой и добирают остаток до настоящего (см. quota.js).
-    `📸 Публикаций в Instagram за сутки: ${social.quota.used()} из ${
-      social.quota.used() >= social.quota.dailyLimit()
-        ? `${social.quota.hardLimit()} (ролики закончились, идут картинки)`
-        : social.quota.dailyLimit()
-    }`,
-  ].join('\n');
+// Отложенные до лимита — только когда они есть: «отложено: 0» было бы шумом.
+function pendingLines() {
+  return pending.size ? [`⏳ Отложено до лимита: ${pending.size}`] : [];
 }
 
 // Настоящие суточные нормы площадок — числами от самой Meta, без наших догадок.
@@ -684,7 +686,9 @@ async function limitsText() {
 // Публикует объявление сразу, ничего не переспрашивая. Недостающие поля
 // достраивает imports.applyDefaults — что именно дописали, показываем в ответе,
 // чтобы подмена города или категории не прошла незамеченной.
-async function publishOne(chatId, id, parsed, priority = false) {
+// quiet — пост из группы: на сайт, в канал и на площадки уходит так же, но
+// карточки в чат нет (см. isQuiet). Возвращает тип — для счётчиков сводки.
+async function publishOne(chatId, id, parsed, priority = false, { quiet = false } = {}) {
   const { parsed: ready, filled } = await imports.applyDefaults(parsed);
   if (filled.length) await imports.setParsed(id, ready);
 
@@ -716,6 +720,13 @@ async function publishOne(chatId, id, parsed, priority = false) {
     }
   }
 
+  if (quiet) {
+    shareToSocial(chatId, ready, result.type, shown, { priority, importId: id, quiet: true }).catch((err) =>
+      console.error('Соцсети:', err)
+    );
+    return result.type;
+  }
+
   // wa.me/?text= открывает выбор чата в WhatsApp с готовым текстом — куда
   // отправить, решает админ: автопостинга в каналы WhatsApp у Meta нет.
   const waLink = `https://wa.me/?text=${encodeURIComponent(publicMsg)}`;
@@ -735,18 +746,21 @@ async function publishOne(chatId, id, parsed, priority = false) {
   lines.push(`📱 <a href="${waLink}">Отправить в WhatsApp</a>`);
   if (filled.length) lines.push(`✍️ Дописал сам: ${tg.esc(filled.join(', '))}`);
 
+  // «🚫 Спам» — снять и больше не брать из групп посты с этим номером (см.
+  // blocklist.js). У рекламы такой кнопки нет: её прислали сами.
+  const buttons = [{ text: '🗑 Удалить', callback_data: `del:${id}` }];
+  if (!priority && ready.phone) buttons.push({ text: '🚫 Спам', callback_data: `spm:${id}` });
   const sent = await tg.sendMessage(chatId, lines.join('\n'), {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: '🗑 Удалить', callback_data: `del:${id}` }],
-      ],
-    },
+    reply_markup: { inline_keyboard: [buttons] },
   });
   await imports.setCard(id, chatId, sent.message_id);
 
   // Намеренно без await: ролик едет своим ходом, следующее объявление из пачки
   // не должно ждать кодирования и загрузки на площадки.
-  shareToSocial(chatId, ready, result.type, shown, priority, id).catch((err) => console.error('Соцсети:', err));
+  shareToSocial(chatId, ready, result.type, shown, { priority, importId: id }).catch((err) =>
+    console.error('Соцсети:', err)
+  );
+  return result.type;
 }
 
 // Что в сообщении есть, кроме текста. Нужно только рекламе: обычное объявление
@@ -846,7 +860,9 @@ async function adFields(text, classify) {
   }
 }
 
-async function publishRawAd(chatId, message, text, media, priority, { classify = true } = {}) {
+// dmChatId — реклама оплачена в директе Threads: ссылку на вышедший пост бот
+// отправит рекламодателю туда же (см. onThreads и src/dm).
+async function publishRawAd(chatId, message, text, media, priority, { classify = true, dmChatId = null } = {}) {
   const lines = [];
   let id = null;
   let ready = null;
@@ -861,6 +877,7 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
       ready = (await imports.applyDefaults(parsed)).parsed;
       await imports.setParsed(id, ready);
       const published = await imports.publish(id);
+      feedStats.bump('ad.ok');
       listingType = published.type;
       const path =
         published.type === 'board' ? `board#p${published.id}` : `${LISTING_PATHS[published.type]}/${published.id}`;
@@ -908,7 +925,12 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
       // просмотрам и для повтора: карточка на сайте и сам файл в Telegram.
       const result = social.shareMedia(
         { kind: media.kind, buffer, text, siteLink: shown, title: headline(text) },
-        { chatId, importId: id, adMedia: priority ? { kind: media.kind, fileId: media.fileId } : null },
+        {
+          chatId,
+          importId: id,
+          adMedia: priority ? { kind: media.kind, fileId: media.fileId } : null,
+          ...(dmChatId ? { dmChatId, dmLink: shown } : {}),
+        },
         { priority }
       );
       const caption = result.caption || text;
@@ -923,6 +945,7 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
         result.done
           .then((posted) => {
             if (!posted) return null;
+            feedStats.bump(!posted.posted ? 'ig.fail' : media.kind === 'video' ? 'ig.reel' : 'ig.image');
             if (posted.posted) return tg.sendMessage(chatId, '📸 Instagram: реклама опубликована');
             // Файл у админа уже есть — он сам его и прислал, — а вот подписи
             // нет: в ней ссылка на карточку и хештеги, которые собирали мы.
@@ -949,7 +972,9 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
   } else if (ready) {
     // Текстовая реклама без картинки идёт на площадки обычной дорогой: там ей
     // соберут ролик из макета, как и всякому другому объявлению.
-    shareToSocial(chatId, ready, listingType, shown, priority, id).catch((err) => console.error('Соцсети:', err));
+    shareToSocial(chatId, ready, listingType, shown, { priority, importId: id, dmChatId }).catch((err) =>
+      console.error('Соцсети:', err)
+    );
   }
 
   const sent = await tg.sendMessage(
@@ -969,6 +994,7 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
       : undefined
   );
   if (id) await imports.setCard(id, chatId, sent.message_id);
+  return { id, siteLink: shown };
 }
 
 // Отказ по загранице (см. abroad.js). Причину показываем со словом, на котором
@@ -977,14 +1003,24 @@ function abroadText(reason) {
   return `🚫 Не публикую: ${tg.esc(reason)}.\nШабашка выкладывает только работу в Кыргызстане.`;
 }
 
+// Отказ по запрещённому (оформление на чужие документы, см. spam.js): такое не
+// выкладываем и за деньги.
+function bannedText(reason) {
+  return `🚫 Не публикую: ${tg.esc(reason)}.\nТакое Шабашка не выкладывает и за деньги.`;
+}
+
 async function handleParsed(chatId, listings, { source, rawText, priority = false, ad = false }) {
+  const quiet = isQuiet(source);
   const real = listings.filter((p) => p.is_listing && p.listing_type !== 'other');
   if (real.length === 0) {
+    // Пост из группы: почему не вышел, уже посчитано в sourceWatcher.
+    if (quiet) return 0;
     const abroad = listings.find((p) => p.abroad);
-    if (abroad) {
+    const banned = listings.find((p) => p.forbidden);
+    if (abroad || banned) {
       // Здесь молчать нельзя и по рекламе: публикации «как есть» за этим
       // отказом не будет (см. adJob в onMessage).
-      await tg.sendMessage(chatId, abroadText(abroad.note));
+      await tg.sendMessage(chatId, abroad ? abroadText(abroad.note) : bannedText(banned.note));
     } else if (!ad) {
       // За отказом по рекламе тут же идёт публикация «как есть» — молчим, чтобы
       // не пугать админа отказом, за которым сразу следует успех.
@@ -998,7 +1034,7 @@ async function handleParsed(chatId, listings, { source, rawText, priority = fals
   // карточка — это и «объявление было одно», и «модель разобрала одно из пяти».
   // Строкой выше разница заметна сразу, без лазанья в логи.
   const skipped = listings.filter((p) => !real.includes(p));
-  if (real.length > 1 || skipped.length) {
+  if (!quiet && (real.length > 1 || skipped.length)) {
     const lines = [`🔍 Объявлений: ${real.length}`];
     if (skipped.length) {
       // Причины отказа показываем, а не прячем: фильтр строгий и иногда рубит
@@ -1016,6 +1052,10 @@ async function handleParsed(chatId, listings, { source, rawText, priority = fals
   let published = 0;
   for (const parsed of real) {
     const id = await imports.create({ source, rawText, parsed, chatId });
+    if (id === null && quiet) {
+      feedStats.bump('grp.dup');
+      continue;
+    }
     if (id === null) {
       await tg.sendMessage(
         chatId,
@@ -1028,6 +1068,10 @@ async function handleParsed(chatId, listings, { source, rawText, priority = fals
     // а WhatsApp-ссылка ведёт в никуда без телефона. Публиковать такое некому и незачем.
     if (!parsed.phone) {
       await imports.reject(id);
+      if (quiet) {
+        feedStats.bump('grp.nophone');
+        continue;
+      }
       await tg.sendMessage(
         chatId,
         `🚫 «${tg.esc(parsed.title || 'без названия')}» без номера — не публикую, откликнуться было бы некуда.`
@@ -1035,10 +1079,16 @@ async function handleParsed(chatId, listings, { source, rawText, priority = fals
       continue;
     }
     try {
-      await publishOne(chatId, id, parsed, priority);
+      const type = await publishOne(chatId, id, parsed, priority, { quiet });
+      if (!priority) feedStats.bump(source === 'channel' ? `grp.ok.${type}` : 'adm.ok');
       published += 1;
     } catch (err) {
       // Одно неудачное объявление не должно ронять всю пачку из сообщения.
+      if (quiet) {
+        console.error(`[источник] «${parsed.title || 'без названия'}» не опубликовалось:`, err.message);
+        feedStats.fail(err.message);
+        continue;
+      }
       await tg.sendMessage(
         chatId,
         `⚠️ «${tg.esc(parsed.title || 'без названия')}» не опубликовалось: ${tg.esc(err.message)}`
@@ -1046,7 +1096,9 @@ async function handleParsed(chatId, listings, { source, rawText, priority = fals
     }
   }
 
-  if (published) await tg.sendMessage(chatId, await statsText());
+  // Реклама в сводке — одна на сообщение, сколько бы вакансий модель в ней ни
+  // разглядела: «кафе ищет бариста, повара и техничку» — это одна реклама.
+  if (priority && published) feedStats.bump('ad.ok');
   // Сколько объявлений вышло — по этому числу реклама решает, не пора ли
   // выкладывать как есть (см. adJob в onMessage).
   return published;
@@ -1208,11 +1260,12 @@ function cancelPending(entry) {
 // отложенное поднимают из базы (см. restoreDeferred). message нужен только
 // рекламе — с него снимается копия в канал; у воскрешённого объявления от него
 // остаётся один message_id, и этого достаточно.
-function parseJob(chatId, message, text, isAd) {
+// trusted — пост вернули из /spam кнопкой «Не спам» (см. rejected.js).
+function parseJob(chatId, message, text, isAd, { trusted = false } = {}) {
   return async () => {
     let parsed = null;
     try {
-      parsed = await extract.fromText(text, { ad: isAd });
+      parsed = await extract.fromText(text, { ad: isAd, trusted });
     } catch (err) {
       if (!isAd || err.retryAt) throw err;
       await tg.sendMessage(chatId, `⚠️ Разобрать не вышло: ${tg.esc(err.message)}`);
@@ -1223,7 +1276,7 @@ function parseJob(chatId, message, text, isAd) {
     // classify: false — этот же текст модель только что не осилила, второй
     // заход кончится тем же и лишь потратит суточный лимит. Работу за
     // границей «как есть» не выкладываем: это не сбой разбора, а отказ.
-    const refused = parsed && parsed.some((p) => p.abroad);
+    const refused = parsed && parsed.some((p) => p.abroad || p.forbidden);
     if (isAd && !published && !refused) {
       await publishRawAd(chatId, message, text, null, true, { classify: false });
     }
@@ -1439,8 +1492,9 @@ async function onMessage(message) {
         'заказы, вакансии или объявления с доски. Пригодится в тихий день, когда новых',
         'объявлений нет, а лента не должна простаивать.',
         '',
-        '/stats — сколько опубликовано сегодня, сколько роликов в работе и сколько',
-        'токенов разбора потрачено за сутки: в них упирается весь поток объявлений.',
+        '/stats — сводка за сегодня: сколько вышло из групп и сколько отсеяно',
+        '(и почему), реклама с просмотрами, площадки, модели разбора и очереди.',
+        `Сама сводка приходит ${summary.HOURS.length ? `в ${summary.HOURS.map((h) => `${h}:00`).join(', ')}` : 'только по /stats'}.`,
         '',
         '/limits — суточные нормы Instagram и Threads числами от самой Meta:',
         'сколько уже потрачено и сколько осталось.',
@@ -1466,6 +1520,44 @@ async function onMessage(message) {
         'разместить», «прайс»), пришлю этот ответ сюда со ссылкой — чтобы заявка',
         'не потерялась среди вопросов про вакансии.',
       ],
+      [
+        '🤖 Директ Threads',
+        '',
+        'На запросы на переписку в Threads отвечает ИИ — через расширение в вашем',
+        'Chrome, где открыт threads.com. Он называет цену, после согласия даёт',
+        'номер МБанка, читает скриншот чека и сам публикует рекламу — как /ad.',
+        'Ссылку на пост и отчёт через сутки человек получает там же, в директе.',
+        'Тем, кто принял нас за работодателя, объясняет, что мы только публикуем',
+        'объявления.',
+        '',
+        'Каждый принятый чек присылаю сюда — сверьте с МБанком; если денег нет,',
+        'рекламу снимает «Удалить» под её карточкой. Чек, который ИИ не принял',
+        'сам, приходит с кнопками ✅ / ❌. Позовут человека — пришлю вопрос, и бот',
+        'в том разговоре замолчит. Напишете в разговор сами — тоже замолчит.',
+        '',
+        '/dm — жив ли автоответчик и о чём разговоры, с кнопками «отвечу сам» и',
+        '«вернуть боту».',
+      ],
+      [
+        '📥 Посты из групп',
+        '',
+        'Их я публикую молча — без карточки и отчётов по каждому: из групп',
+        'их выходит под сотню в день, и за ними терялось важное. Что вышло',
+        'и что отсеяно, видно в сводке (/stats).',
+        '',
+        '/last — последние 10 из групп. Под списком кнопки: 🗑 — снять отовсюду,',
+        `🚫 — снять и ${blocklist.DEFAULT_DAYS} дней не брать из групп посты с этим номером. Та же 🚫`,
+        'есть под карточкой того, что прислали вы.',
+        '',
+        'Сетевой маркетинг («помощник администратора в офис, карьерный рост,',
+        'всему научим») и оформление на чужие документы («доверенность',
+        'на машину из Китая, деньги сразу») отсеиваю и без модели, по словам.',
+        'Номер такого поста запоминаю сам. Одно и то же объявление, разосланное',
+        'по десятку групп, разбираю один раз — норма модели уходит на новое.',
+        '',
+        '/spam — что отсеяно как мусор, с причиной. Ошибся — нажмите ✅:',
+        'номер уйдёт из чёрного списка, а пост — на разбор заново.',
+      ],
     ];
     for (const part of help) await tg.sendMessage(chatId, part.join('\n'));
     return;
@@ -1489,6 +1581,24 @@ async function onMessage(message) {
 
   if (text === '/threads') {
     await tg.sendMessage(chatId, await threadsStatsText());
+    return;
+  }
+
+  if (text === '/spam') {
+    const { text: report, extra } = spamText();
+    await tg.sendMessage(chatId, report, extra);
+    return;
+  }
+
+  if (text === '/last') {
+    const { text: report, extra } = await lastText();
+    await tg.sendMessage(chatId, report, extra);
+    return;
+  }
+
+  if (text === '/dm') {
+    const { text: report, extra } = await dmStatusText();
+    await tg.sendMessage(chatId, report, extra);
     return;
   }
 
@@ -1530,6 +1640,13 @@ async function onMessage(message) {
   const abroad = isAd ? abroadWork(text) : '';
   if (abroad) {
     await tg.sendMessage(chatId, abroadText(`работа за границей («${abroad}»)`));
+    return;
+  }
+  // Оформление на чужие документы за деньги — тоже до всех веток: срочная
+  // реклама и реклама с файлом мимо модели, и проверить их больше негде.
+  const banned = isAd ? spam.check(text, { ad: true }) : null;
+  if (banned) {
+    await tg.sendMessage(chatId, bannedText(spam.describe(banned)));
     return;
   }
 
@@ -1721,6 +1838,50 @@ async function onCallback(query) {
     return;
   }
 
+  // Директ Threads: решение по чеку и кто ведёт разговор (см. onDmEvent).
+  if (action === 'dmok' || action === 'dmno') {
+    // Кнопки убираем сразу: второе нажатие опубликовало бы рекламу дважды.
+    await tg.answerCallbackQuery(query.id, action === 'dmok' ? 'Публикую' : 'Скажу, что оплаты нет');
+    await tg.call('editMessageReplyMarkup', { chat_id: chatId, message_id: messageId }).catch(() => {});
+    const verdict = await (action === 'dmok' ? dm.approve(Number(rawId)) : dm.reject(Number(rawId)));
+    await tg.sendMessage(chatId, `🧾 Чек: ${tg.esc(verdict)}.`);
+    return;
+  }
+
+  if (action === 'dmp' || action === 'dmr') {
+    const ok = await (action === 'dmp' ? dm.pause(Number(rawId), 24) : dm.resume(Number(rawId)));
+    await tg.answerCallbackQuery(
+      query.id,
+      !ok ? 'Разговор не найден' : action === 'dmp' ? 'Бот молчит в этом разговоре сутки' : 'Разговор снова ведёт бот'
+    );
+    return;
+  }
+
+  // «✅ Не спам» в /spam: номер — из чёрного списка, пост — на разбор заново,
+  // уже как присланный админом (с карточкой и кнопкой «Удалить»).
+  if (action === 'ns') {
+    const entry = rejected.take(rawId);
+    if (!entry) {
+      await tg.answerCallbackQuery(query.id, 'Этого поста уже нет в списке');
+      return;
+    }
+    await tg.answerCallbackQuery(query.id, 'Разбираю заново');
+    const freed = await blocklist.remove(entry.phones).catch((err) => {
+      console.error('[чёрный список] не снять:', err.message);
+      return 0;
+    });
+    enqueue(chatId, parseJob(chatId, { message_id: messageId }, entry.text, false, { trusted: true }));
+    await tg.sendMessage(
+      chatId,
+      [
+        `✅ Разбираю заново: «${tg.esc(clamp(entry.text.replace(/\s+/g, ' '), 80))}»`,
+        ...(freed ? [`Номер ${tg.esc(entry.phones.join(', '))} убрал из чёрного списка.`] : []),
+        'Проверку на сетевой маркетинг для него пропускаю. Если и модель скажет «не объявление» — выложите его через /ad_fast.',
+      ].join('\n')
+    );
+    return;
+  }
+
   if (action === 'fl') {
     // Кнопки убираем сразу: второе нажатие выпустило бы второй ролик — уже
     // пустой, но место в суточной квоте Instagram он бы занял.
@@ -1743,22 +1904,100 @@ async function onCallback(query) {
     return;
   }
 
-  if (action === 'del') {
+  // del и spm — кнопки под карточкой: отчёт о снятии встаёт на место карточки.
+  // ldel и lspm — те же кнопки в списке /last: список трогать нельзя, по нему
+  // снимают дальше, поэтому отчёт приходит отдельным сообщением.
+  // spm и lspm заодно запоминают номер: посты с ним из групп больше не берём.
+  if (['del', 'spm', 'ldel', 'lspm'].includes(action)) {
+    if (row.status !== 'published') {
+      await tg.answerCallbackQuery(query.id, 'Уже снято');
+      return;
+    }
+    const asSpam = action === 'spm' || action === 'lspm';
     try {
       await imports.remove(id);
-      await tg.answerCallbackQuery(query.id, 'Снимаю объявление');
-      await tg.editMessageText(
-        chatId,
-        messageId,
-        [
-          `🗑 <b>${tg.esc(row.parsed.title || 'без названия')}</b>`,
-          ...(await unpublishLines(row)),
-        ].join('\n')
-      );
+      await tg.answerCallbackQuery(query.id, asSpam ? 'Снимаю и запоминаю номер' : 'Снимаю объявление');
+      const lines = [`🗑 <b>${tg.esc(row.parsed.title || 'без названия')}</b>`, ...(await unpublishLines(row))];
+      if (asSpam && row.parsed.phone) {
+        await blocklist.add([row.parsed.phone], `админ отметил спамом: ${String(row.parsed.title || '').slice(0, 120)}`);
+        lines.push(
+          `🚫 Номер ${tg.esc(row.parsed.phone)} — в чёрном списке на ${blocklist.DEFAULT_DAYS} дней: посты с ним из групп больше не беру.`
+        );
+      }
+      if (action === 'del' || action === 'spm') await tg.editMessageText(chatId, messageId, lines.join('\n'));
+      else await tg.sendMessage(chatId, lines.join('\n'));
     } catch (err) {
       await tg.answerCallbackQuery(query.id, err.message.slice(0, 190));
     }
   }
+}
+
+// /spam — что из групп отсеяно как мусор (см. rejected.js). Фильтр по словам
+// и модель иногда ошибаются, а посты из групп бот публикует молча — увидеть
+// ошибку можно только здесь.
+const SPAM_LIMIT = 10;
+
+function spamText() {
+  const items = rejected.list(SPAM_LIMIT);
+  if (!items.length) {
+    return { text: '🧹 С последнего перезапуска из групп ничего не отсеяно как сетевое или запрещённое.' };
+  }
+  const lines = ['🧹 Отсеяно из групп как мусор:'];
+  const buttons = [];
+  for (const [i, item] of items.entries()) {
+    lines.push(
+      `${i + 1}. «${tg.esc(clamp(item.text.replace(/\s+/g, ' '), 110))}»`,
+      `   — ${tg.esc(clamp(item.reason, 120))} · ${agoText(Date.now() - item.at)}`
+    );
+    buttons.push({ text: `✅ ${i + 1}`, callback_data: `ns:${item.id}` });
+  }
+  lines.push('', '✅ — это не спам: убрать номер из чёрного списка и разобрать пост заново.');
+  const rows = [];
+  for (let i = 0; i < buttons.length; i += 5) rows.push(buttons.slice(i, i + 5));
+  return { text: lines.join('\n'), extra: { reply_markup: { inline_keyboard: rows } } };
+}
+
+// /last — последние объявления из групп. Их бот публикует молча, без карточки
+// на каждое (см. isQuiet), и снять лишнее можно только отсюда.
+const LAST_LIMIT = 10;
+const TYPE_ICONS = { vacancy: '💼', order: '🧰', board: '📌' };
+
+async function lastText() {
+  const rows = await imports.recentPublished('channel', LAST_LIMIT);
+  if (!rows.length) return { text: '📥 Из групп за последние сутки ничего не выходило.' };
+
+  const lines = ['📥 Последние из групп:'];
+  const del = [];
+  const junk = [];
+  for (const [i, row] of rows.entries()) {
+    const p = row.parsed || {};
+    const type = row.vacancy_id ? 'vacancy' : row.order_id ? 'order' : 'board';
+    const postId = row.vacancy_id || row.order_id || row.board_post_id;
+    const path = type === 'board' ? `board#p${postId}` : `${LISTING_PATHS[type]}/${postId}`;
+    const title = tg.esc(clamp(p.title || 'без названия', 60));
+    const ago = row.published_at ? ` · ${agoText(Date.now() - new Date(row.published_at).getTime())}` : '';
+    lines.push(
+      `${i + 1}. ${TYPE_ICONS[type]} ${SITE_URL ? `<a href="${SITE_URL}/${path}">${title}</a>` : title}${
+        p.phone ? ` · ${tg.esc(p.phone)}` : ''
+      }${ago}`
+    );
+    del.push({ text: `🗑 ${i + 1}`, callback_data: `ldel:${row.id}` });
+    if (p.phone) junk.push({ text: `🚫 ${i + 1}`, callback_data: `lspm:${row.id}` });
+  }
+  lines.push(
+    '',
+    `🗑 — снять отовсюду. 🚫 — снять и ${blocklist.DEFAULT_DAYS} дней не брать из групп посты с этим номером.`
+  );
+
+  const rowsOf = (buttons) => {
+    const out = [];
+    for (let i = 0; i < buttons.length; i += 5) out.push(buttons.slice(i, i + 5));
+    return out;
+  };
+  return {
+    text: lines.join('\n'),
+    extra: { reply_markup: { inline_keyboard: [...rowsOf(del), ...rowsOf(junk)] } },
+  };
 }
 
 // Куда объявление ушло, оттуда его и снимаем. Автор пишет «нашли людей» — и
@@ -1853,9 +2092,8 @@ async function restoreDeferred() {
   return rows.length;
 }
 
-// Числа по-русски: «1 842», а не «1842». Пробел — неразрывный, как и положено
-// разделителю разрядов, так что в узком чате число не разорвётся.
-const num = (n) => Number(n || 0).toLocaleString('ru-RU');
+// Числа по-русски («1 842») и склонение «просмотров» — общие со сводкой.
+const { num, viewsWord } = summary;
 
 // «25 сентября, 14:05» по Бишкеку.
 function whenText(at) {
@@ -1866,15 +2104,6 @@ function whenText(at) {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-function viewsWord(n) {
-  const mod100 = n % 100;
-  const mod10 = n % 10;
-  if (mod100 >= 11 && mod100 <= 14) return 'просмотров';
-  if (mod10 === 1) return 'просмотр';
-  if (mod10 >= 2 && mod10 <= 4) return 'просмотра';
-  return 'просмотров';
 }
 
 // Отчёт по рекламе. Сделан так, чтобы его можно было переслать рекламодателю
@@ -1916,12 +2145,20 @@ function boostKeyboard(campaignId) {
 // Итог через сутки. Если не дотянули — кнопка повтора: повтор после суток уже
 // не «добирает» гарантию, но рекламодателю можно отдать обещанное.
 async function onAdReport(campaign, totals, posts, { boostable }) {
-  const short = totals.views < (Number(campaign.goal) || social.adTracker.GOAL);
-  await tg.sendMessage(
-    campaign.chat_id,
-    adReportText(campaign, totals, posts, { final: true }),
-    short && boostable ? boostKeyboard(campaign.id) : undefined
-  );
+  const goal = Number(campaign.goal) || social.adTracker.GOAL;
+  const short = totals.views < goal;
+  // Рекламодателю из директа отчёт уходит сам — но только выполненный: как
+  // быть с недобором, решает админ, а не бот (см. onReport в src/dm).
+  const client = await dm.onReport(campaign.id, totals, goal).catch((err) => {
+    console.error('[директ] отчёт рекламодателю не ушёл:', err.message);
+    return null;
+  });
+  const lines = [adReportText(campaign, totals, posts, { final: true })];
+  if (client === 'sent') lines.push('', '✉️ Отчёт отправлен рекламодателю в директ Threads.');
+  if (client === 'short') {
+    lines.push('', '✉️ Рекламодателю из директа отчёт не отправлял — недобор. Поднимите рекламу или ответьте ему сами.');
+  }
+  await tg.sendMessage(campaign.chat_id, lines.join('\n'), short && boostable ? boostKeyboard(campaign.id) : undefined);
 }
 
 // Реклама отстаёт — предлагаем поднять, пока сутки не прошли.
@@ -1963,11 +2200,215 @@ async function onLeadsDenied() {
   );
 }
 
+// ИИ-продавец в директе Threads (см. src/dm). Сам разговор ведёт он, а сюда
+// приходит то, что должен знать или решить админ: копия принятого чека, чек на
+// проверку, просьба позвать человека.
+
+const adminChat = () => [...ADMIN_IDS][0];
+const peerName = (chat) => `@${tg.esc(chat.peer)}${chat.peer_name ? ` (${tg.esc(chat.peer_name)})` : ''}`;
+
+const DM_STAGES = {
+  new: 'только начал',
+  offered: 'назвал цену',
+  awaiting_payment: 'ждёт чек',
+  awaiting_text: 'оплатил, ждёт текст',
+  checking: 'чек на проверке',
+  publishing: 'публикуется',
+  published: 'реклама вышла',
+  declined: 'отказался',
+};
+
+const RECEIPT_REASONS = {
+  not_receipt: 'на картинке не чек',
+  not_success: 'перевод не прошёл',
+  amount: 'сумма меньше цены',
+  recipient: 'получатель не наш',
+  old: 'чек не свежий',
+  duplicate: 'этот чек уже присылали',
+};
+
+// Что модель прочитала на чеке — одной строкой.
+function checkLine(check) {
+  if (!check) return 'Модель чек не прочитала — посмотрите сами.';
+  const parts = [
+    check.amount !== null ? `${num(check.amount)} ${check.currency && check.currency !== 'KGS' ? check.currency : 'сом'}` : 'сумма не видна',
+    [check.recipient, check.account].filter(Boolean).join(' ') || 'получатель не виден',
+    check.datetime || 'дата не видна',
+    check.bank,
+  ].filter(Boolean);
+  return `Чек: ${tg.esc(parts.join(' · '))}`;
+}
+
+// Реклама, оплаченная в директе. Идёт тем же путём, что и «/ad»: сайт, канал,
+// Threads, Instagram, отчёт по просмотрам. Сначала бот присылает объявление
+// админу: с этого сообщения снимается копия в канал, у картинки появляется
+// file_id для повтора рекламы, а у админа — карточка с кнопкой «Удалить».
+async function publishFromDm({ chat, text, image }) {
+  const chatId = adminChat();
+  if (!chatId) throw new Error('не задан TELEGRAM_ADMIN_IDS');
+  const abroad = abroadWork(text);
+  if (abroad) return { refused: `работа за границей («${abroad}»)` };
+  // Директ ведёт бот без админа — сетевой найм тут не пропускаем даже за деньги.
+  const banned = spam.check(text);
+  if (banned) return { refused: spam.describe(banned) };
+  if (!image && text.length <= 15) throw new Error('в рекламе ни картинки, ни текста');
+
+  const header = `📣 Реклама из директа Threads — ${peerName(chat)}`;
+  const message = image
+    ? await tg.sendPhoto(chatId, image, `${header}\n\n${tg.esc(clamp(text, 850))}`)
+    : await tg.sendMessage(chatId, `${header}\n\n${tg.esc(text)}`);
+  const result = await publishRawAd(chatId, message, text, image ? mediaOf(message) : null, true, {
+    classify: true,
+    dmChatId: chat.id,
+  });
+  return { threads: social.threadsConfigured(), siteLink: result.siteLink };
+}
+
+function dmKeyboard(rows) {
+  return { reply_markup: { inline_keyboard: rows } };
+}
+
+async function onDmEvent(event) {
+  const chatId = adminChat();
+  if (!chatId) return;
+  const { chat } = event;
+  const who = chat ? peerName(chat) : '';
+
+  switch (event.type) {
+    case 'paid': {
+      const lines = [
+        `💰 Оплата рекламы в директе Threads — ${who}`,
+        checkLine(event.check),
+        ...(event.warnings || []).map((w) => `⚠️ ${tg.esc(w)}`),
+        '',
+        'Чек проверил ИИ по скриншоту — сверьте с МБанком. Если денег нет, снимите рекламу кнопкой «Удалить» под её карточкой.',
+      ];
+      await tg.sendPhoto(chatId, event.image, lines.join('\n').slice(0, 1024));
+      return;
+    }
+    case 'review': {
+      const lines = [
+        `🧾 Чек из директа Threads — ${who} — нужна ваша проверка`,
+        `Почему не принял сам: ${tg.esc(RECEIPT_REASONS[event.reason] || 'модель не смогла прочитать картинку')}`,
+        checkLine(event.check),
+        '',
+        'Человеку сказал, что оплата на проверке.',
+      ];
+      await tg.sendPhoto(
+        chatId,
+        event.image,
+        lines.join('\n').slice(0, 1024),
+        dmKeyboard([
+          [
+            { text: '✅ Оплата есть — публиковать', callback_data: `dmok:${chat.id}` },
+            { text: '❌ Оплаты нет', callback_data: `dmno:${chat.id}` },
+          ],
+        ])
+      );
+      return;
+    }
+    case 'handoff':
+      await tg.sendMessage(
+        chatId,
+        [
+          `🙋 Директ Threads — ${who} просит человека:`,
+          `«${tg.esc(clamp(event.text || '', 600))}»`,
+          '',
+          'Бот в этом разговоре молчит 12 ч — ответьте в Threads сами.',
+        ].join('\n'),
+        dmKeyboard([[{ text: '🤖 Вернуть разговор боту', callback_data: `dmr:${chat.id}` }]])
+      );
+      return;
+    case 'noMbank':
+      await tg.sendMessage(
+        chatId,
+        `💳 ${who} в директе Threads согласился на рекламу, а номер МБанка не задан (MBANK_NUMBER в Render). Пришлите ему реквизиты сами.`
+      );
+      return;
+    case 'forbidden':
+      await tg.sendMessage(
+        chatId,
+        [`🚫 Директ Threads — ${who}: отказал, реклама похожа на запрещённую.`, `«${tg.esc(clamp(event.text || '', 600))}»`].join('\n')
+      );
+      return;
+    case 'refused':
+      await tg.sendMessage(
+        chatId,
+        `🚫 Оплаченную рекламу ${who} из директа не выложил: ${tg.esc(event.reason)}. Деньги получены — договоритесь с ним сами.`
+      );
+      return;
+    case 'publishFailed':
+      await tg.sendMessage(
+        chatId,
+        `⚠️ Оплаченная реклама ${who} из директа не вышла: ${tg.esc(event.error)}. Выложите её сами через /ad — человеку сказал, что администратор в курсе.`
+      );
+      return;
+    case 'bridgeDown':
+      await tg.sendMessage(
+        chatId,
+        '🔌 Автоответчик директа Threads молчит больше 30 минут. Проверьте, что компьютер включён, Chrome открыт, а в Threads вы вошли.'
+      );
+      return;
+    case 'bridgeUp':
+      await tg.sendMessage(chatId, '🔌 Автоответчик директа Threads снова на связи.');
+      return;
+    default:
+      return;
+  }
+}
+
+function agoText(ms) {
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 1) return 'только что';
+  if (minutes < 60) return `${minutes} мин назад`;
+  const hours = Math.round(minutes / 60);
+  return hours < 48 ? `${hours} ч назад` : `${Math.round(hours / 24)} дн назад`;
+}
+
+// /dm — как дела у автоответчика: жив ли мост, заданы ли реквизиты, о чём
+// разговоры. Под списком — кнопки: забрать разговор себе или вернуть боту.
+async function dmStatusText() {
+  const { lastSync, chats } = await dm.status();
+  const lines = ['🤖 Автоответчик директа Threads'];
+  lines.push(
+    lastSync ? `Расширение в Chrome: на связи ${agoText(Date.now() - lastSync)}` : 'Расширение в Chrome: с запуска сервера на связь не выходило'
+  );
+  if (!process.env.DM_BRIDGE_KEY) lines.push('⚠️ Не задан DM_BRIDGE_KEY — мост выключен');
+  lines.push(process.env.MBANK_NUMBER ? '💳 Номер МБанка задан' : '⚠️ Не задан MBANK_NUMBER — реквизиты бот не пришлёт');
+
+  const buttons = [];
+  if (!chats.length) lines.push('', 'Разговоров пока не было.');
+  else lines.push('', 'Разговоры:');
+  for (const [i, chat] of chats.entries()) {
+    const pausedNow = chat.paused_until && new Date(chat.paused_until).getTime() > Date.now();
+    const last = [...(chat.history || [])].reverse().find((h) => h.from === 'them');
+    lines.push(
+      `${i + 1}. ${peerName(chat)} — ${DM_STAGES[chat.stage] || chat.stage}, ${agoText(Date.now() - new Date(chat.updated_at).getTime())}${
+        pausedNow ? ' · ⏸ бот молчит' : ''
+      }`
+    );
+    if (last && last.text) lines.push(`   «${tg.esc(clamp(last.text, 80))}»`);
+    buttons.push(
+      pausedNow
+        ? { text: `▶️ ${i + 1}`, callback_data: `dmr:${chat.id}` }
+        : { text: `⏸ ${i + 1}`, callback_data: `dmp:${chat.id}` }
+    );
+  }
+  if (buttons.length) lines.push('', '⏸ — отвечу сам (бот молчит сутки), ▶️ — вернуть разговор боту.');
+  const rows = [];
+  for (let i = 0; i < buttons.length; i += 5) rows.push(buttons.slice(i, i + 5));
+  return { text: lines.join('\n'), extra: rows.length ? dmKeyboard(rows) : undefined };
+}
+
 // Запускается вместе с ботом (см. telegram/index.js): слежка за рекламой и за
 // ответами в Threads отчитываются в Telegram, поэтому без бота им некуда.
 function startWatchers() {
   social.adTracker.start({ onReport: onAdReport, onWarn: onAdWarn, onDenied: onAdStatsDenied });
   social.leads.start({ onLead, onDenied: onLeadsDenied });
+  dm.start({ publish: publishFromDm, admin: onDmEvent });
+  summary.start((text) => tg.sendMessage(process.env.SOURCE_REPORT_CHAT_ID || adminChat(), text), {
+    extra: pendingLines,
+  });
 }
 
 // Повтор рекламы кнопкой. Выходит тем же постом, что и первый: с файлом

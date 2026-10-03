@@ -57,6 +57,10 @@ function chat() {
       copyMessage: async () => ({ message_id: 2 }),
       downloadFile: async () => Buffer.from('файл'),
       sendVideo: async () => ({ message_id: 3 }),
+      sendPhoto: async (chatId, buffer, caption) => {
+        sent.push(String(caption || ''));
+        return { message_id: 100 + sent.length, photo: [{ file_id: 'фото' }], chat: { id: chatId } };
+      },
     },
     has: (re) => sent.some((t) => re.test(t)),
     count: (re) => sent.filter((t) => re.test(t)).length,
@@ -69,4 +73,64 @@ function chat() {
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-module.exports = { install, at, chat, wait, SRC };
+// ИИ-продавец директа (src/dm) целиком живёт в базе. Тестам бота он нужен
+// только как «есть и молчит».
+function dmStub(extra = {}) {
+  return {
+    start: () => {},
+    onPosted: async () => {},
+    onReport: async () => null,
+    status: async () => ({ lastSync: 0, chats: [] }),
+    approve: async () => 'публикую',
+    reject: async () => 'сказал, что оплаты нет',
+    pause: async () => true,
+    resume: async () => true,
+    ...extra,
+  };
+}
+
+// Счётчики сводки и чёрный список номеров живут в базе (см. feedStats.js и
+// blocklist.js). Тестам бота хватает копилки: что посчитали и какие номера
+// запомнили.
+function statsStub() {
+  const counters = {};
+  const blocked = new Set();
+  const bump = async (key, n = 1) => {
+    counters[key] = (counters[key] || 0) + n;
+  };
+  const phonesIn = (text) =>
+    (String(text || '').match(/\d[\d\s()+\-.]{6,}\d/g) || [])
+      .map((chunk) => chunk.replace(/\D/g, '').replace(/^996|^0/, ''))
+      .filter((digits) => digits.length === 9)
+      .map((digits) => `+996${digits}`);
+  return {
+    counters,
+    blocked,
+    feedStats: {
+      bump,
+      day: async () => ({ ...counters }),
+      today: () => '2026-10-03',
+      reasonOf: (listing) => listing.spam || (listing.abroad ? 'abroad' : 'other'),
+      fail: async () => bump('grp.fail'),
+      lastFailure: () => null,
+      getSetting: async () => null,
+      setSetting: async () => {},
+    },
+    blocklist: {
+      phonesIn,
+      blockedIn: async (text) => phonesIn(text).find((phone) => blocked.has(phone)) || null,
+      add: async (phones) => {
+        for (const phone of phones) blocked.add(phone);
+        return phones.length;
+      },
+      remove: async (phones) => {
+        for (const phone of phones) blocked.delete(phone);
+        return phones.length;
+      },
+      size: async () => blocked.size,
+      DEFAULT_DAYS: 30,
+    },
+  };
+}
+
+module.exports = { install, at, chat, wait, dmStub, statsStub, SRC };

@@ -123,6 +123,28 @@ async function sendVideo(chatId, buffer, caption) {
   return data.result;
 }
 
+// Картинка файлом: чек и фото рекламы из директа Threads приходят не из
+// Telegram, file_id у них нет (см. src/dm). Подпись — до 1024 знаков, в HTML.
+async function sendPhoto(chatId, buffer, caption, extra = {}) {
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  if (caption) {
+    form.append('caption', caption);
+    form.append('parse_mode', 'HTML');
+  }
+  if (extra.reply_markup) form.append('reply_markup', JSON.stringify(extra.reply_markup));
+  form.append('photo', new Blob([buffer], { type: 'image/jpeg' }), 'photo.jpg');
+
+  const res = await fetch(`${BASE}/sendPhoto`, {
+    method: 'POST',
+    body: form,
+    signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(`Telegram sendPhoto: ${data.description || res.status}`);
+  return data.result;
+}
+
 // Копия чужого сообщения — со всем, что в нём было: видео, картинкой, кружком,
 // альбомом. Нужна для рекламы «как есть» (см. publishRawAd в bot.js): своей
 // отправкой мы бы пересобирали контент и теряли то, чего не умеем, а копия
@@ -156,6 +178,7 @@ module.exports = {
   editMessageText,
   answerCallbackQuery,
   sendVideo,
+  sendPhoto,
   copyMessage,
   downloadFile,
   hasToken: () => Boolean(TOKEN),

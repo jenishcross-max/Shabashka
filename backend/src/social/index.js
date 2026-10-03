@@ -871,6 +871,7 @@ module.exports = {
   threadsConfigured: () => threads.isConfigured(),
   adLine: () => video.adLine(),
   accountInsights: (range) => threads.accountInsights(range),
+  threadsPermalink: (id) => threads.permalink(id),
   isPermissionError: (err) => threads.isPermissionError(err),
   BATCH_SIZE,
   RELEASE_INTERVAL_MIN: Math.round(RELEASE_INTERVAL_MS / 60000),

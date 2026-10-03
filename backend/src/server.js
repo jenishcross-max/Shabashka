@@ -13,6 +13,7 @@ const boardRoutes = require('./routes/board');
 const homeRoutes = require('./routes/home');
 const conversationRoutes = require('./routes/conversations');
 const adminRoutes = require('./routes/admin');
+const dmRoutes = require('./routes/dm');
 const telegram = require('./telegram');
 const sourceWatcher = require('./telegram/sourceWatcher');
 const social = require('./social');
@@ -39,6 +40,9 @@ const corsOrigin = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
   : true;
 app.use(cors({ origin: corsOrigin }));
+// Мост к расширению директа Threads — до общего express.json: скриншот чека
+// приходит картинкой и в его лимит в 100 КБ не влезает (см. routes/dm.js).
+app.use('/api/dm', dmRoutes);
 app.use(express.json());
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));

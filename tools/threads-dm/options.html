@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>Шабашка — автоответчик директа</title>
+    <link rel="stylesheet" href="ui.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Автоответчик директа Threads</h1>
+      <p class="muted">
+        Расширение читает директ в этом Chrome и отправляет ответы, а решает, что ответить, сервер Шабашки.
+        Chrome с этим расширением должен быть открыт — пока он закрыт, директ никто не читает.
+      </p>
+
+      <label>Адрес сервера
+        <input id="server" type="url" placeholder="https://shabashka-zvkc.onrender.com" />
+      </label>
+
+      <label>Ключ моста
+        <span class="row">
+          <input id="key" type="text" autocomplete="off" spellcheck="false" />
+          <button id="generate" type="button">Сгенерировать</button>
+        </span>
+      </label>
+      <p class="muted">
+        Тот же ключ впишите в Render: сервис Shabashka → Environment → переменная <code>DM_BRIDGE_KEY</code>.
+        Без него сервер расширение не пустит.
+      </p>
+
+      <label class="check"><input id="enabled" type="checkbox" /> Отвечать в директе</label>
+      <label class="check"><input id="pinTab" type="checkbox" /> Держать для автоответчика отдельную закреплённую вкладку</label>
+      <label>Старые запросы не трогать — старше, часов
+        <input id="maxAgeHours" type="number" min="1" max="720" />
+      </label>
+
+      <div class="row">
+        <button id="save" type="button" class="primary">Сохранить и проверить связь</button>
+        <span id="result"></span>
+      </div>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

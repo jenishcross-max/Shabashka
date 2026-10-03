@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Шабашка — автоответчик директа Threads",
+  "short_name": "Шабашка директ",
+  "version": "1.0.0",
+  "description": "Отвечает в директе Threads от имени Шабашки: реклама, оплата через МБанк, чек, публикация. Думает сервер Шабашки, расширение читает и пишет.",
+  "permissions": ["storage", "alarms", "tabs"],
+  "host_permissions": [
+    "https://www.threads.com/*",
+    "https://www.threads.net/*",
+    "https://shabashka-zvkc.onrender.com/*",
+    "https://*.cdninstagram.com/*",
+    "https://*.fbcdn.net/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.threads.com/*", "https://www.threads.net/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Шабашка — директ",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html"
+}

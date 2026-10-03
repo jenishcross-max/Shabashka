@@ -27,6 +27,10 @@ const extract = require('./extract');
 const tg = require('./api');
 const queue = require('./queue');
 const bot = require('./bot');
+const feedStats = require('./feedStats');
+const blocklist = require('./blocklist');
+const rejected = require('./rejected');
+const spam = require('../spam');
 const { ADMIN_IDS } = require('./notify');
 
 const API_ID = Number(process.env.TELEGRAM_API_ID || 0);
@@ -99,6 +103,51 @@ function firstInAlbum(message) {
   // Альбомы приходят подряд, поэтому помним только последние ключи.
   if (seenGroups.size > 200) seenGroups.delete(seenGroups.values().next().value);
   return true;
+}
+
+// Одно и то же объявление автор рассылает в десяток групп разом и повторяет
+// через пару часов. Карточку-дубль отсекает и imports.create (телефон плюс
+// заголовок за час), но уже после модели — то есть каждый повтор стоил разбора
+// из суточной нормы. Здесь повтор узнаём по самому тексту, до модели: буквы и
+// цифры без эмодзи и пробелов. Живёт в памяти — после перезапуска первый
+// повтор разберётся ещё раз, и это дёшево.
+const DEDUP_MS = Number(process.env.SOURCE_DEDUP_HOURS || 12) * 3600 * 1000;
+const DEDUP_MAX = 3000;
+const seenTexts = new Map();
+
+function textKey(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+    .slice(0, 400);
+}
+
+// true — такой текст уже был недавно. Заодно запоминает новый.
+function repeated(text, now = Date.now()) {
+  const key = textKey(text);
+  if (!key) return false;
+  const at = seenTexts.get(key);
+  if (at && now - at < DEDUP_MS) return true;
+  seenTexts.delete(key);
+  seenTexts.set(key, now);
+  // Map помнит порядок вставки — самые старые ключи в начале.
+  while (seenTexts.size > DEDUP_MAX) seenTexts.delete(seenTexts.keys().next().value);
+  return false;
+}
+
+// Разбор не удался (лимит модели, пост устарел в очереди) — текст забываем:
+// автор повторит его вечером, когда лимит отпустит, и повтор должен дойти до
+// модели, а не отсеяться как уже виденный.
+function forget(text) {
+  seenTexts.delete(textKey(text));
+}
+
+// Номер для чёрного списка — только если он в посте один. Второй номер почти
+// всегда контакт самой группы («по рекламе: …»), и с ним замолчала бы вся
+// группа на месяц.
+function soleNumber(text) {
+  const phones = blocklist.phonesIn(text);
+  return phones.length === 1 ? phones : [];
 }
 
 // Про упёршийся суточный лимит бот молчал: ошибка фоновой задачи уходила в лог
@@ -178,6 +227,35 @@ async function handleMessage(message) {
     return;
   }
 
+  // Номер уже попадался на мусоре (см. blocklist.js) — дальше не смотрим.
+  const blocked = await blocklist.blockedIn(text).catch(() => null);
+  if (blocked) {
+    console.log(`[источник] номер ${blocked} в чёрном списке — пропускаю без разбора`);
+    feedStats.bump('grp.blocked');
+    rejected.add({ text, reason: `номер ${blocked} в чёрном списке`, phones: [blocked] });
+    return;
+  }
+
+  // Сетевой найм и оформление на чужие документы — по словам, до модели (см.
+  // spam.js): и норму бережём, и запасные модели лесенки такое пропускают.
+  // Номер запоминаем: завтра тот же вербовщик напишет другими словами.
+  const junk = spam.check(text);
+  if (junk) {
+    console.log(`[источник] отсеял по словам: ${spam.describe(junk)}`);
+    feedStats.bump(`grp.no.${junk.kind}`);
+    rejected.add({ text, reason: spam.describe(junk), phones: soleNumber(text) });
+    blocklist
+      .add(soleNumber(text), spam.describe(junk))
+      .catch((err) => console.error('[чёрный список] не записал:', err.message));
+    return;
+  }
+
+  if (repeated(text)) {
+    console.log('[источник] этот текст уже был в последние часы — пропускаю без разбора');
+    feedStats.bump('grp.dup');
+    return;
+  }
+
   // В общую очередь разбора (backend/src/telegram/queue.js) — она же держит
   // темп для объявлений из личных сообщений и не даёт улететь в лимит Groq,
   // если из канала и от админа прилетело одновременно. Фоном: то, что админ
@@ -192,6 +270,8 @@ async function handleMessage(message) {
         console.log(
           `[источник] сообщение ${message.id} пролежало ${Math.round(ageMs / 3600000)} ч — уже неактуально, не разбираю`
         );
+        feedStats.bump('grp.stale');
+        forget(text);
         return;
       }
 
@@ -209,6 +289,23 @@ async function handleMessage(message) {
         ? listings.filter((p) => p.is_listing && p.listing_type !== 'other')
         : listings.filter((p) => p.is_listing && FORCE_TYPES.includes(p.listing_type));
 
+      // Что модель (или проверка по словам после неё) не взяла — в сводку, по
+      // причинам. Сетевой найм, пойманный после модели, ещё и в чёрный список.
+      for (const p of listings.filter((item) => !filtered.includes(item))) {
+        const reason = feedStats.reasonOf(p);
+        feedStats.bump(`grp.no.${reason}`);
+        // Отказы «по делу» — в /spam: их модель и слова путают чаще всего.
+        // Обычный шум («не объявление») туда не идёт — его слишком много.
+        if (['mlm', 'drop', 'recruit'].includes(reason)) {
+          rejected.add({ text, reason: p.note || reason, phones: p.spam ? soleNumber(text) : [] });
+        }
+        if (p.spam) {
+          blocklist
+            .add(soleNumber(text), p.note)
+            .catch((err) => console.error('[чёрный список] не записал:', err.message));
+        }
+      }
+
       if (!filtered.length) {
         console.log(`[источник] после фильтра "${FORCE_TYPES.join(',')}" не осталось ни одного — не публикую`);
         return;
@@ -221,6 +318,7 @@ async function handleMessage(message) {
       });
     } catch (err) {
       console.error('Автоимпорт из канала:', err.message);
+      forget(text);
       await noteLimit(err);
       await noteFailure(err);
     }
@@ -318,4 +416,4 @@ async function start() {
   );
 }
 
-module.exports = { start, isConfigured };
+module.exports = { start, isConfigured, handleMessage, repeated };
