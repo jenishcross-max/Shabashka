@@ -73,6 +73,39 @@ const ACCENTS = [
   '#0d9488', '#2563eb', '#4f46e5', '#7c3aed', '#db2777',
 ];
 
+// Тема кадра. Обычная — бумага с цветным акцентом категории. Студенческая —
+// белый текст на синем: её узнают в ленте с первого взгляда, ещё до текста, и
+// в сетке профиля студенческие посты стоят отдельным цветом. boost поднимает
+// прозрачность приглушённых строк: на синем бледно-белое читается хуже, чем
+// бледно-чёрное на бумаге.
+const STUDENT_BLUE = '#1d4ed8';
+const STUDENT_THEME = {
+  bg: STUDENT_BLUE,
+  glow: '#60a5fa',
+  text: '#ffffff',
+  body: '#e0e7ff',
+  head: '#ffffff',
+  headInk: STUDENT_BLUE,
+  meta: '#fde68a',
+  dotCom: '#fde68a',
+  boost: 1.7,
+};
+
+const paperTheme = (accent) => ({
+  bg: COLORS.bg,
+  glow: accent,
+  text: COLORS.text,
+  body: COLORS.body,
+  head: accent,
+  headInk: COLORS.white,
+  meta: accent,
+  dotCom: COLORS.red,
+  boost: 1,
+});
+
+// Приглушённая строка в цвете текста темы.
+const soft = (th, alpha) => rgba(th.text, Math.min(1, alpha * th.boost));
+
 function accentFor(category) {
   const key = String(category || '');
   if (!key) return ACCENTS[0];
@@ -103,13 +136,42 @@ const COLLECTIONS_ONE = {
   board: 'Объявление дня',
 };
 
+// Студенческий выпуск называется так прямо в шапке: кто пролистывает ленту,
+// должен понять «это мне» раньше, чем дочитает заголовок вакансии.
+const STUDENT_COLLECTIONS = {
+  vacancy: 'Вакансии для студентов',
+  order: 'Подработка для студентов',
+  board: 'Для студентов',
+};
+const STUDENT_COLLECTIONS_ONE = {
+  vacancy: 'Вакансия для студентов',
+  order: 'Подработка для студентов',
+  board: 'Для студентов',
+};
+
 // count по умолчанию нулевой, то есть множественное: зовут эту функцию и там,
 // где карточек ещё нет, — например, чтобы назвать очередь, которая только
-// копится («Вакансии дня: 2 из 5»).
-const collectionTitle = (listingType, count = 0) => {
-  const set = count === 1 ? COLLECTIONS_ONE : COLLECTIONS;
-  return set[listingType] || set.order;
+// копится («Вакансии дня: 2 из 5»). Очередь студенческих объявлений называется
+// «vacancy_students» (см. queueKey в social/index.js) — суффикс тоже понимаем.
+const collectionTitle = (listingType, count = 0, { students = false } = {}) => {
+  const [type, suffix] = String(listingType || '').split('_');
+  const forStudents = students || suffix === 'students';
+  const set = forStudents
+    ? count === 1
+      ? STUDENT_COLLECTIONS_ONE
+      : STUDENT_COLLECTIONS
+    : count === 1
+      ? COLLECTIONS_ONE
+      : COLLECTIONS;
+  return set[type] || set.order;
 };
+
+// Ролик или пост студенческий, если студенческое в нём всё: смешивать
+// синие карточки с кремовыми в одном выпуске незачем, и очереди студенческих
+// объявлений собираются отдельно (см. social/index.js).
+const isStudentBatch = (items) =>
+  items.length > 0 &&
+  items.every((item) => item.parsed && item.parsed.for_students && item.listingType !== 'board');
 
 const MONTHS = [
   'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
@@ -455,20 +517,36 @@ function glow(ctx, x, y, r, color, alpha) {
   ctx.fillRect(x - r, y - r, r * 2, r * 2);
 }
 
+// Шапка выпуска: название слева, число справа. «Вакансии дня» влезают с запасом,
+// а «ВАКАНСИЯ ДЛЯ СТУДЕНТОВ» в разрядку наезжала на число. Сначала мельчим
+// название, и только если не помогло — убираем число: название важнее.
+function fitHead(ctx, title, day) {
+  ctx.font = `40px ${SEMI}`;
+  const room = MAXW - ctx.measureText(day).width - 32;
+  let size = 40;
+  ctx.font = `${size}px ${BOLD}`;
+  while (size > 30 && trackedWidth(ctx, title, 5) > room) {
+    size -= 2;
+    ctx.font = `${size}px ${BOLD}`;
+  }
+  return { size, day: trackedWidth(ctx, title, 5) <= room };
+}
+
 // t — время от начала своей карточки, progress — доля всего ролика: полоска
 // вверху показывает, сколько осталось до конца видео, а не до конца карточки.
 function drawListing(ctx, l, t, progress) {
   const g = l.g;
+  const th = l.theme || paperTheme(l.accent);
   // Бумага. Ровный кремовый, а не градиент во всю высоту: цвет в этом макете —
   // акцент (колонтитул, рубрика), и если залить им же фон, акценту негде
   // прозвучать. Подкраска остаётся, но еле слышная — она только снимает
   // ощущение белого листа из принтера.
-  ctx.fillStyle = COLORS.bg;
+  ctx.fillStyle = th.bg;
   ctx.fillRect(0, 0, DW, g.H);
   // Пятна света привязаны к долям высоты, а не к точкам: кадр поста ниже кадра
   // ролика, и по абсолютным отметкам нижнее уехало бы за кромку.
-  glow(ctx, 980 + Math.cos(t * 0.4) * 60, g.H * 0.125 + Math.sin(t * 0.35) * 40, 620, l.accent, 0.1);
-  glow(ctx, 80 + Math.sin(t * 0.3) * 50, g.H * 0.844 + Math.cos(t * 0.32) * 40, 560, l.accent, 0.07);
+  glow(ctx, 980 + Math.cos(t * 0.4) * 60, g.H * 0.125 + Math.sin(t * 0.35) * 40, 620, th.glow, 0.1 * th.boost);
+  glow(ctx, 80 + Math.sin(t * 0.3) * 50, g.H * 0.844 + Math.cos(t * 0.32) * 40, 560, th.glow, 0.07 * th.boost);
 
   // Колонтитул: цветная полоса во всю ширину кадра. Она держит верх так же, как
   // в журнале — шмуцтитул: под ней начинается полоса с объявлением. Рисуем её
@@ -480,7 +558,7 @@ function drawListing(ctx, l, t, progress) {
     ctx.save();
     // Полоса раскрывается слева направо, а не проявляется: в ленте это первое
     // движение кадра, и оно должно читаться как «начали», а не как загрузка.
-    ctx.fillStyle = l.accent;
+    ctx.fillStyle = th.head;
     ctx.fillRect(0, g.SAFE_TOP, DW * e, HEAD_H);
     ctx.save();
     ctx.beginPath();
@@ -488,13 +566,16 @@ function drawListing(ctx, l, t, progress) {
     ctx.clip();
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-    ctx.font = `40px ${BOLD}`;
-    ctx.fillStyle = COLORS.white;
+    if (!l.head) l.head = fitHead(ctx, l.collection.toUpperCase(), l.day);
+    ctx.font = `${l.head.size}px ${BOLD}`;
+    ctx.fillStyle = th.headInk;
     tracked(ctx, l.collection.toUpperCase(), PAD, g.SAFE_TOP + HEAD_H / 2, 5);
-    ctx.textAlign = 'right';
-    ctx.font = `40px ${SEMI}`;
-    ctx.fillStyle = rgba(COLORS.white, 0.85);
-    ctx.fillText(l.day, DW - PAD, g.SAFE_TOP + HEAD_H / 2);
+    if (l.head.day) {
+      ctx.textAlign = 'right';
+      ctx.font = `40px ${SEMI}`;
+      ctx.fillStyle = rgba(th.headInk, 0.85);
+      ctx.fillText(l.day, DW - PAD, g.SAFE_TOP + HEAD_H / 2);
+    }
     ctx.restore();
 
     // Прогресс ролика — светлой линией по нижней кромке колонтитула. Отдельной
@@ -502,7 +583,7 @@ function drawListing(ctx, l, t, progress) {
     // У поста progress нулевой, и линия не рисуется вовсе: показывать «сколько
     // осталось» на картинке нечего.
     ctx.globalAlpha = e;
-    ctx.fillStyle = rgba(COLORS.white, 0.85);
+    ctx.fillStyle = rgba(th.headInk, 0.85);
     ctx.fillRect(0, g.HEAD_BOTTOM - 7, DW * Math.min(1, progress), 7);
     ctx.restore();
   }
@@ -522,7 +603,7 @@ function drawListing(ctx, l, t, progress) {
   ctx.textAlign = 'right';
   ctx.textBaseline = 'alphabetic';
   ctx.font = `420px ${BOLD}`;
-  ctx.fillStyle = rgba(COLORS.text, 0.04);
+  ctx.fillStyle = soft(th, 0.04);
   ctx.fillText(String(l.index + 1).padStart(2, '0'), DW - 40, g.TEXT_BOTTOM + 20);
   ctx.restore();
 
@@ -537,7 +618,7 @@ function drawListing(ctx, l, t, progress) {
     ctx.save();
     ctx.globalAlpha = e;
     ctx.font = `${l.metaSize}px ${SEMI}`;
-    ctx.fillStyle = l.accent;
+    ctx.fillStyle = th.meta;
     tracked(ctx, l.meta, PAD, g.META_TOP + (1 - e) * 20, 5);
 
     // «1 / 3» на другом краю той же строки. Без счётчика зритель не знает, что
@@ -545,7 +626,7 @@ function drawListing(ctx, l, t, progress) {
     if (l.total > 1) {
       ctx.font = `36px ${SEMI}`;
       ctx.textAlign = 'right';
-      ctx.fillStyle = rgba(COLORS.text, 0.35);
+      ctx.fillStyle = soft(th, 0.35);
       ctx.fillText(`${l.index + 1} / ${l.total}`, DW - PAD, g.META_TOP + (1 - e) * 20);
     }
     ctx.restore();
@@ -555,13 +636,13 @@ function drawListing(ctx, l, t, progress) {
   // всю полосу. Прочерчивается слева направо вслед за колонтитулом.
   const rp = at(t, 0.3, 0.5);
   if (rp > 0) {
-    ctx.fillStyle = COLORS.text;
+    ctx.fillStyle = th.text;
     ctx.fillRect(PAD, g.RULE_Y, MAXW * easeOut(rp), 6);
   }
 
   // Заголовок — строка за строкой, а не разом: взгляд успевает зацепиться
   ctx.font = `${l.titleSize}px ${BOLD}`;
-  ctx.fillStyle = COLORS.text;
+  ctx.fillStyle = th.text;
   l.title.forEach((line, i) =>
     rise(ctx, line, PAD, l.titleY + i * l.titleLine, at(t, 0.45 + i * 0.12, 0.5)));
 
@@ -584,11 +665,11 @@ function drawListing(ctx, l, t, progress) {
     ctx.scale(s, s);
     // «Цена договорная» — не сумма, и держать её тем же плотным контуром
     // нельзя: она кричала бы громче заголовка.
-    ctx.strokeStyle = l.amount ? COLORS.text : rgba(COLORS.text, 0.3);
+    ctx.strokeStyle = l.amount ? th.text : soft(th, 0.3);
     ctx.lineWidth = 6;
     roundRect(ctx, 0, -PRICE_H / 2, l.priceWidth, PRICE_H, 0, true);
     ctx.font = `${l.priceSize}px ${BOLD}`;
-    ctx.fillStyle = l.amount ? COLORS.text : rgba(COLORS.text, 0.5);
+    ctx.fillStyle = l.amount ? th.text : soft(th, 0.5);
     ctx.textBaseline = 'middle';
     ctx.fillText(price, 36, 2);
     ctx.restore();
@@ -597,12 +678,12 @@ function drawListing(ctx, l, t, progress) {
   // Тонкая линейка перед текстом — пара к жирной сверху
   const dp = at(t, 1.5, 0.5);
   if (dp > 0) {
-    ctx.fillStyle = rgba(COLORS.text, 0.2);
+    ctx.fillStyle = soft(th, 0.2);
     ctx.fillRect(PAD, l.dividerY, MAXW * easeOut(dp), 2);
   }
 
   ctx.font = `${l.descSize}px ${REGULAR}`;
-  ctx.fillStyle = COLORS.body;
+  ctx.fillStyle = th.body;
   l.description.forEach((line, i) =>
     rise(ctx, line, PAD, l.descriptionY + i * l.descLine, at(t, 1.75 + i * 0.07, 0.45), 30)
   );
@@ -615,7 +696,7 @@ function drawListing(ctx, l, t, progress) {
     const e = easeOut(fp);
     ctx.save();
     ctx.globalAlpha = e;
-    ctx.fillStyle = COLORS.text;
+    ctx.fillStyle = th.text;
     ctx.fillRect(PAD, g.FOOTER_TOP + 40, MAXW * e, 4);
 
     const lp = at(t, 2.6, 0.6);
@@ -630,17 +711,123 @@ function drawListing(ctx, l, t, progress) {
 
     const textX = PAD + 108 + 32;
     ctx.font = `58px ${BOLD}`;
-    ctx.fillStyle = COLORS.text;
+    ctx.fillStyle = th.text;
     ctx.fillText('Шабашка', textX, g.FOOTER_TOP + 96);
-    ctx.fillStyle = COLORS.red;
+    ctx.fillStyle = th.dotCom;
     ctx.fillText('.com', textX + ctx.measureText('Шабашка').width, g.FOOTER_TOP + 96);
     ctx.font = `34px ${REGULAR}`;
-    ctx.fillStyle = rgba(COLORS.text, 0.5);
+    ctx.fillStyle = soft(th, 0.5);
     ctx.fillText('заказы и вакансии Кыргызстана', textX, g.FOOTER_TOP + 166);
     ctx.restore();
   }
 
   ctx.restore();
+}
+
+// Первый экран студенческого выпуска: «ВАКАНСИЯ ДЛЯ СТУДЕНТОВ» крупно, белым
+// по синему, и только потом сама вакансия. В ленте ролик решают смотреть за
+// секунду, и эта секунда должна сказать студенту «это тебе». С этого же экрана
+// Instagram берёт обложку для сетки профиля (см. coverAt в createRenderer), так
+// что и там студенческие посты видно сразу.
+const INTRO_SECONDS = 1.8;
+// К этой секунде первый экран нарисован целиком — его и берём на обложку.
+const INTRO_COVER_AT = 1.2;
+
+// Шапочка выпускника — рисуем кодом, как и логотип: эмодзи на канвасе Render
+// без цветного шрифта превратился бы в пустой квадрат.
+const CAP_BOARD = new Path2D('M50 8 L100 30 L50 52 L0 30 Z');
+const CAP_BODY = new Path2D('M20 42 V64 C20 76 80 76 80 64 V42 L50 56 Z');
+
+function cap(ctx, x, y, size, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(size / 100, size / 100);
+  ctx.fillStyle = color;
+  ctx.fill(CAP_BOARD);
+  ctx.globalAlpha *= 0.85;
+  ctx.fill(CAP_BODY);
+  ctx.globalAlpha /= 0.85;
+  // Кисточка
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(50, 30);
+  ctx.lineTo(90, 40);
+  ctx.lineTo(90, 70);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(90, 74, 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// Первая строка экрана — что за работа: одна вакансия, несколько, подработка
+// или вперемешку.
+function introLines(items) {
+  const types = new Set(items.map((item) => item.listingType));
+  const head =
+    types.size > 1 ? 'РАБОТА' : types.has('order') ? 'ПОДРАБОТКА' : items.length > 1 ? 'ВАКАНСИИ' : 'ВАКАНСИЯ';
+  return [head, 'ДЛЯ СТУДЕНТОВ'];
+}
+
+// Крупнейший кегль, при котором строка встаёт в поля полосы.
+function fitSize(ctx, text, start, min) {
+  let size = start;
+  ctx.font = `${size}px ${BOLD}`;
+  while (size > min && ctx.measureText(text).width > MAXW) {
+    size -= 4;
+    ctx.font = `${size}px ${BOLD}`;
+  }
+  return size;
+}
+
+function drawIntro(ctx, t, intro) {
+  ctx.fillStyle = STUDENT_BLUE;
+  ctx.fillRect(0, 0, DW, DH);
+  // Светлее к центру: взгляд сам идёт туда, где надпись.
+  const bg = ctx.createRadialGradient(DW / 2, DH / 2 - 120, 0, DW / 2, DH / 2 - 120, DH * 0.7);
+  bg.addColorStop(0, '#3b82f6');
+  bg.addColorStop(0.6, rgba(STUDENT_BLUE, 0.4));
+  bg.addColorStop(1, rgba(STUDENT_BLUE, 0));
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, DW, DH);
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+
+  // Всё важное — между 600 и 1300 по вертикали: сетка профиля вырезает из
+  // ролика середину 4:5 и срезает по 285 точек сверху и снизу.
+  const cp = at(t, 0, 0.5);
+  if (cp > 0) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, cp * 2);
+    const s = 0.6 + easeBack(cp) * 0.4;
+    ctx.translate(PAD + 80, 640);
+    ctx.scale(s, s);
+    ctx.rotate((1 - easeOut(cp)) * -0.3);
+    cap(ctx, -80, -80, 160, COLORS.white);
+    ctx.restore();
+  }
+
+  const [top, bottom] = intro.lines;
+  ctx.fillStyle = COLORS.white;
+  const topSize = fitSize(ctx, top, 150, 90);
+  rise(ctx, top, PAD, 900, at(t, 0.15, 0.5), 60);
+  const bottomSize = fitSize(ctx, bottom, 150, 80);
+  ctx.font = `${bottomSize}px ${BOLD}`;
+  rise(ctx, bottom, PAD, 900 + Math.max(topSize, bottomSize) * 1.08, at(t, 0.3, 0.5), 60);
+
+  // Жёлтая линейка — тот же журнальный приём, что открывает полосу объявления.
+  const lp = at(t, 0.55, 0.5);
+  if (lp > 0) {
+    ctx.fillStyle = '#fde68a';
+    ctx.fillRect(PAD, 1110, MAXW * easeOut(lp), 10);
+  }
+
+  ctx.font = `46px ${SEMI}`;
+  ctx.fillStyle = rgba(COLORS.white, 0.9);
+  rise(ctx, `Шабашка.com · ${intro.day}`, PAD, 1200, at(t, 0.7, 0.5), 30);
 }
 
 // Концовка одинаковая для всех роликов: её задача не рассказать про заказ,
@@ -757,38 +944,58 @@ function createRenderer(items, opts = {}) {
   const ctx = canvas.getContext('2d');
   // Заголовок выпуска берём по первому объявлению: пачка собирается из одного
   // типа (см. очереди в social/index.js), так что он общий на весь ролик.
+  // Студенческий выпуск — синий и с первым экраном «для студентов»
+  // (см. drawIntro). opts.students — подсказка снаружи; по умолчанию решаем по
+  // самим объявлениям.
+  const students = opts.students !== undefined ? Boolean(opts.students) : isStudentBatch(items);
+  const theme = students ? STUDENT_THEME : null;
   const collection =
-    opts.collection || collectionTitle(items[0] && items[0].listingType, items.length);
+    opts.collection || collectionTitle(items[0] && items[0].listingType, items.length, { students });
   const day = opts.day || dayLabel();
   const cta = opts.cta || DEFAULT_CTA;
   const cards = items.map(({ parsed, listingType }, i) => ({
     ...layout(ctx, parsed, listingType, i, items.length, REEL),
     collection,
     day,
+    theme,
   }));
 
+  const intro = students ? { lines: introLines(items), day } : null;
+  const introSeconds = intro ? INTRO_SECONDS : 0;
   const outroAt = cards.length * CARD_SECONDS;
-  const seconds = totalSeconds(cards.length);
+  const seconds = introSeconds + totalSeconds(cards.length);
+  // Обложка для сетки профиля: у студенческого выпуска — первый экран, у
+  // обычного — нарисованная до конца первая карточка.
+  const coverAt = intro ? INTRO_COVER_AT : COVER_AT;
 
   return {
     seconds,
     frames: Math.round(seconds * FPS),
+    coverMs: Math.round(coverAt * 1000),
     frame(t) {
       ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
       const progress = Math.min(1, t / seconds);
+      // Время от начала карточек: первый экран идёт до них.
+      const tt = t - introSeconds;
 
-      if (t >= outroAt) {
+      if (tt < 0) {
+        drawIntro(ctx, t, intro);
+      } else if (tt >= outroAt) {
         // Под кругом остаётся застывший последний кадр карточки, а не пустота.
         drawListing(ctx, cards[cards.length - 1], CARD_SECONDS, progress);
-        wipeIn(ctx, at(t, outroAt, WIPE_SECONDS), () => drawOutro(ctx, t - outroAt, cta));
+        wipeIn(ctx, at(tt, outroAt, WIPE_SECONDS), () => drawOutro(ctx, tt - outroAt, cta));
       } else {
-        const idx = Math.floor(t / CARD_SECONDS);
-        const local = t - idx * CARD_SECONDS;
+        const idx = Math.floor(tt / CARD_SECONDS);
+        const local = tt - idx * CARD_SECONDS;
         if (idx > 0 && local < WIPE_SECONDS) {
           // Переход между объявлениями: предыдущее ещё на экране, новое
           // проступает изнутри и там же начинает свои появления с нуля.
           drawListing(ctx, cards[idx - 1], CARD_SECONDS, progress);
           wipeIn(ctx, local / WIPE_SECONDS, () => drawListing(ctx, cards[idx], local, progress));
+        } else if (idx === 0 && intro && local < WIPE_SECONDS) {
+          // Первый экран уступает первой вакансии тем же кругом.
+          drawIntro(ctx, INTRO_SECONDS, intro);
+          wipeIn(ctx, local / WIPE_SECONDS, () => drawListing(ctx, cards[0], local, progress));
         } else {
           drawListing(ctx, cards[idx], local, progress);
         }
@@ -822,10 +1029,14 @@ function renderStill({ parsed, listingType }, opts = {}) {
   ensureFonts();
   const canvas = createCanvas(STILL_W, STILL_H);
   const ctx = canvas.getContext('2d');
+  // Студенческое — в той же синей теме, что и ролик: в сетке профиля пост
+  // картинкой не должен выглядеть иначе, чем ролик того же выпуска.
+  const students = isStudentBatch([{ parsed, listingType }]);
   const card = {
     ...layout(ctx, parsed, listingType, 0, 1, STILL),
-    collection: opts.collection || collectionTitle(listingType, 1),
+    collection: students ? collectionTitle(listingType, 1, { students }) : opts.collection || collectionTitle(listingType, 1),
     day: opts.day || dayLabel(),
+    theme: students ? STUDENT_THEME : null,
   };
   // progress = 0: полоска «сколько осталось» на картинке не рисуется.
   drawListing(ctx, card, COVER_AT, 0);
@@ -839,5 +1050,5 @@ function stillName() {
 
 module.exports = {
   createRenderer, renderStill, stillName,
-  totalSeconds, collectionTitle, dayLabel, W, H, FPS, COVER_AT,
+  totalSeconds, collectionTitle, isStudentBatch, dayLabel, W, H, FPS, COVER_AT, INTRO_SECONDS,
 };

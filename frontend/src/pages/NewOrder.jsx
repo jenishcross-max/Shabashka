@@ -6,6 +6,7 @@ import { useCities } from '../useCities';
 import Logo from '../components/Logo';
 import FormatIcon from '../components/FormatIcon';
 import CityAutocomplete from '../components/CityAutocomplete';
+import { StudentCheckbox } from '../components/StudentField';
 
 export default function NewOrder() {
   const { token, user } = useAuth();
@@ -21,6 +22,7 @@ export default function NewOrder() {
     work_format: 'offline',
     budget: '',
     whatsapp_phone: user?.phone || '',
+    for_students: false,
   });
   const [showPhone, setShowPhone] = useState(true);
   const [error, setError] = useState('');
@@ -177,6 +179,11 @@ export default function NewOrder() {
               onChange={(e) => setForm((f) => ({ ...f, budget: e.target.value }))}
             />
           </label>
+          <StudentCheckbox
+            kind="order"
+            checked={form.for_students}
+            onChange={(v) => setForm((f) => ({ ...f, for_students: v }))}
+          />
           <div className="field">
             <label className="filter-checkbox">
               <input type="checkbox" checked={showPhone} onChange={(e) => setShowPhone(e.target.checked)} />

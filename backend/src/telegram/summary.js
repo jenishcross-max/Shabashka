@@ -3,6 +3,7 @@ const extract = require('./extract');
 const queue = require('./queue');
 const feedStats = require('./feedStats');
 const social = require('../social');
+const { num, plural, viewsWord, clamp, clock } = require('./format');
 
 // Сводка в Telegram вместо потока «кто что опубликовал».
 //
@@ -24,21 +25,6 @@ function parseHours(value) {
 const HOURS = parseHours(process.env.SUMMARY_HOURS);
 
 const bishkekHour = (now = Date.now()) => new Date(now + 6 * HOUR_MS).getUTCHours();
-
-// Числа по-русски: «1 842», а не «1842». Пробел — неразрывный, как и положено
-// разделителю разрядов, так что в узком чате число не разорвётся.
-const num = (n) => Number(n || 0).toLocaleString('ru-RU');
-
-function clamp(text, max) {
-  const s = String(text || '');
-  return s.length <= max ? s : `${s.slice(0, max).replace(/\s+\S*$/, '')}…`;
-}
-
-// «14:05» по Бишкеку — Render живёт по UTC, и без часового пояса срок уезжал
-// бы на шесть часов назад.
-function clock(ms) {
-  return new Date(ms).toLocaleTimeString('ru-RU', { timeZone: 'Asia/Bishkek', hour: '2-digit', minute: '2-digit' });
-}
 
 // Короткое имя модели для строки в чате: «qwen3.8-27b», а не «qwen/qwen3.8-27b».
 const shortModel = (model) => String(model).split('/').pop();
@@ -64,14 +50,6 @@ function reserveOnly(models) {
   return regular.every((m) => m.gone || m.until) && !reserve.gone && !reserve.until;
 }
 
-function viewsWord(n) {
-  const mod100 = n % 100;
-  const mod10 = n % 10;
-  if (mod100 >= 11 && mod100 <= 14) return 'просмотров';
-  if (mod10 === 1) return 'просмотр';
-  if (mod10 >= 2 && mod10 <= 4) return 'просмотра';
-  return 'просмотров';
-}
 
 // Почему посты из групп не вышли — в том порядке, в каком это интересно:
 // сначала то, что фильтр поймал по делу, потом обычный шум.
@@ -169,6 +147,8 @@ async function build({ now = Date.now(), previous = null, tech = false, title = 
       grpOk ? ` — 💼 ${num(n('grp.ok.vacancy'))} · 🧰 ${num(n('grp.ok.order'))} · 📌 ${num(n('grp.ok.board'))}` : ''
     }`
   );
+  // Сколько из вышедшего сегодня — для студентов (из групп, руками и рекламой).
+  if (n('students')) lines.push(`🎓 Для студентов: ${num(n('students'))}`);
   const cut = CUT_REASONS.map(([key, label]) => [label, n(key)]).filter(([, v]) => v);
   const cutTotal = cut.reduce((sum, [, v]) => sum + v, 0);
   if (cutTotal) lines.push(`Отсеял: ${num(cutTotal)} — ${cut.map(([label, v]) => `${label} ${num(v)}`).join(' · ')}`);
@@ -182,6 +162,15 @@ async function build({ now = Date.now(), previous = null, tech = false, title = 
   if (n('adm.ok')) lines.push('', `✍️ Прислано вручную: ${num(n('adm.ok'))}`);
 
   lines.push('', ...(await adLines(n('ad.ok'))));
+  // Реклама в группах Telegram (см. adGroups.js): постов, а не реклам — одна
+  // реклама уходит в несколько групп.
+  if (n('adgrp.ok') || n('adgrp.fail')) {
+    lines.push(
+      `👥 В группах Telegram: ${num(n('adgrp.ok'))} ${plural(n('adgrp.ok'), ['пост', 'поста', 'постов'])}${
+        n('adgrp.fail') ? ` · не ушло ${num(n('adgrp.fail'))}` : ''
+      }`
+    );
+  }
 
   lines.push(
     '',

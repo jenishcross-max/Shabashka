@@ -31,7 +31,8 @@ function dedupHash(parsed) {
 const DEDUP_WINDOW = '1 hour';
 
 // Возвращает null, если такое объявление уже приходило в последний час.
-async function create({ source, rawText, parsed, chatId }) {
+// ad — платная реклама: она попадёт в список «📣 Реклама» в меню бота.
+async function create({ source, rawText, parsed, chatId, ad = false }) {
   const hash = dedupHash(parsed);
   if (hash) {
     const { rows: dup } = await db.query(
@@ -43,10 +44,10 @@ async function create({ source, rawText, parsed, chatId }) {
     if (dup.length) return null;
   }
   const { rows } = await db.query(
-    `INSERT INTO imported_listings (source, raw_text, parsed, dedup_hash, tg_chat_id)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO imported_listings (source, raw_text, parsed, dedup_hash, tg_chat_id, is_ad)
+     VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING id`,
-    [source, rawText || null, parsed, hash, chatId]
+    [source, rawText || null, parsed, hash, chatId, Boolean(ad)]
   );
   return rows[0].id;
 }
@@ -235,8 +236,8 @@ async function publish(id) {
   if (parsed.listing_type === 'vacancy') {
     const inserted = await db.query(
       `INSERT INTO vacancies
-        (user_id, title, description, category, employment_type, city, address, work_format, experience, salary_min, whatsapp_phone, is_imported)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true) RETURNING id`,
+        (user_id, title, description, category, employment_type, city, address, work_format, experience, salary_min, whatsapp_phone, is_imported, for_students)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, $12) RETURNING id`,
       [
         userId,
         parsed.title,
@@ -249,6 +250,7 @@ async function publish(id) {
         parsed.experience,
         parsed.budget,
         parsed.phone,
+        Boolean(parsed.for_students),
       ]
     );
     const vacancyId = inserted.rows[0].id;
@@ -263,8 +265,8 @@ async function publish(id) {
   }
 
   const inserted = await db.query(
-    `INSERT INTO orders (user_id, title, description, category, city, address, work_format, budget, whatsapp_phone, is_imported)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true) RETURNING id`,
+    `INSERT INTO orders (user_id, title, description, category, city, address, work_format, budget, whatsapp_phone, is_imported, for_students)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10) RETURNING id`,
     [
       userId,
       parsed.title,
@@ -275,6 +277,7 @@ async function publish(id) {
       parsed.work_format,
       parsed.budget,
       parsed.phone,
+      Boolean(parsed.for_students),
     ]
   );
   const orderId = inserted.rows[0].id;
@@ -312,6 +315,43 @@ async function recentPublished(source = 'channel', limit = 10) {
     [source, limit]
   );
   return rows;
+}
+
+// Платная реклама для меню бота: сначала новые. Только та, что дошла до сайта
+// (published_at), — отказы разбора, за которыми реклама вышла «как есть»
+// второй карточкой, список не засоряют. Снятая остаётся в списке: по ней
+// всё ещё спрашивают, сколько она набрала. Кампания в Threads — последняя по
+// карточке, вместе с суммой просмотров по всем её постам.
+async function listAds({ limit = 6, offset = 0 } = {}) {
+  const { rows } = await db.query(
+    `SELECT i.id, i.parsed, i.status, i.created_at, i.published_at,
+            c.id AS campaign_id, c.goal, c.reported_at,
+            COALESCE(p.views, 0)::int AS views, COALESCE(p.posts, 0)::int AS posts,
+            COALESCE(g.sent, 0)::int AS groups_sent, COALESCE(g.total, 0)::int AS groups_total
+       FROM imported_listings i
+       LEFT JOIN LATERAL (
+         SELECT id, goal, reported_at FROM ad_campaigns WHERE import_id = i.id ORDER BY id DESC LIMIT 1
+       ) c ON true
+       LEFT JOIN LATERAL (
+         SELECT SUM(views) AS views, COUNT(*) AS posts FROM ad_posts WHERE campaign_id = c.id
+       ) p ON true
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*) FILTER (WHERE status IN ('sent', 'deleted')) AS sent, COUNT(*) AS total
+           FROM ad_group_posts WHERE import_id = i.id
+       ) g ON true
+      WHERE i.is_ad AND i.published_at IS NOT NULL
+      ORDER BY i.created_at DESC, i.id DESC
+      LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+  return rows;
+}
+
+async function countAds() {
+  const { rows } = await db.query(
+    'SELECT COUNT(*)::int AS n FROM imported_listings WHERE is_ad AND published_at IS NOT NULL'
+  );
+  return rows[0].n;
 }
 
 // Снять уже опубликованное объявление с сайта. Подтверждения перед публикацией
@@ -354,5 +394,7 @@ module.exports = {
   applyDefaults,
   countThreadsPosts,
   recentPublished,
+  listAds,
+  countAds,
   remove,
 };

@@ -133,4 +133,44 @@ function statsStub() {
   };
 }
 
-module.exports = { install, at, chat, wait, dmStub, statsStub, SRC };
+// Реклама в группах Telegram (см. telegram/adGroups.js) — это юзер-сессия и
+// база. Тестам бота хватает записи: что поставили в очередь, что сняли.
+function adGroupsStub(extra = {}) {
+  const queued = [];
+  const removed = [];
+  return {
+    queued,
+    removed,
+    start: async () => {},
+    isOwn: () => false,
+    enqueue: async (args) => {
+      queued.push(args);
+      return { queued: 0, silent: true };
+    },
+    forImport: async () => [],
+    channelViews: async () => null,
+    unpublish: async (importId) => {
+      removed.push(importId);
+      return { cancelled: 0, deleted: 0, failed: [] };
+    },
+    overview: async () => ({
+      enabled: true,
+      connected: false,
+      account: null,
+      separate: false,
+      restrictedUntil: null,
+      groups: [],
+      gapSec: 40,
+      cooldownMin: 60,
+      brokenHours: 24,
+    }),
+    setEnabled: async () => {},
+    toggle: async () => null,
+    TARGETS: [],
+    GAP_MS: 40000,
+    COOLDOWN_MS: 60 * 60 * 1000,
+    ...extra,
+  };
+}
+
+module.exports = { install, at, chat, wait, dmStub, statsStub, adGroupsStub, SRC };

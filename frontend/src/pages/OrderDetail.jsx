@@ -10,6 +10,7 @@ import SafetyNote from '../components/SafetyNote';
 import { SkeletonOrderDetail } from '../components/Skeleton';
 import { useMeta } from '../useMeta';
 import { viewWord } from '../plural';
+import { StudentBadge } from '../components/StudentField';
 
 function waLink(phone, title) {
   const digits = phone.replace(/[^\d]/g, '');
@@ -110,6 +111,7 @@ export default function OrderDetail() {
           <span className={`badge status-${order.status}`}>
             {order.status === 'open' ? 'Открыт' : 'Закрыт'}
           </span>
+          {!!order.for_students && <StudentBadge />}
           {!!order.pinned && <span className="badge pinned">🔥 Топ</span>}
           {!!order.is_example && <span className="badge badge-example">Пример</span>}
           <FavoriteButton type="order" id={order.id} className="order-detail-fav" />

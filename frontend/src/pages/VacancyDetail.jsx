@@ -12,6 +12,7 @@ import SafetyNote from '../components/SafetyNote';
 import { SkeletonOrderDetail } from '../components/Skeleton';
 import { useMeta, useJsonLd } from '../useMeta';
 import { viewWord } from '../plural';
+import { StudentBadge } from '../components/StudentField';
 
 // schema.org JobPosting ожидает свои значения employmentType, а не наши внутренние коды.
 const SCHEMA_EMPLOYMENT_TYPE = {
@@ -151,6 +152,7 @@ export default function VacancyDetail() {
           <span className={`badge status-${vacancy.status}`}>
             {vacancy.status === 'open' ? 'Открыта' : 'Закрыта'}
           </span>
+          {!!vacancy.for_students && <StudentBadge />}
           {!!vacancy.pinned && <span className="badge pinned">🔥 Топ</span>}
           {!!vacancy.is_example && <span className="badge badge-example">Пример</span>}
           <FavoriteButton type="vacancy" id={vacancy.id} className="order-detail-fav" />

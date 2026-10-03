@@ -9,6 +9,7 @@ import { pageList } from '../pagination';
 import { SkeletonBox, SkeletonOrderCard, SkeletonFilterList } from '../components/Skeleton';
 import { useMeta } from '../useMeta';
 import { orderWord } from '../plural';
+import { StudentFilter } from '../components/StudentField';
 
 const SORTS = [
   { value: 'new', label: 'Сначала новые' },
@@ -37,6 +38,8 @@ export default function AllOrders() {
   const [budgetMax, setBudgetMax] = useState('');
   const [hasBudget, setHasBudget] = useState(false);
   const [workFormat, setWorkFormatState] = useState('');
+  const [students, setStudents] = useState(false);
+  const [studentCount, setStudentCount] = useState(0);
   const [sort, setSort] = useState('new');
   const [page, setPage] = useState(1);
 
@@ -56,9 +59,10 @@ export default function AllOrders() {
     setSelectedCategories(cat ? [cat] : []);
     setCity(searchParams.get('city') || '');
     setQ(searchParams.get('q') || '');
+    setStudents(searchParams.get('students') === '1');
     setPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams.get('category'), searchParams.get('city'), searchParams.get('q')]);
+  }, [searchParams.get('category'), searchParams.get('city'), searchParams.get('q'), searchParams.get('students')]);
 
   function setWorkFormat(value) {
     setPage(1);
@@ -68,7 +72,10 @@ export default function AllOrders() {
 
   useEffect(() => {
     api.categories().then(({ categories }) => setCategories(categories));
-    api.categoryCounts().then(({ counts }) => setCounts(counts));
+    api.categoryCounts().then(({ counts, students }) => {
+      setCounts(counts);
+      setStudentCount(students || 0);
+    });
   }, []);
 
   useEffect(() => {
@@ -84,6 +91,7 @@ export default function AllOrders() {
           budgetMax,
           hasBudget,
           workFormat,
+          students: students ? 1 : '',
           sort,
           page,
           limit: 8,
@@ -96,7 +104,7 @@ export default function AllOrders() {
         .finally(() => setLoading(false));
     }, 250);
     return () => clearTimeout(handle);
-  }, [q, city, selectedCategories, budgetMin, budgetMax, hasBudget, workFormat, sort, page]);
+  }, [q, city, selectedCategories, budgetMin, budgetMax, hasBudget, workFormat, students, sort, page]);
 
   function toggleCategory(c) {
     setPage(1);
@@ -136,6 +144,14 @@ export default function AllOrders() {
 
       <div className="orders-layout">
         <aside className="orders-filters">
+          <StudentFilter
+            checked={students}
+            count={studentCount}
+            onChange={(v) => {
+              setPage(1);
+              setStudents(v);
+            }}
+          />
           <div className="admin-card">
             <h3 className="filter-heading">Формат работы</h3>
             <div className="format-toggle">

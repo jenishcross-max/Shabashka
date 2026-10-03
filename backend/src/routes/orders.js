@@ -10,6 +10,7 @@ const { ORDER_FIELDS } = require('../sqlFields');
 const { invalidate } = require('../cache');
 const { canCreateListing } = require('../emailGate');
 const { abroadWork } = require('../abroad');
+const { forStudents } = require('../students');
 const bump = require('../bump');
 
 const router = express.Router();
@@ -55,7 +56,11 @@ router.get(
       "SELECT category, COUNT(*)::int AS count FROM orders WHERE status = 'open' GROUP BY category"
     );
     const counts = Object.fromEntries(rows.map((r) => [r.category, r.count]));
-    res.json({ counts });
+    // Сколько открытых подходят студентам — число рядом с фильтром «Для студентов».
+    const students = (
+      await db.query("SELECT COUNT(*)::int AS n FROM orders WHERE status = 'open' AND for_students")
+    ).rows[0].n;
+    res.json({ counts, students });
   })
 );
 
@@ -89,6 +94,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const { city, q, sort, budgetMin, budgetMax, workFormat } = req.query;
     const hasBudget = req.query.hasBudget === 'true';
+    const students = req.query.students === '1' || req.query.students === 'true';
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(48, Math.max(1, parseInt(req.query.limit, 10) || 12));
     const offset = (page - 1) * limit;
@@ -124,6 +130,7 @@ router.get(
     if (hasBudget) {
       clauses.push('orders.budget IS NOT NULL');
     }
+    if (students) clauses.push('orders.for_students');
     const minVal = Number(budgetMin);
     if (budgetMin && Number.isFinite(minVal)) {
       clauses.push(`orders.budget >= ${addParam(minVal)}`);
@@ -265,6 +272,14 @@ async function validateOrderFields(body, { partial }) {
     else result.budget = budgetValue;
   }
 
+  // «Подходит студентам» — галочка в форме. Не поставил, но написал в тексте
+  // «можно студентам» — ставим сами, так же как боту (см. students.js). При
+  // правке слушаемся галочки: её снимают осознанно.
+  if (body.for_students !== undefined) result.for_students = body.for_students === true || body.for_students === 'true';
+  if (!partial && !result.for_students) {
+    result.for_students = forStudents([result.title, result.description].filter(Boolean).join('\n'));
+  }
+
   // Только работа в Кыргызстане (см. abroad.js). При правке смотрим то, что
   // пришло: заграница в одном изменённом поле — тоже заграница.
   const abroad = abroadWork([result.title, result.description, result.city].filter(Boolean).join('\n'), {
@@ -290,8 +305,8 @@ router.post(
     if (errors.length) return res.status(400).json({ error: errors[0] });
 
     const inserted = await db.query(
-      `INSERT INTO orders (user_id, title, description, category, city, address, work_format, budget, whatsapp_phone)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+      `INSERT INTO orders (user_id, title, description, category, city, address, work_format, budget, whatsapp_phone, for_students)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
       [
         req.user.id,
         result.title,
@@ -302,6 +317,7 @@ router.post(
         result.work_format,
         result.budget,
         result.whatsapp_phone,
+        result.for_students,
       ]
     );
 
@@ -366,6 +382,7 @@ router.patch(
       'work_format',
       'budget',
       'whatsapp_phone',
+      'for_students',
     ];
     const hasEditableField = editableKeys.some((k) => req.body?.[k] !== undefined);
     if (hasEditableField) {

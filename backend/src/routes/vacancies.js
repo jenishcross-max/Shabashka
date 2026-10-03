@@ -12,6 +12,7 @@ const { VACANCY_FIELDS } = require('../sqlFields');
 const { invalidate } = require('../cache');
 const { canCreateListing } = require('../emailGate');
 const { abroadWork } = require('../abroad');
+const { forStudents } = require('../students');
 const bump = require('../bump');
 
 const router = express.Router();
@@ -47,7 +48,11 @@ router.get(
       "SELECT category, COUNT(*)::int AS count FROM vacancies WHERE status = 'open' GROUP BY category"
     );
     const counts = Object.fromEntries(rows.map((r) => [r.category, r.count]));
-    res.json({ counts });
+    // Сколько открытых подходят студентам — число рядом с фильтром «Для студентов».
+    const students = (
+      await db.query("SELECT COUNT(*)::int AS n FROM vacancies WHERE status = 'open' AND for_students")
+    ).rows[0].n;
+    res.json({ counts, students });
   })
 );
 
@@ -55,6 +60,7 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const { city, q, sort, employmentType } = req.query;
+    const students = req.query.students === '1' || req.query.students === 'true';
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(48, Math.max(1, parseInt(req.query.limit, 10) || 12));
     const offset = (page - 1) * limit;
@@ -76,6 +82,7 @@ router.get(
       const placeholders = categories.map((c) => addParam(c)).join(',');
       clauses.push(`vacancies.category IN (${placeholders})`);
     }
+    if (students) clauses.push('vacancies.for_students');
     if (employmentType && EMPLOYMENT_VALUES.includes(employmentType)) {
       clauses.push(`vacancies.employment_type = ${addParam(employmentType)}`);
     }
@@ -238,6 +245,13 @@ async function validateVacancyFields(body, { partial }) {
     if (salary_max && (!Number.isFinite(value) || value < 0)) errors.push('Некорректная максимальная зарплата');
     else result.salary_max = value;
   }
+  // «Подходит студентам» — галочка в форме. Не поставил, но написал в тексте
+  // «можно студентам» — ставим сами, так же как боту (см. students.js). При
+  // правке слушаемся галочки: её снимают осознанно.
+  if (body.for_students !== undefined) result.for_students = body.for_students === true || body.for_students === 'true';
+  if (!partial && !result.for_students) {
+    result.for_students = forStudents([result.title, result.description, result.requirements, result.conditions, result.schedule].filter(Boolean).join('\n'));
+  }
   if (result.salary_min != null && result.salary_max != null && result.salary_min > result.salary_max) {
     errors.push('Минимальная зарплата не может быть больше максимальной');
   }
@@ -267,8 +281,8 @@ router.post(
     const inserted = await db.query(
       `INSERT INTO vacancies
         (user_id, title, description, category, employment_type, city, address, work_format,
-         experience, requirements, conditions, salary_min, salary_max, schedule, whatsapp_phone)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
+         experience, requirements, conditions, salary_min, salary_max, schedule, whatsapp_phone, for_students)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
       [
         req.user.id,
         result.title,
@@ -285,6 +299,7 @@ router.post(
         result.salary_max,
         result.schedule,
         result.whatsapp_phone,
+        result.for_students,
       ]
     );
 
@@ -354,6 +369,7 @@ router.patch(
       'salary_max',
       'schedule',
       'whatsapp_phone',
+      'for_students',
     ];
     const hasEditableField = editableKeys.some((k) => req.body?.[k] !== undefined);
     if (hasEditableField) {

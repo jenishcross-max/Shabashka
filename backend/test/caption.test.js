@@ -112,3 +112,14 @@ test('пометку рекламы и тег можно выключить сл
   assert.equal(optional('AD_LABEL', 'Реклама'), 'Реклама', 'не задано — по умолчанию');
   process.env = saved;
 });
+
+test('студенческое объявление названо так первой строкой — и в Instagram, и в Threads', () => {
+  const studentItem = { ...item, listingType: 'vacancy', parsed: { ...parsed, for_students: true } };
+  const caption = video.caption([studentItem], null, {});
+  assert.match(caption, /^📋 Вакансии для студентов/, 'шапка подписи — название выпуска');
+  assert.match(caption, /🎓 Вакансия для студентов: Нужен сантехник/);
+  assert.match(caption, /#работадлястудентов|#подработкадлястудентов|#студентыбишкек/);
+  assert.match(video.threadsText(studentItem.parsed, 'vacancy', 'шабашка.com/v/1'), /^🎓 Вакансия для студентов/);
+  assert.match(video.threadsText({ ...parsed, for_students: true }, 'order', ''), /^🎓 Подработка для студентов/);
+  assert.doesNotMatch(video.caption([item], null, {}), /студент/, 'обычное — без пометки');
+});

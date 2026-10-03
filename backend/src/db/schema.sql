@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS orders (
   pinned         INTEGER NOT NULL DEFAULT 0,
   bumped_at      TIMESTAMPTZ, -- когда объявление последний раз подняли в списке (см. /bump)
   is_imported    BOOLEAN NOT NULL DEFAULT false, -- взято ботом из чужого чата, автор не проверен
+  for_students   BOOLEAN NOT NULL DEFAULT false, -- работодатель сказал, что подходит студентам (см. students.js)
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -104,6 +105,7 @@ CREATE TABLE IF NOT EXISTS vacancies (
   pinned          INTEGER NOT NULL DEFAULT 0,
   bumped_at       TIMESTAMPTZ, -- когда вакансию последний раз подняли в списке (см. /bump)
   is_imported     BOOLEAN NOT NULL DEFAULT false, -- взято ботом из чужого чата, автор не проверен
+  for_students    BOOLEAN NOT NULL DEFAULT false, -- работодатель сказал, что подходит студентам (см. students.js)
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -167,7 +169,8 @@ CREATE TABLE IF NOT EXISTS imported_listings (
   threads_post_id    TEXT,
   instagram_media_id TEXT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  published_at  TIMESTAMPTZ  -- когда ушло на сайт; по нему считается счётчик за день
+  published_at  TIMESTAMPTZ, -- когда ушло на сайт; по нему считается счётчик за день
+  is_ad         BOOLEAN NOT NULL DEFAULT false -- платная реклама: по ней список «📣 Реклама» в меню бота
 );
 
 -- «Доска» — быстрые объявления, которые живут сутки и пропадают сами. Шесть
@@ -341,3 +344,32 @@ CREATE TABLE IF NOT EXISTS blocked_phones (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   expires_at TIMESTAMPTZ NOT NULL
 );
+
+-- Реклама в группах Telegram — тех же, из которых бот берёт вакансии (см.
+-- telegram/adGroups.js). Строка — один пост одной рекламы в одной группе: и
+-- очередь (pending), и итог (sent / failed / skipped / deleted). В базе, а не
+-- в памяти: по группам реклама расходится по одной, с паузами, и перезапуск
+-- Render посреди рассылки не должен её обрывать.
+CREATE TABLE IF NOT EXISTS ad_group_posts (
+  id            SERIAL PRIMARY KEY,
+  import_id     INTEGER NOT NULL,     -- реклама (imported_listings)
+  chat_id       BIGINT NOT NULL,      -- куда говорить о сбоях
+  target        TEXT NOT NULL,        -- группа, как она записана в AD_GROUPS / SOURCE_CHANNEL
+  title         TEXT,                 -- название группы на момент отправки
+  text          TEXT NOT NULL,
+  media_kind    TEXT,                 -- image | video | NULL
+  media_file_id TEXT,                 -- файл рекламодателя в Telegram (Bot API)
+  media_meta    JSONB,                -- размеры и длительность ролика
+  status        TEXT NOT NULL DEFAULT 'pending',
+  not_before    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  attempts      INTEGER NOT NULL DEFAULT 0,
+  message_id    BIGINT,
+  link          TEXT,
+  views         INTEGER,              -- только у каналов: в группах Telegram просмотры не считает
+  note          TEXT,                 -- почему не ушло или ушло не так (без картинки)
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  sent_at       TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_ad_group_posts_due ON ad_group_posts(not_before) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_ad_group_posts_import ON ad_group_posts(import_id);

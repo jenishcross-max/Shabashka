@@ -12,7 +12,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { install, dmStub, statsStub, at, chat } = require('./helpers/stub');
+const { install, dmStub, statsStub, at, chat, adGroupsStub } = require('./helpers/stub');
 
 // Час ожидания превращается в доли секунды: проверяем поведение, а не сроки.
 const realSetTimeout = global.setTimeout;
@@ -31,7 +31,10 @@ const rows = [];
 let rowSeq = 0;
 let parse = async () => [];
 
+const groups = adGroupsStub();
+
 const requireSrc = install({
+  [at('telegram/adGroups.js')]: groups,
   [at('telegram/api.js')]: tg.api,
   [at('telegram/notify.js')]: { ADMIN_IDS: new Set(['1']), isAllowed: () => true, notifyAdmins: async () => {} },
   [at('telegram/extract.js')]: {
@@ -222,4 +225,49 @@ test('после перезапуска отложенная реклама во
 
   assert.equal(published.at(-1), 'Официанты в кофейню', 'объявление всё-таки вышло');
   assert.equal(rows.length, 0, 'и строка убрана — второй раз не выйдет');
+});
+
+test('реклама уходит и в группы Telegram — тем текстом, что прислали', async () => {
+  reset();
+  groups.queued.length = 0;
+  groups.enqueue = async (args) => {
+    groups.queued.push(args);
+    return { queued: 3, lastAt: Date.now() + 2 * 60 * 1000 };
+  };
+  await say('/ad_fast Требуются раннеры на ночную смену, 1500 сом за смену. Ватс ап 0500 16 06 33');
+  await realWait(60);
+  assert.equal(groups.queued.length, 1, tg.dump());
+  assert.equal(groups.queued[0].importId, 7);
+  assert.match(groups.queued[0].text, /^Требуются раннеры/, 'без команды /ad_fast');
+  assert.ok(tg.has(/👥 Группы Telegram: 3 группы, по одной с паузами — последняя ≈ в/), tg.dump());
+
+  // После разбора — одним постом на сообщение, сколько бы вакансий в нём ни было.
+  reset();
+  groups.queued.length = 0;
+  const vacancy = (title) => ({
+    is_listing: true,
+    listing_type: 'vacancy',
+    title,
+    description: title,
+    city: 'Бишкек',
+    category: 'Общепит',
+    phone: '+996500160633',
+    note: '',
+  });
+  parse = async () => [vacancy('Бариста'), vacancy('Повар')];
+  const text = 'Кофейне нужны бариста и повар, 1500 сом за смену. Ватс ап 0500 16 06 33';
+  await say(`/ad ${text}`);
+  await realWait(200);
+  assert.equal(published.length, 2, tg.dump());
+  assert.equal(groups.queued.length, 1, 'одна реклама — один пост в группе');
+  assert.equal(groups.queued[0].text, text);
+});
+
+test('группы не настроены — про них в отчёте ни слова', async () => {
+  reset();
+  groups.enqueue = async () => ({ queued: 0, silent: true });
+  await say('/ad_fast Требуются раннеры на ночную смену, 1500 сом за смену. Ватс ап 0500 16 06 33');
+  await realWait(60);
+  assert.ok(tg.has(/Реклама, контент выложен как есть/), tg.dump());
+  assert.ok(!tg.has(/Группы Telegram|В группы Telegram/));
 });

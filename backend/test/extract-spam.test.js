@@ -75,3 +75,15 @@ test('пост, который админ вернул из /spam, второй 
   assert.equal(car.is_listing, false);
   assert.equal(car.forbidden, true);
 });
+
+test('«можно студентам» в тексте — пометка для студентов; у доски её не бывает', async () => {
+  reply = [
+    { is_listing: true, listing_type: 'vacancy', title: 'Официант', description: 'Можно студентам, гибкий график', phone: '0700111333' },
+    { is_listing: true, listing_type: 'board', title: 'Сдаю комнату', description: 'Студентам скидка', phone: '0700111444' },
+    { is_listing: true, listing_type: 'order', title: 'Раздать листовки', description: 'Подойдёт студентам, 1000 сом', phone: '0700111555' },
+  ];
+  const [vacancy, board, order] = await extract.fromText('пачка');
+  assert.equal(vacancy.for_students, true);
+  assert.equal(board.for_students, false);
+  assert.equal(order.for_students, true);
+});

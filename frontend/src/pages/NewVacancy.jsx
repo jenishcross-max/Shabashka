@@ -6,6 +6,7 @@ import { useCities } from '../useCities';
 import Logo from '../components/Logo';
 import FormatIcon from '../components/FormatIcon';
 import CityAutocomplete from '../components/CityAutocomplete';
+import { StudentCheckbox } from '../components/StudentField';
 
 export default function NewVacancy() {
   const { token, user } = useAuth();
@@ -29,6 +30,7 @@ export default function NewVacancy() {
     salary_max: '',
     schedule: '',
     whatsapp_phone: user?.phone || '',
+    for_students: false,
   });
   const [showPhone, setShowPhone] = useState(true);
   const [error, setError] = useState('');
@@ -262,6 +264,11 @@ export default function NewVacancy() {
               onChange={(e) => setForm((f) => ({ ...f, schedule: e.target.value }))}
             />
           </label>
+          <StudentCheckbox
+            kind="vacancy"
+            checked={form.for_students}
+            onChange={(v) => setForm((f) => ({ ...f, for_students: v }))}
+          />
           <div className="field">
             <label className="filter-checkbox">
               <input type="checkbox" checked={showPhone} onChange={(e) => setShowPhone(e.target.checked)} />

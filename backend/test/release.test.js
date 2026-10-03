@@ -133,3 +133,18 @@ test('/now выпускает названный тип, не дожидаясь
   assert.deepEqual(await lastReel(), ['Срочная вакансия']);
   assert.equal(social.flushNow('board'), 0, 'пустой тип — нечего выпускать');
 });
+
+test('студенческие вакансии ждут ролика отдельно — их выпуск синий, с первым экраном «для студентов»', async () => {
+  // После прошлого теста в очереди остался «Срочный заказ» — выпускаем его.
+  social.flushNow('order');
+  await settle();
+  const student = (title) => ({ ...listing(title), for_students: true });
+  const result = await social.shareListing(student('Официант, можно студентам'), 'vacancy', 'шабашка.com/x', { chatId: 1 });
+  await share('Повар', 'vacancy');
+  assert.equal(result.collection, 'Вакансии для студентов', 'в ответе выпуск назван своим именем');
+  assert.deepEqual(byType(), { vacancy_students: 1, vacancy: 1 });
+
+  assert.equal(social.flushNow('vacancy_students'), 1, '/now умеет и студенческую очередь');
+  assert.deepEqual(await lastReel(), ['Официант, можно студентам'], 'без обычной вакансии в том же ролике');
+  assert.deepEqual(byType(), { vacancy: 1 });
+});

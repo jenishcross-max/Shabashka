@@ -6,6 +6,7 @@ const tg = require('./api');
 const { ADMIN_IDS, isAllowed, notifyAdmins } = require('./notify');
 const extract = require('./extract');
 const { abroadWork } = require('../abroad');
+const students = require('../students');
 const imports = require('./imports');
 const deferred = require('./deferred');
 const queue = require('./queue');
@@ -17,6 +18,9 @@ const feedStats = require('./feedStats');
 const blocklist = require('./blocklist');
 const summary = require('./summary');
 const rejected = require('./rejected');
+const adGroups = require('./adGroups');
+const menu = require('./menu');
+const { num, plural, viewsWord, clamp, clock, whenText, agoText } = require('./format');
 const { money } = require('../money');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
 const EXPERIENCE_LEVELS = require('../experienceLevels');
@@ -64,8 +68,7 @@ function prettyLink(link) {
 function publicText(parsed, listingType, siteLink) {
   const isVacancy = listingType === 'vacancy';
   const isBoard = listingType === 'board';
-  const label = isVacancy ? '💼 Вакансия' : isBoard ? '📌 Объявление' : '🧰 Заказ';
-  const lines = [`${label}: ${parsed.title || 'Без заголовка'}`, ''];
+  const lines = [`${students.label(listingType, parsed)}: ${parsed.title || 'Без заголовка'}`, ''];
 
   // У записки на доске нет категории — там остаётся один город
   const meta = (isBoard ? [parsed.city] : [parsed.category, parsed.city]).filter(Boolean).join(' · ');
@@ -84,14 +87,6 @@ function publicText(parsed, listingType, siteLink) {
   if (siteLink) lines.push('', siteLink);
 
   return lines.join('\n');
-}
-
-// Обрезаем длинное описание: в сообщение Telegram влезает 4096 символов, и
-// один разговорчивый заказ не должен ронять всю карточку ошибкой 400. Режем до
-// экранирования — иначе можно разрубить пополам «&amp;» и получить битый HTML.
-function clamp(text, max) {
-  if (text.length <= max) return text;
-  return `${text.slice(0, max).replace(/\s+\S*$/, '')}…`;
 }
 
 // Соцсети публикуются уже после того, как объявление ушло на сайт: Threads —
@@ -523,6 +518,13 @@ const DIGEST_MIN = 3;
 // потратит место в суточной квоте Instagram.
 const FLUSH_WORDS = new Set(['выпусти', 'выпускай', 'публикуй']);
 
+function topPrompt() {
+  return [
+    `🎬 Соберу ролик из ${digestRepo.SIZE} случайных объявлений с сайта за ${digestRepo.DAYS} дня`,
+    'и в конце позову на сайт. Что берём?',
+  ].join('\n');
+}
+
 function digestMenu() {
   return {
     reply_markup: {
@@ -533,11 +535,13 @@ function digestMenu() {
 
 // Адрес объявления на сайте — тот же, что и в карточке после публикации:
 // у записки на доске своей страницы нет, ведём на доску с якорем.
-function listingLink(listingType, id) {
+function listingUrl(listingType, id) {
   if (!SITE_URL) return '';
   const path = listingType === 'board' ? `board#p${id}` : `${LISTING_PATHS[listingType]}/${id}`;
-  return prettyLink(`${SITE_URL}/${path}`);
+  return `${SITE_URL}/${path}`;
 }
+
+const listingLink = (listingType, id) => prettyLink(listingUrl(listingType, id));
 
 async function makeDigest(chatId, listingType) {
   const { items, total } = await digestRepo.pick(listingType);
@@ -587,7 +591,12 @@ function flushMenu(byType) {
         byType.map((q) => ({
           // Число на кнопке — не украшение: от него зависит, стоит ли выпускать
           // сейчас, и без него пришлось бы держать в голове ответ /stats.
-          text: `${TYPE_LABELS[q.listingType] || q.listingType} ${q.count}`,
+          // Студенческая очередь — «vacancy_students» (см. queueKey в social).
+          text: `${
+            q.listingType.endsWith('_students')
+              ? `🎓 ${TYPE_LABELS[q.listingType.split('_')[0]] || q.listingType}`
+              : TYPE_LABELS[q.listingType] || q.listingType
+          } ${q.count}`,
           callback_data: `fl:${q.listingType}`,
         })),
       ],
@@ -610,7 +619,7 @@ async function flushQueue(chatId, listingType) {
   await tg.sendMessage(
     chatId,
     [
-      `🎬 Собираю «${tg.esc(collection)}» — ${sent} ${tg.esc(digestRepo.word(listingType, sent))}.`,
+      `🎬 Собираю «${tg.esc(collection)}» — ${sent} ${tg.esc(digestRepo.word(listingType.split('_')[0], sent))}.`,
       'Ролик пришлю сюда и выложу в Instagram.',
     ].join('\n')
   );
@@ -765,11 +774,15 @@ async function publishOne(chatId, id, parsed, priority = false, { quiet = false 
 
 // Что в сообщении есть, кроме текста. Нужно только рекламе: обычное объявление
 // бот берёт со скриншота, а видео и гифку разобрать нечем в принципе.
+// Размеры и длительность ролика нужны группам Telegram: юзер-сессия заливает
+// файл заново, и без них ролик показался бы квадратиком (см. adGroups.js).
+const videoOf = (v) => ({ kind: 'video', fileId: v.file_id, width: v.width, height: v.height, duration: v.duration });
+
 function mediaOf(message) {
   const mime = message.document ? String(message.document.mime_type || '') : '';
-  if (message.video) return { kind: 'video', fileId: message.video.file_id };
+  if (message.video) return videoOf(message.video);
   // Гифка в Telegram — это mp4 без звука, Instagram примет её так же, как ролик.
-  if (message.animation) return { kind: 'video', fileId: message.animation.file_id };
+  if (message.animation) return videoOf(message.animation);
   if (mime.startsWith('video/')) return { kind: 'video', fileId: message.document.file_id };
 
   const photo = photoFileId(message);
@@ -835,6 +848,7 @@ async function adFields(text, classify) {
     budget: '',
     work_format: 'offline',
   };
+  byHand.for_students = byHand.listing_type !== 'board' && students.forStudents(text);
   if (!classify) return byHand;
 
   try {
@@ -872,12 +886,13 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
   if (text.length > 15) {
     const parsed = await adFields(text, classify);
     listingType = parsed.listing_type;
-    id = await imports.create({ source: 'telegram', rawText: text, parsed, chatId });
+    id = await imports.create({ source: 'telegram', rawText: text, parsed, chatId, ad: true });
     if (id) {
       ready = (await imports.applyDefaults(parsed)).parsed;
       await imports.setParsed(id, ready);
       const published = await imports.publish(id);
       feedStats.bump('ad.ok');
+      if (parsed.for_students) feedStats.bump('students');
       listingType = published.type;
       const path =
         published.type === 'board' ? `board#p${published.id}` : `${LISTING_PATHS[published.type]}/${published.id}`;
@@ -977,6 +992,14 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
     );
   }
 
+  // В группы Telegram, из которых бот берёт вакансии (см. adGroups.js), — тем
+  // же текстом и файлом. Только то, что вышло на сайт: повтор в тот же час и
+  // реклама без текста туда не идут.
+  if (id) {
+    const line = groupsLine(await queueGroups(id, chatId, text, media));
+    if (line) lines.push(line);
+  }
+
   const sent = await tg.sendMessage(
     chatId,
     // «Как есть» — про сам контент: ролик и макет уходят такими, какими их
@@ -995,6 +1018,23 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
   );
   if (id) await imports.setCard(id, chatId, sent.message_id);
   return { id, siteLink: shown };
+}
+
+// Поставить рекламу в группы Telegram. Ошибка базы рекламу не роняет: на
+// сайте и в канале она к этому моменту уже есть.
+function queueGroups(importId, chatId, text, media = null) {
+  return adGroups.enqueue({ importId, chatId, text, media }).catch((err) => ({ queued: 0, reason: err.message }));
+}
+
+// Строка отчёта про группы. silent — групп нет вовсе (автоимпорт не настроен):
+// тогда и говорить не о чем.
+function groupsLine(result) {
+  if (!result || result.silent) return '';
+  if (!result.queued) return `👥 В группы Telegram не ушло: ${tg.esc(result.reason)}`;
+  const n = result.queued;
+  return `👥 Группы Telegram: ${n} ${plural(n, ['группа', 'группы', 'групп'])}, по одной с паузами${
+    n > 1 ? ` — последняя ≈ в ${clock(result.lastAt)}` : ''
+  }. Итог — в «📣 Реклама»`;
 }
 
 // Отказ по загранице (см. abroad.js). Причину показываем со словом, на котором
@@ -1050,8 +1090,9 @@ async function handleParsed(chatId, listings, { source, rawText, priority = fals
   }
 
   let published = 0;
+  let firstId = null;
   for (const parsed of real) {
-    const id = await imports.create({ source, rawText, parsed, chatId });
+    const id = await imports.create({ source, rawText, parsed, chatId, ad: priority });
     if (id === null && quiet) {
       feedStats.bump('grp.dup');
       continue;
@@ -1081,7 +1122,9 @@ async function handleParsed(chatId, listings, { source, rawText, priority = fals
     try {
       const type = await publishOne(chatId, id, parsed, priority, { quiet });
       if (!priority) feedStats.bump(source === 'channel' ? `grp.ok.${type}` : 'adm.ok');
+      if (parsed.for_students) feedStats.bump('students');
       published += 1;
+      if (!firstId) firstId = id;
     } catch (err) {
       // Одно неудачное объявление не должно ронять всю пачку из сообщения.
       if (quiet) {
@@ -1099,6 +1142,12 @@ async function handleParsed(chatId, listings, { source, rawText, priority = fals
   // Реклама в сводке — одна на сообщение, сколько бы вакансий модель в ней ни
   // разглядела: «кафе ищет бариста, повара и техничку» — это одна реклама.
   if (priority && published) feedStats.bump('ad.ok');
+  // И в группы Telegram — тоже одним постом на сообщение, тем текстом, каким
+  // его написал рекламодатель, а не нашими карточками по одной на вакансию.
+  if (priority && firstId && rawText) {
+    const line = groupsLine(await queueGroups(firstId, chatId, rawText));
+    if (line) await tg.sendMessage(chatId, line).catch(() => {});
+  }
   // Сколько объявлений вышло — по этому числу реклама решает, не пора ли
   // выкладывать как есть (см. adJob в onMessage).
   return published;
@@ -1353,6 +1402,189 @@ function photoFileId(message) {
   return null;
 }
 
+// Справка. Первой частью едут кнопки внизу экрана: по /start их и ждут.
+async function sendHelp(chatId) {
+  // Двумя сообщениями: одним справка не влезает в 4096 знаков Telegram. Делим
+  // по смыслу — как публикую и какие есть команды, — а не где пришлось.
+  const help = [
+    [
+      '☰ Меню — кнопки внизу экрана и /menu: реклама с просмотрами, сводка,',
+      'посты из групп, группы для рекламы. Команды ниже работают и так.',
+      '',
+      '👋 Пересылай сообщение из чата или кидай текст объявления.',
+      'Публикую сразу, ничего не переспрашивая: объявление уходит на сайт,',
+      'в Telegram-канал и роликом в Instagram и Threads. Если объявлений в сообщении',
+      'несколько — опубликую каждое.',
+      '',
+      '🖼 Скриншоты я не читаю: картинка стоит вдвое дороже разбора и съедает',
+      'суточную норму, а объявления в чатах всё равно пишут текстом. Пришли текст —',
+      'разберу точнее, и за день выйдет вдвое больше объявлений.',
+      '',
+      'Заказ и вакансия становятся карточкой на сайте. Всё остальное — продажа дома',
+      'или машины, аренда, «делаем ремонт под ключ», поиск работы для себя —',
+      'уходит на 📌 доску: там объявление живёт сутки, ролик и пост в канале',
+      'при этом делаются точно так же.',
+      '',
+      'Чего не хватает — дописываю сам (город → Бишкек, категория → Другое)',
+      'и пишу об этом в ответе. В ответ присылаю текст объявления целиком,',
+      'как он ушёл на сайт, и кнопку 🗑 «Удалить» — прочитал, и если',
+      'в разбор попало лишнее, сразу убрал. Снимает она разом с сайта,',
+      'из канала и из Threads; на ролик в Instagram даёт ссылку —',
+      'его Meta через API удалять не даёт.',
+      '',
+      'В соцсети объявление уходит не мгновенно, и это нарочно: в Threads —',
+      `по одному, но не чаще раза в ${social.THREADS_INTERVAL_MIN} минут (иначе он ловит антиспам),`,
+      `в Instagram — роликом раз в ${social.RELEASE_INTERVAL_MIN} минут, по ${social.BATCH_SIZE} объявления в каждом,`,
+      'с названием по типу: «Вакансии дня», «Заказы дня», «Объявления дня».',
+      '',
+      'Почему не сразу и не по одному: полсотни почти одинаковых роликов в сутки',
+      'Instagram читает как рассылку и перестаёт показывать их тем, кто на нас',
+      'не подписан. По расписанию выходит 8–10 постов в день — столько же, сколько',
+      'у аккаунта, который ведут руками, — а объявлений в них едет втрое больше.',
+      'Компанию объявление при этом не ждёт: подошло время — ролик уезжает хоть',
+      'с одной карточкой. Про каждый напишу отдельно, когда дойдёт очередь.',
+      'Не дожидаться расписания — /now.',
+    ],
+    [
+      '/ad — платная реклама. Пришлите её следующим сообщением или сразу вместе',
+      'с командой: «/ad Открылся салон…», а к картинке или видео — подписью.',
+      'Такое объявление идёт вне очереди (разбор, Threads, ролик) и не',
+      'отбраковывается отсевом — кроме запрещённого. Под неё отложена последняя',
+      'модель разбора: посты из групп её не трогают, и когда они выберут',
+      'суточную норму остальных, реклама всё равно разберётся.',
+      '',
+      'Рекламой можно прислать что угодно: готовый ролик, гифку, макет картинкой.',
+      'Файл уйдёт в канал и в Instagram своим видом, без нашего макета, а подпись',
+      'разберу как обычное объявление — вакансия попадёт в вакансии, разовая',
+      'работа в заказы, остальное на доску. Не разберу подпись — повешу запиской',
+      'на доску (заголовок — первая строка, телефон — первый номер из текста).',
+      'Номер в тексте не обязателен, но без него на сайте не будет кнопки WhatsApp.',
+      'Файл тяжелее 20 МБ Telegram боту не отдаёт — такой ролик сожмите заранее.',
+      '',
+      '/ad_fast — то же самое, но без разбора. Нужна, когда суточный лимит модели',
+      'выбран: «вне очереди» тогда не помогает — дорожки общие, и реклама ждёт',
+      'освобождения вместе со всеми. По этой команде объявление уходит на сайт,',
+      'в канал и на площадки сразу. Тип определю по словам («требуются» плюс',
+      'разговор про оплату — вакансия, иначе доска), заголовок соберу из первых',
+      'строк. Города, категории и зарплаты в карточке не будет — их называет',
+      'модель, а к ней мы не идём. Промежутки между постами остаются: они держат',
+      `антиспам Threads (${social.THREADS_INTERVAL_MIN} минут) и часовой лимит Instagram, и снимать их нельзя —`,
+      'за залп Threads блокирует на часы. Если суточная норма Instagram занята,',
+      'ролик всё равно соберу и пришлю сюда файлом — выложите руками.',
+      '',
+      '/now — выпустить то, что почему-то ещё стоит в очереди, не дожидаясь своего',
+      'хода. Работает и словом: напишите «выпусти», «выпускай» или «публикуй».',
+      '',
+      'Если ролик не ушёл в Instagram (у Meta часто рвётся соединение, а на бесплатном',
+      'сервере сборка видео иногда не влезает в память), то же объявление уедет',
+      'обычным постом с картинкой — тот же макет, та же подпись, просто без видео.',
+      'Об этом напишу в отчёте. Если не прошла и картинка, пришлю сам ролик и кнопку',
+      '🔁 «Попробовать опубликовать ещё раз» — нажал, и он поедет заново, без пересборки.',
+      '',
+      'Пачку объявлений можно кинуть разом: поставлю в очередь и разберу по одному',
+      '(бесплатный Groq успевает около двух разборов в минуту на ключ).',
+      '',
+      'Если лимиты разбора выбраны, объявление не пропадает: откладываю его и',
+      'возвращаюсь сам, когда лимит отпустит — присылать заново не нужно.',
+      'Отложенное живёт в памяти бота, поэтому переживает ожидание, но не',
+      'перезапуск сервера.',
+      '',
+      `/top — ролик-подборка с сайта: ${digestRepo.SIZE} случайных объявлений за ${digestRepo.DAYS} дня`,
+      '(«Топ-5 вакансий»), в конце — сколько их всего ждёт на сайте. Спрошу, что брать:',
+      'заказы, вакансии или объявления с доски. Пригодится в тихий день, когда новых',
+      'объявлений нет, а лента не должна простаивать.',
+      '',
+      '/stats — сводка за сегодня: сколько вышло из групп и сколько отсеяно',
+      '(и почему), реклама с просмотрами, площадки, модели разбора и очереди.',
+      `Сама сводка приходит ${summary.HOURS.length ? `в ${summary.HOURS.map((h) => `${h}:00`).join(', ')}` : 'только по /stats'}.`,
+      '',
+      '/limits — суточные нормы Instagram и Threads числами от самой Meta:',
+      'сколько уже потрачено и сколько осталось.',
+    ],
+    [
+      '📣 Реклама в Threads',
+      '',
+      'Реклама уходит в Threads с картинкой: своей, если прислали, или',
+      'карточкой объявления. Ролик в Instagram у неё свой, без попутчиков',
+      'и без расписания.',
+      '',
+      `За каждой рекламой слежу. Через ${Math.round(social.adTracker.WARN_AFTER_MS / 3600000)} ч смотрю, как она идёт, и если к`,
+      `суткам до ${social.adTracker.GOAL} просмотров может не дотянуть — пишу и даю кнопку`,
+      '🔁 «Поднять в Threads»: реклама выйдет ещё раз, и просмотры сложатся.',
+      `Поднимать можно до ${social.adTracker.MAX_BOOSTS} раз. Через сутки присылаю отчёт — просмотры,`,
+      'лайки, ответы и выполнена ли гарантия. Его можно переслать рекламодателю.',
+      '',
+      '/ads — вся реклама, сначала новая. Нажмите на любую — просмотры и лайки',
+      'в Threads, где она вышла, что с группами, отчёт для рекламодателя,',
+      'кнопки «Поднять» и «Снять».',
+      '/threads — статистика аккаунта за сутки и неделю, в среднем на пост:',
+      'этими числами удобно отвечать тем, кто спрашивает про рекламу.',
+      '',
+      'Если под постом в Threads спрашивают про рекламу («сколько стоит',
+      'разместить», «прайс»), пришлю этот ответ сюда со ссылкой — чтобы заявка',
+      'не потерялась среди вопросов про вакансии.',
+      '',
+      '👥 Реклама в группах Telegram',
+      '',
+      'Каждая реклама уходит и в группы, из которых я беру вакансии, — тем же',
+      'текстом и с той же картинкой или роликом. Пишет аккаунт, который читает',
+      `группы: по одной группе, с паузой ≈${Math.round(adGroups.GAP_MS / 1000)} с, и в одну группу не чаще раза`,
+      `в ${Math.round(adGroups.COOLDOWN_MS / 60000)} мин — иначе Telegram примет это за рассылку и ограничит аккаунт.`,
+      'Группу, где писать нельзя (только админы, бан), пропускаю сутки и пишу почему.',
+      '«Удалить» под рекламой снимает её и из групп.',
+      '',
+      '/groups — куда уходит реклама: выключить группу или всю рассылку.',
+    ],
+    [
+      '🤖 Директ Threads',
+      '',
+      'На запросы на переписку в Threads отвечает ИИ — через расширение в вашем',
+      'Chrome, где открыт threads.com. Он называет цену, после согласия даёт',
+      'номер МБанка, читает скриншот чека и сам публикует рекламу — как /ad.',
+      'Ссылку на пост и отчёт через сутки человек получает там же, в директе.',
+      'Тем, кто принял нас за работодателя, объясняет, что мы только публикуем',
+      'объявления.',
+      '',
+      'Каждый принятый чек присылаю сюда — сверьте с МБанком; если денег нет,',
+      'рекламу снимает «Удалить» под её карточкой. Чек, который ИИ не принял',
+      'сам, приходит с кнопками ✅ / ❌. Позовут человека — пришлю вопрос, и бот',
+      'в том разговоре замолчит. Напишете в разговор сами — тоже замолчит.',
+      '',
+      '/dm — жив ли автоответчик и о чём разговоры, с кнопками «отвечу сам» и',
+      '«вернуть боту».',
+    ],
+    [
+      '📥 Посты из групп',
+      '',
+      'Их я публикую молча — без карточки и отчётов по каждому: из групп',
+      'их выходит под сотню в день, и за ними терялось важное. Что вышло',
+      'и что отсеяно, видно в сводке (/stats).',
+      '',
+      '/last — последние 10 из групп. Под списком кнопки: 🗑 — снять отовсюду,',
+      `🚫 — снять и ${blocklist.DEFAULT_DAYS} дней не брать из групп посты с этим номером. Та же 🚫`,
+      'есть под карточкой того, что прислали вы.',
+      '',
+      'Сетевой маркетинг («помощник администратора в офис, карьерный рост,',
+      'всему научим») и оформление на чужие документы («доверенность',
+      'на машину из Китая, деньги сразу») отсеиваю и без модели, по словам.',
+      'Номер такого поста запоминаю сам. Одно и то же объявление, разосланное',
+      'по десятку групп, разбираю один раз — норма модели уходит на новое.',
+      '',
+      '/spam — что отсеяно как мусор, с причиной. Ошибся — нажмите ✅:',
+      'номер уйдёт из чёрного списка, а пост — на разбор заново.',
+      '',
+      '🎓 Для студентов. Если в объявлении прямо написано «можно студентам»,',
+      '«для студентов» или «совмещать с учёбой», ставлю пометку сам: на сайте',
+      'оно попадает в фильтр «Для студентов», в канале и Threads начинается',
+      'с «🎓 Вакансия для студентов», а в Instagram выходит отдельным синим',
+      'выпуском — первый экран «Вакансия для студентов», он же обложка.',
+    ],
+  ];
+  for (const [i, part] of help.entries()) {
+    await tg.sendMessage(chatId, part.join('\n'), i === 0 ? menu.KEYBOARD : undefined);
+  }
+}
+
 async function onMessage(message) {
   const chatId = message.chat.id;
   const userId = message.from && message.from.id;
@@ -1405,161 +1637,21 @@ async function onMessage(message) {
   }
 
   if (text === '/start' || text === '/help') {
-    // Двумя сообщениями: одним справка не влезает в 4096 знаков Telegram. Делим
-    // по смыслу — как публикую и какие есть команды, — а не где пришлось.
-    const help = [
-      [
-        '👋 Пересылай сообщение из чата или кидай текст объявления.',
-        'Публикую сразу, ничего не переспрашивая: объявление уходит на сайт,',
-        'в Telegram-канал и роликом в Instagram и Threads. Если объявлений в сообщении',
-        'несколько — опубликую каждое.',
-        '',
-        '🖼 Скриншоты я не читаю: картинка стоит вдвое дороже разбора и съедает',
-        'суточную норму, а объявления в чатах всё равно пишут текстом. Пришли текст —',
-        'разберу точнее, и за день выйдет вдвое больше объявлений.',
-        '',
-        'Заказ и вакансия становятся карточкой на сайте. Всё остальное — продажа дома',
-        'или машины, аренда, «делаем ремонт под ключ», поиск работы для себя —',
-        'уходит на 📌 доску: там объявление живёт сутки, ролик и пост в канале',
-        'при этом делаются точно так же.',
-        '',
-        'Чего не хватает — дописываю сам (город → Бишкек, категория → Другое)',
-        'и пишу об этом в ответе. В ответ присылаю текст объявления целиком,',
-        'как он ушёл на сайт, и кнопку 🗑 «Удалить» — прочитал, и если',
-        'в разбор попало лишнее, сразу убрал. Снимает она разом с сайта,',
-        'из канала и из Threads; на ролик в Instagram даёт ссылку —',
-        'его Meta через API удалять не даёт.',
-        '',
-        'В соцсети объявление уходит не мгновенно, и это нарочно: в Threads —',
-        `по одному, но не чаще раза в ${social.THREADS_INTERVAL_MIN} минут (иначе он ловит антиспам),`,
-        `в Instagram — роликом раз в ${social.RELEASE_INTERVAL_MIN} минут, по ${social.BATCH_SIZE} объявления в каждом,`,
-        'с названием по типу: «Вакансии дня», «Заказы дня», «Объявления дня».',
-        '',
-        'Почему не сразу и не по одному: полсотни почти одинаковых роликов в сутки',
-        'Instagram читает как рассылку и перестаёт показывать их тем, кто на нас',
-        'не подписан. По расписанию выходит 8–10 постов в день — столько же, сколько',
-        'у аккаунта, который ведут руками, — а объявлений в них едет втрое больше.',
-        'Компанию объявление при этом не ждёт: подошло время — ролик уезжает хоть',
-        'с одной карточкой. Про каждый напишу отдельно, когда дойдёт очередь.',
-        'Не дожидаться расписания — /now.',
-      ],
-      [
-        '/ad — платная реклама. Пришлите её следующим сообщением или сразу вместе',
-        'с командой: «/ad Открылся салон…», а к картинке или видео — подписью.',
-        'Такое объявление идёт вне очереди (разбор, Threads, ролик) и не',
-        'отбраковывается отсевом — кроме запрещённого. Под неё отложена последняя',
-        'модель разбора: посты из групп её не трогают, и когда они выберут',
-        'суточную норму остальных, реклама всё равно разберётся.',
-        '',
-        'Рекламой можно прислать что угодно: готовый ролик, гифку, макет картинкой.',
-        'Файл уйдёт в канал и в Instagram своим видом, без нашего макета, а подпись',
-        'разберу как обычное объявление — вакансия попадёт в вакансии, разовая',
-        'работа в заказы, остальное на доску. Не разберу подпись — повешу запиской',
-        'на доску (заголовок — первая строка, телефон — первый номер из текста).',
-        'Номер в тексте не обязателен, но без него на сайте не будет кнопки WhatsApp.',
-        'Файл тяжелее 20 МБ Telegram боту не отдаёт — такой ролик сожмите заранее.',
-        '',
-        '/ad_fast — то же самое, но без разбора. Нужна, когда суточный лимит модели',
-        'выбран: «вне очереди» тогда не помогает — дорожки общие, и реклама ждёт',
-        'освобождения вместе со всеми. По этой команде объявление уходит на сайт,',
-        'в канал и на площадки сразу. Тип определю по словам («требуются» плюс',
-        'разговор про оплату — вакансия, иначе доска), заголовок соберу из первых',
-        'строк. Города, категории и зарплаты в карточке не будет — их называет',
-        'модель, а к ней мы не идём. Промежутки между постами остаются: они держат',
-        `антиспам Threads (${social.THREADS_INTERVAL_MIN} минут) и часовой лимит Instagram, и снимать их нельзя —`,
-        'за залп Threads блокирует на часы. Если суточная норма Instagram занята,',
-        'ролик всё равно соберу и пришлю сюда файлом — выложите руками.',
-        '',
-        '/now — выпустить то, что почему-то ещё стоит в очереди, не дожидаясь своего',
-        'хода. Работает и словом: напишите «выпусти», «выпускай» или «публикуй».',
-        '',
-        'Если ролик не ушёл в Instagram (у Meta часто рвётся соединение, а на бесплатном',
-        'сервере сборка видео иногда не влезает в память), то же объявление уедет',
-        'обычным постом с картинкой — тот же макет, та же подпись, просто без видео.',
-        'Об этом напишу в отчёте. Если не прошла и картинка, пришлю сам ролик и кнопку',
-        '🔁 «Попробовать опубликовать ещё раз» — нажал, и он поедет заново, без пересборки.',
-        '',
-        'Пачку объявлений можно кинуть разом: поставлю в очередь и разберу по одному',
-        '(бесплатный Groq успевает около двух разборов в минуту на ключ).',
-        '',
-        'Если лимиты разбора выбраны, объявление не пропадает: откладываю его и',
-        'возвращаюсь сам, когда лимит отпустит — присылать заново не нужно.',
-        'Отложенное живёт в памяти бота, поэтому переживает ожидание, но не',
-        'перезапуск сервера.',
-        '',
-        `/top — ролик-подборка с сайта: ${digestRepo.SIZE} случайных объявлений за ${digestRepo.DAYS} дня`,
-        '(«Топ-5 вакансий»), в конце — сколько их всего ждёт на сайте. Спрошу, что брать:',
-        'заказы, вакансии или объявления с доски. Пригодится в тихий день, когда новых',
-        'объявлений нет, а лента не должна простаивать.',
-        '',
-        '/stats — сводка за сегодня: сколько вышло из групп и сколько отсеяно',
-        '(и почему), реклама с просмотрами, площадки, модели разбора и очереди.',
-        `Сама сводка приходит ${summary.HOURS.length ? `в ${summary.HOURS.map((h) => `${h}:00`).join(', ')}` : 'только по /stats'}.`,
-        '',
-        '/limits — суточные нормы Instagram и Threads числами от самой Meta:',
-        'сколько уже потрачено и сколько осталось.',
-      ],
-      [
-        '📣 Реклама в Threads',
-        '',
-        'Реклама уходит в Threads с картинкой: своей, если прислали, или',
-        'карточкой объявления. Ролик в Instagram у неё свой, без попутчиков',
-        'и без расписания.',
-        '',
-        `За каждой рекламой слежу. Через ${Math.round(social.adTracker.WARN_AFTER_MS / 3600000)} ч смотрю, как она идёт, и если к`,
-        `суткам до ${social.adTracker.GOAL} просмотров может не дотянуть — пишу и даю кнопку`,
-        '🔁 «Поднять в Threads»: реклама выйдет ещё раз, и просмотры сложатся.',
-        `Поднимать можно до ${social.adTracker.MAX_BOOSTS} раз. Через сутки присылаю отчёт — просмотры,`,
-        'лайки, ответы и выполнена ли гарантия. Его можно переслать рекламодателю.',
-        '',
-        '/ads — реклама за три дня с числами и кнопками отчёта по каждой.',
-        '/threads — статистика аккаунта за сутки и неделю, в среднем на пост:',
-        'этими числами удобно отвечать тем, кто спрашивает про рекламу.',
-        '',
-        'Если под постом в Threads спрашивают про рекламу («сколько стоит',
-        'разместить», «прайс»), пришлю этот ответ сюда со ссылкой — чтобы заявка',
-        'не потерялась среди вопросов про вакансии.',
-      ],
-      [
-        '🤖 Директ Threads',
-        '',
-        'На запросы на переписку в Threads отвечает ИИ — через расширение в вашем',
-        'Chrome, где открыт threads.com. Он называет цену, после согласия даёт',
-        'номер МБанка, читает скриншот чека и сам публикует рекламу — как /ad.',
-        'Ссылку на пост и отчёт через сутки человек получает там же, в директе.',
-        'Тем, кто принял нас за работодателя, объясняет, что мы только публикуем',
-        'объявления.',
-        '',
-        'Каждый принятый чек присылаю сюда — сверьте с МБанком; если денег нет,',
-        'рекламу снимает «Удалить» под её карточкой. Чек, который ИИ не принял',
-        'сам, приходит с кнопками ✅ / ❌. Позовут человека — пришлю вопрос, и бот',
-        'в том разговоре замолчит. Напишете в разговор сами — тоже замолчит.',
-        '',
-        '/dm — жив ли автоответчик и о чём разговоры, с кнопками «отвечу сам» и',
-        '«вернуть боту».',
-      ],
-      [
-        '📥 Посты из групп',
-        '',
-        'Их я публикую молча — без карточки и отчётов по каждому: из групп',
-        'их выходит под сотню в день, и за ними терялось важное. Что вышло',
-        'и что отсеяно, видно в сводке (/stats).',
-        '',
-        '/last — последние 10 из групп. Под списком кнопки: 🗑 — снять отовсюду,',
-        `🚫 — снять и ${blocklist.DEFAULT_DAYS} дней не брать из групп посты с этим номером. Та же 🚫`,
-        'есть под карточкой того, что прислали вы.',
-        '',
-        'Сетевой маркетинг («помощник администратора в офис, карьерный рост,',
-        'всему научим») и оформление на чужие документы («доверенность',
-        'на машину из Китая, деньги сразу») отсеиваю и без модели, по словам.',
-        'Номер такого поста запоминаю сам. Одно и то же объявление, разосланное',
-        'по десятку групп, разбираю один раз — норма модели уходит на новое.',
-        '',
-        '/spam — что отсеяно как мусор, с причиной. Ошибся — нажмите ✅:',
-        'номер уйдёт из чёрного списка, а пост — на разбор заново.',
-      ],
-    ];
-    for (const part of help) await tg.sendMessage(chatId, part.join('\n'));
+    await sendHelp(chatId);
+    return;
+  }
+
+  // Меню (см. menu.js): кнопки внизу экрана присылают свой текст, «☰ Меню» и
+  // /menu открывают остальное.
+  const section = menu.KEYS[text];
+  if (text === '/menu' || section) {
+    await openSection(chatId, section || 'home');
+    if (text === '/menu') await offerKeyboard(chatId);
+    return;
+  }
+
+  if (text === '/groups') {
+    await openSection(chatId, 'groups');
     return;
   }
 
@@ -1574,8 +1666,7 @@ async function onMessage(message) {
   }
 
   if (text === '/ads') {
-    const { text: report, extra } = await adsText();
-    await tg.sendMessage(chatId, report, extra);
+    await openSection(chatId, 'ads');
     return;
   }
 
@@ -1611,14 +1702,7 @@ async function onMessage(message) {
   }
 
   if (text === '/top') {
-    await tg.sendMessage(
-      chatId,
-      [
-        `🎬 Соберу ролик из ${digestRepo.SIZE} случайных объявлений с сайта за ${digestRepo.DAYS} дня`,
-        'и в конце позову на сайт. Что берём?',
-      ].join('\n'),
-      digestMenu()
-    );
+    await tg.sendMessage(chatId, topPrompt(), digestMenu());
     return;
   }
 
@@ -1745,9 +1829,74 @@ async function onCallback(query) {
     return;
   }
 
-  const [action, rawId] = String(query.data || '').split(':');
+  const [action, rawId, arg2, arg3] = String(query.data || '').split(':');
   const chatId = query.message.chat.id;
   const messageId = query.message.message_id;
+
+  // Меню (см. menu.js): разделы открываются в том же сообщении.
+  if (action === 'm') {
+    await tg.answerCallbackQuery(query.id);
+    await openSection(chatId, rawId, messageId);
+    return;
+  }
+
+  // Список рекламы, страница rawId.
+  if (action === 'al') {
+    await tg.answerCallbackQuery(query.id);
+    await show(chatId, await adsListView(rawId), messageId);
+    return;
+  }
+
+  // «ℹ️» по рекламе rawId; arg2 — страница списка, куда вернуться; f — спросить
+  // Threads заново, не дожидаясь четверти часа.
+  if (action === 'ai') {
+    const force = arg3 === 'f';
+    await tg.answerCallbackQuery(query.id, force ? 'Спрашиваю свежие числа' : '');
+    await show(chatId, await adInfoView(rawId, arg2, { force }), messageId);
+    return;
+  }
+
+  // «Поднять» из карточки рекламы: rawId — кампания, arg2 — реклама, arg3 —
+  // страница. Кнопку убираем сразу: второе нажатие подняло бы рекламу дважды.
+  if (action === 'ib') {
+    await tg.answerCallbackQuery(query.id, 'Поднимаю рекламу в Threads');
+    await show(chatId, await adInfoView(arg2, arg3, { noBoost: true }), messageId);
+    boostAd(chatId, rawId).catch(async (err) => {
+      console.error('Повтор рекламы:', err);
+      await tg.sendMessage(chatId, `⚠️ Поднять не вышло: ${tg.esc(err.message)}`).catch(() => {});
+    });
+    return;
+  }
+
+  // «🗑 Снять» из карточки рекламы — сначала вопрос (см. confirmRemoveView).
+  if (action === 'ax') {
+    const ad = await imports.get(Number(rawId));
+    if (!ad || ad.status !== 'published') {
+      await tg.answerCallbackQuery(query.id, 'Уже снято');
+      return;
+    }
+    await tg.answerCallbackQuery(query.id);
+    await show(chatId, menu.confirmRemoveView(ad, Number(arg2) || 0), messageId);
+    return;
+  }
+
+  // Группы для рекламы: вся рассылка (ge) и одна группа (gt).
+  if (action === 'ge') {
+    await adGroups.setEnabled(rawId === '1');
+    await tg.answerCallbackQuery(query.id, rawId === '1' ? 'Рассылка в группы включена' : 'Рассылка в группы выключена');
+    await show(chatId, menu.groupsView(await adGroups.overview()), messageId);
+    return;
+  }
+
+  if (action === 'gt') {
+    const result = await adGroups.toggle(rawId);
+    await tg.answerCallbackQuery(
+      query.id,
+      !result ? 'Этой группы уже нет в настройках' : result.on ? 'Группа включена' : 'Группа выключена — реклама в неё не пойдёт'
+    );
+    await show(chatId, menu.groupsView(await adGroups.overview()), messageId);
+    return;
+  }
 
   if (action === 'rt') {
     // Ответить Telegram надо в пару секунд, а площадка обрабатывает ролик минуту
@@ -2045,6 +2194,19 @@ async function unpublishLines(row) {
     );
   }
 
+  // Реклама в группах Telegram: ждущие посты отменяем, вышедшие удаляем.
+  if (row.is_ad) {
+    const groups = await adGroups
+      .unpublish(row.id)
+      .catch((err) => ({ cancelled: 0, deleted: 0, failed: [{ title: 'группы', reason: err.message }] }));
+    if (groups.deleted) lines.push(`👥 Из групп Telegram удалено: ${groups.deleted}.`);
+    if (groups.cancelled) lines.push(`👥 В группы больше не уйдёт: отменил ${groups.cancelled}.`);
+    for (const f of groups.failed) {
+      const name = f.link ? `<a href="${f.link}">${tg.esc(f.title)}</a>` : tg.esc(f.title);
+      lines.push(`⚠️ ${name}: не удалить (${tg.esc(f.reason)}) — уберите вручную.`);
+    }
+  }
+
   // Ни одного поста в базе: объявление вышло до того, как бот начал их
   // запоминать, либо на площадки не уезжало вовсе.
   if (lines.length === 1) lines.push('Постов на площадках за этим объявлением не записано.');
@@ -2092,19 +2254,6 @@ async function restoreDeferred() {
   return rows.length;
 }
 
-// Числа по-русски («1 842») и склонение «просмотров» — общие со сводкой.
-const { num, viewsWord } = summary;
-
-// «25 сентября, 14:05» по Бишкеку.
-function whenText(at) {
-  return new Date(at).toLocaleString('ru-RU', {
-    timeZone: 'Asia/Bishkek',
-    day: 'numeric',
-    month: 'long',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 // Отчёт по рекламе. Сделан так, чтобы его можно было переслать рекламодателю
 // как есть: название, когда вышла, сколько набрала и выполнена ли гарантия.
@@ -2357,13 +2506,6 @@ async function onDmEvent(event) {
   }
 }
 
-function agoText(ms) {
-  const minutes = Math.round(ms / 60000);
-  if (minutes < 1) return 'только что';
-  if (minutes < 60) return `${minutes} мин назад`;
-  const hours = Math.round(minutes / 60);
-  return hours < 48 ? `${hours} ч назад` : `${Math.round(hours / 24)} дн назад`;
-}
 
 // /dm — как дела у автоответчика: жив ли мост, заданы ли реквизиты, о чём
 // разговоры. Под списком — кнопки: забрать разговор себе или вернуть боту.
@@ -2403,6 +2545,9 @@ async function dmStatusText() {
 // Запускается вместе с ботом (см. telegram/index.js): слежка за рекламой и за
 // ответами в Threads отчитываются в Telegram, поэтому без бота им некуда.
 function startWatchers() {
+  // Список команд у синей кнопки «Меню» рядом с полем ввода.
+  tg.call('setMyCommands', { commands: menu.COMMANDS }).catch((err) => console.error('Команды бота:', err.message));
+  announceMenu().catch((err) => console.error('Меню бота:', err.message));
   social.adTracker.start({ onReport: onAdReport, onWarn: onAdWarn, onDenied: onAdStatsDenied });
   social.leads.start({ onLead, onDenied: onLeadsDenied });
   dm.start({ publish: publishFromDm, admin: onDmEvent });
@@ -2451,6 +2596,7 @@ async function boostAd(chatId, campaignId) {
     await tg.sendMessage(chatId, '🧵 Threads не настроен — поднимать некуда.');
     return;
   }
+  boostedAt.set(String(campaign.id), Date.now());
   await tg.sendMessage(
     chatId,
     [
@@ -2463,42 +2609,156 @@ async function boostAd(chatId, campaignId) {
   );
 }
 
-// /ads — реклама за три дня: сколько набрала и что с гарантией. Под списком —
-// кнопки с отчётом по каждой: его можно переслать рекламодателю, не дожидаясь
-// суток.
-async function adsText() {
-  const campaigns = await social.adTracker.recent(3);
-  if (!campaigns.length) return { text: '📣 За три дня рекламы в Threads не было.' };
-
-  const lines = ['📣 Реклама в Threads за 3 дня:'];
-  const buttons = [];
-  let denied = false;
-  for (const [i, campaign] of campaigns.slice(0, 8).entries()) {
-    let totals;
+// Раздел меню — в том же сообщении, если его можно поправить, иначе новым.
+// Поправить нельзя, если текст длиннее одного сообщения или сообщение старое.
+async function show(chatId, view, messageId = null) {
+  if (messageId && view.text.length <= 4096) {
     try {
-      ({ totals } = await social.adTracker.refresh(campaign));
+      await tg.editMessageText(chatId, messageId, view.text, view.extra);
+      return;
     } catch (err) {
-      if (err.permission) denied = true;
-      totals = social.adTracker.totalsOf(await social.adTracker.postsOf(campaign.id));
+      // Нажали «Обновить», а числа те же — Telegram отвечает ошибкой, и это не беда.
+      if (/not modified/i.test(err.message)) return;
     }
-    const goal = Number(campaign.goal) || social.adTracker.GOAL;
-    const hours = Math.round(social.adTracker.ageOf(campaign) / 3600000);
-    const status = campaign.reported_at
-      ? totals.views >= goal
-        ? '✅'
-        : '⚠️ недобор'
-      : totals.views >= goal
-        ? `✅ за ${hours} ч`
-        : `⏳ ${hours} ч`;
-    lines.push(`${i + 1}. «${tg.esc(clamp(campaign.title, 50))}» — 👁 ${num(totals.views)} ${status}`);
-    buttons.push({ text: `📊 ${i + 1}`, callback_data: `ar:${campaign.id}` });
   }
-  if (denied) lines.push('', 'Свежих чисел нет: у токена Threads нет разрешения threads_manage_insights.');
-
-  const rows = [];
-  for (let i = 0; i < buttons.length; i += 4) rows.push(buttons.slice(i, i + 4));
-  return { text: lines.join('\n'), extra: { reply_markup: { inline_keyboard: rows } } };
+  await tg.sendMessage(chatId, view.text, view.extra);
 }
+
+async function sectionView(section) {
+  switch (section) {
+    case 'home':
+      return menu.homeView();
+    case 'ads':
+      return adsListView(0);
+    case 'stats':
+      return menu.withBack({ text: await statsText() });
+    case 'last':
+      return menu.withBack(await lastText());
+    case 'spam':
+      return menu.withBack(spamText());
+    case 'groups':
+      return menu.groupsView(await adGroups.overview());
+    case 'threads':
+      return menu.withBack({ text: await threadsStatsText() });
+    case 'limits':
+      return menu.withBack({ text: await limitsText() });
+    case 'dm':
+      return menu.withBack(await dmStatusText());
+    case 'top':
+      return menu.withBack({ text: topPrompt(), extra: digestMenu() });
+    case 'adhow':
+      return menu.adHowView({
+        warnHours: Math.round(social.adTracker.WARN_AFTER_MS / 3600000),
+        goal: social.adTracker.GOAL,
+      });
+    default:
+      return null;
+  }
+}
+
+// messageId — нажали кнопку в меню: раздел встанет на его место.
+async function openSection(chatId, section, messageId = null) {
+  if (section === 'now') return onFlushCommand(chatId);
+  if (section === 'help') return sendHelp(chatId);
+  const view = await sectionView(section);
+  if (view) await show(chatId, view, messageId);
+  return null;
+}
+
+// Кнопки внизу экрана показываем один раз: Telegram помнит их сам, а
+// напоминание при каждом /menu было бы шумом.
+async function offerKeyboard(chatId) {
+  const key = `menu:keyboard:${chatId}`;
+  if (await feedStats.getSetting(key).catch(() => '1')) return;
+  await tg.sendMessage(
+    chatId,
+    [
+      '⌨️ Внизу экрана — кнопки: 📣 Реклама, 📊 Сводка, 📥 Из групп и ☰ Меню.',
+      'В «📣 Реклама» — вся реклама, сначала новая: нажмите на любую, и увидите',
+      'просмотры в Threads, где она вышла и что с группами Telegram.',
+    ].join('\n'),
+    menu.KEYBOARD
+  );
+  await feedStats.setSetting(key, '1').catch(() => {});
+}
+
+// Только что поднятая реклама: пока повтор ждёт очереди Threads, постов у
+// кампании столько же, сколько было, и кнопка «Поднять» вернулась бы на месте.
+const boostedAt = new Map();
+const BOOST_GUARD_MS = 30 * 60 * 1000;
+const justBoosted = (campaignId) => Date.now() - (boostedAt.get(String(campaignId)) || 0) < BOOST_GUARD_MS;
+
+// «📣 Реклама» в меню и /ads: сначала новая. Числа у кампаний, по которым
+// ещё не было отчёта, освежаем — трекер сам спрашивает Threads только на
+// шестом часу и через сутки, и в списке висели бы нули.
+async function adsListView(page = 0) {
+  const total = await imports.countAds();
+  const pages = Math.max(1, Math.ceil(total / menu.PAGE_SIZE));
+  const current = Math.min(Math.max(0, Number(page) || 0), pages - 1);
+  const rows = await imports.listAds({ limit: menu.PAGE_SIZE, offset: current * menu.PAGE_SIZE });
+  for (const row of rows) {
+    if (!row.campaign_id || row.reported_at) continue;
+    try {
+      const { totals } = await social.adTracker.refresh({ id: row.campaign_id });
+      row.views = totals.views;
+    } catch {
+      // свежих нет — покажем записанные
+    }
+  }
+  return menu.adsListView({ rows, page: current, pages, total, goal: social.adTracker.GOAL });
+}
+
+// «ℹ️» по рекламе: карточка на сайте, Threads, наш канал и группы Telegram.
+async function adInfoView(importId, page = 0, { force = false, noBoost = false } = {}) {
+  const ad = await imports.get(Number(importId));
+  if (!ad) return menu.withBack({ text: '📣 Этой рекламы уже нет в базе.' });
+  const campaign = await social.adTracker.byImport(ad.id).catch(() => null);
+  let posts = [];
+  let totals = null;
+  let denied = false;
+  let boostable = false;
+  if (campaign) {
+    try {
+      ({ posts, totals } = await social.adTracker.refresh(campaign, { force }));
+    } catch (err) {
+      denied = Boolean(err.permission);
+      posts = await social.adTracker.postsOf(campaign.id);
+      totals = social.adTracker.totalsOf(posts);
+    }
+    boostable =
+      !noBoost && ad.status === 'published' && !justBoosted(campaign.id) && (await social.adTracker.canBoost(campaign));
+  }
+  const [groups, channel] = await Promise.all([
+    adGroups.forImport(ad.id, { views: true }).catch(() => []),
+    ad.channel_message_id ? adGroups.channelViews(CHANNEL_ID, ad.channel_message_id).catch(() => null) : null,
+  ]);
+  const type = ad.vacancy_id ? 'vacancy' : ad.order_id ? 'order' : ad.board_post_id ? 'board' : null;
+  const siteLink = type ? listingUrl(type, ad.vacancy_id || ad.order_id || ad.board_post_id) : '';
+  return menu.adInfoView({
+    ad,
+    campaign,
+    posts,
+    totals,
+    denied,
+    groups,
+    channel,
+    siteLink,
+    siteLabel: prettyLink(siteLink),
+    page: Number(page) || 0,
+    boostable,
+    goal: social.adTracker.GOAL,
+    reportAfterMs: social.adTracker.REPORT_AFTER_MS,
+  });
+}
+
+// В боте появилось меню — один раз говорим об этом админу и показываем
+// кнопки внизу экрана: иначе о нём узнали бы, только набрав /menu наугад.
+async function announceMenu() {
+  const chatId = adminChat();
+  if (!chatId) return;
+  await offerKeyboard(chatId);
+}
+
 
 // /threads — статистика аккаунта. Этими числами реклама и продаётся: в шапке
 // профиля обещано «1000+ просмотров за сутки», и здесь видно, насколько

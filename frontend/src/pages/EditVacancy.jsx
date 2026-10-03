@@ -7,6 +7,7 @@ import Logo from '../components/Logo';
 import FormatIcon from '../components/FormatIcon';
 import { SkeletonForm } from '../components/Skeleton';
 import CityAutocomplete from '../components/CityAutocomplete';
+import { StudentCheckbox } from '../components/StudentField';
 
 export default function EditVacancy() {
   const { id } = useParams();
@@ -48,6 +49,7 @@ export default function EditVacancy() {
           salary_min: vacancy.salary_min ?? '',
           salary_max: vacancy.salary_max ?? '',
           whatsapp_phone: vacancy.whatsapp_phone || '',
+          for_students: Boolean(vacancy.for_students),
         });
       })
       .catch(() => setNotFound(true));
@@ -257,6 +259,11 @@ export default function EditVacancy() {
               onChange={(e) => setForm((f) => ({ ...f, schedule: e.target.value }))}
             />
           </label>
+          <StudentCheckbox
+            kind="vacancy"
+            checked={form.for_students}
+            onChange={(v) => setForm((f) => ({ ...f, for_students: v }))}
+          />
           <div className="field">
             <label className="filter-checkbox">
               <input type="checkbox" checked={showPhone} onChange={(e) => setShowPhone(e.target.checked)} />

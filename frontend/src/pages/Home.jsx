@@ -86,6 +86,13 @@ export default function Home() {
             <FormatIcon name="online" size={15} /> Только онлайн
           </Link>
         </div>
+        {/* Студенты ищут не категорию, а работу, которую потянут вместе с учёбой, —
+            поэтому отдельной синей кнопкой, как их выпуски в Instagram. */}
+        <div>
+          <Link to="/vacancies?students=1" className="hero-students-link">
+            🎓 Работа для студентов
+          </Link>
+        </div>
         {favoriteKeys.length > 0 && (
           <Link to="/favorites" className="hero-fav-link">
             ★ Избранное ({favoriteKeys.length})

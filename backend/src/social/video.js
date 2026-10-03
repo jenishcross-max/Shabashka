@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const card = require('./card');
 const music = require('./music');
 const { money } = require('../money');
+const students = require('../students');
 
 // Бинарник ffmpeg приходит npm-пакетом под текущую платформу — на Render его
 // нет в системе, а ставить через apt в бесплатном плане некуда.
@@ -109,7 +110,7 @@ async function encode(items, opts) {
     args.push(out);
 
     await render(args, renderer);
-    return { buffer: await fs.readFile(out), credit: track ? track.credit : null };
+    return { buffer: await fs.readFile(out), credit: track ? track.credit : null, coverMs: renderer.coverMs };
   } finally {
     await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
   }
@@ -128,6 +129,9 @@ const CORE_TAGS = {
   vacancy: ['#шабашка', '#вакансиибишкек'],
   board: ['#шабашка', '#объявлениябишкек'],
 };
+
+// Студенческому выпуску — свои теги: по ним студенты и ищут подработку.
+const STUDENT_TAGS = ['#работадлястудентов', '#подработкадлястудентов', '#студентыбишкек'];
 
 const TAG_POOL = {
   order: ['#работабишкек', '#жумуш', '#заказы', '#кыргызстан', '#бишкек', '#подработка', '#мастербишкек'],
@@ -165,11 +169,8 @@ const CTA_LINES = [
   'Свежие объявления каждый день — Шабашка.com, ссылка в шапке профиля.',
 ];
 
-function label(listingType) {
-  if (listingType === 'vacancy') return '💼 Вакансия';
-  if (listingType === 'board') return '📌 Объявление';
-  return '🧰 Заказ';
-}
+// Студенческое объявление называется так сразу, первой строкой (см. students.js).
+const label = (listingType, parsed) => students.label(listingType, parsed);
 
 // Строка «категория · город». У доски категории нет: она про работу, а там
 // продают дом или сдают квартиру.
@@ -200,6 +201,11 @@ function hashtagsFor(items) {
     for (const tag of CORE_TAGS[type]) tags.add(tag);
     for (const tag of some(TAG_POOL[type], EXTRA_TAGS)) tags.add(tag);
   }
+  // Студенческие — два на пост, а не на каждое объявление: хвост тегов и так
+  // упирается в десяток.
+  if (items.some(({ listingType, parsed }) => parsed && parsed.for_students && listingType !== 'board')) {
+    for (const tag of some(STUDENT_TAGS, 2)) tags.add(tag);
+  }
   return [...tags].join(' ');
 }
 
@@ -209,7 +215,7 @@ function hashtagsFor(items) {
 function captionBlock({ parsed, listingType, siteLink }, index, total) {
   const isVacancy = listingType === 'vacancy';
   const number = total > 1 ? `${index + 1}. ` : '';
-  const lines = [`${number}${label(listingType)}: ${parsed.title || ''}`.trim()];
+  const lines = [`${number}${label(listingType, parsed)}: ${parsed.title || ''}`.trim()];
 
   const meta = metaLine(parsed, listingType);
   if (meta) lines.push(meta);
@@ -250,7 +256,10 @@ function caption(items, credit, opts = {}) {
   // Шапка та же, что и на кадре: «Заказы дня · 31 июля». В ленте подпись видна
   // раньше, чем досмотрен ролик, и она должна называть выпуск так же.
   const lines = [
-    `📋 ${opts.collection || card.collectionTitle(items[0] && items[0].listingType)} · ${opts.day || card.dayLabel()}`,
+    `📋 ${
+      opts.collection ||
+      card.collectionTitle(items[0] && items[0].listingType, 0, { students: card.isStudentBatch(items) })
+    } · ${opts.day || card.dayLabel()}`,
     '',
   ];
   if (opts.ad && adLine()) lines.unshift(adLine());
@@ -290,7 +299,7 @@ const THREADS_LIMIT = 500;
 // занимали место у описания.
 function threadsText(parsed, listingType, siteLink, { ad = false } = {}) {
   const isVacancy = listingType === 'vacancy';
-  const head = [`${label(listingType)}: ${parsed.title || ''}`.trim()];
+  const head = [`${label(listingType, parsed)}: ${parsed.title || ''}`.trim()];
   if (ad && adLine()) head.unshift(adLine());
 
   const meta = metaLine(parsed, listingType);

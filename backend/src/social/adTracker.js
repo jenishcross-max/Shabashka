@@ -90,6 +90,16 @@ async function get(campaignId) {
   return rows[0] || null;
 }
 
+// Кампания рекламы по её карточке на сайте — для «ℹ️» в меню бота. Последняя:
+// повтор рекламы добавляет посты в ту же кампанию, а новая заводится, только
+// если первый пост в Threads так и не вышел и его выложили заново.
+async function byImport(importId) {
+  const { rows } = await db.query('SELECT * FROM ad_campaigns WHERE import_id = $1 ORDER BY id DESC LIMIT 1', [
+    importId,
+  ]);
+  return rows[0] || null;
+}
+
 async function postsOf(campaignId) {
   const { rows } = await db.query('SELECT * FROM ad_posts WHERE campaign_id = $1 ORDER BY posted_at ASC', [
     campaignId,
@@ -250,6 +260,7 @@ module.exports = {
   track,
   addPost,
   get,
+  byImport,
   postsOf,
   refresh,
   recent,

@@ -30,6 +30,7 @@ const bot = require('./bot');
 const feedStats = require('./feedStats');
 const blocklist = require('./blocklist');
 const rejected = require('./rejected');
+const adGroups = require('./adGroups');
 const spam = require('../spam');
 const { ADMIN_IDS } = require('./notify');
 
@@ -204,6 +205,13 @@ async function handleMessage(message) {
   console.log(
     `[источник] сообщение ${message.id}: ${text.length} симв.${message.photo ? ' + фото' : ''} — "${text.slice(0, 60)}"`
   );
+
+  // Наша же реклама в группе (см. adGroups.js): разбирать её как вакансию —
+  // это дубль на сайте, а то и номер рекламодателя в чёрном списке.
+  if (adGroups.isOwn(message)) {
+    console.log('[источник] это наше сообщение — пропускаю');
+    return;
+  }
 
   if (!firstInAlbum(message)) {
     console.log('[источник] ещё одна картинка того же поста — пропускаю');
@@ -396,6 +404,12 @@ async function start() {
       console.error(`[источник] не смог открыть "${source}": ${err.message}`);
     }
   }
+
+  // Тем же аккаунтом (или отдельным, см. TELEGRAM_AD_SESSION_STRING) реклама
+  // уходит в эти группы. Своим ходом: опрос не должен ждать, пока он поднимется.
+  adGroups
+    .start(client, { apiId: API_ID, apiHash: API_HASH })
+    .catch((err) => console.error('[группы] не запустилась рассылка:', err.message));
 
   // Опрос по кругу, а не setInterval: пока идёт разбор, следующий заход не
   // стартует и запросы не накладываются друг на друга.

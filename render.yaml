@@ -63,6 +63,12 @@ services:
       # Куда слать отчёт о публикации. Пусто — первому админу из TELEGRAM_ADMIN_IDS.
       - key: SOURCE_REPORT_CHAT_ID
         sync: false
+      # Реклама в группах Telegram: свои группы (пусто — SOURCE_CHANNEL) и
+      # сессия отдельного аккаунта для неё (пусто — пишет тот, что читает).
+      - key: AD_GROUPS
+        sync: false
+      - key: TELEGRAM_AD_SESSION_STRING
+        sync: false
       # Домены, которым разрешены запросы к API. Не задан — CORS открыт для всех.
       - key: CORS_ORIGIN
         sync: false

@@ -1978,6 +1978,77 @@ a:hover {
 .orders-filters .admin-card {
   padding: 20px;
 }
+/* «Для студентов» — синий, как студенческие выпуски в Instagram: белый текст
+   на синем. Отдельным цветом, а не красным фирменным: студент ищет свою
+   плашку глазами, и она не должна сливаться с «🔥 Топ» и категориями. */
+.badge-students {
+  background: #1d4ed8;
+  color: #fff;
+}
+.student-filter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 20px;
+  border-radius: 14px;
+  background: #eef2ff;
+  border: 1.5px solid #c7d2fe;
+  color: #1e3a8a;
+  cursor: pointer;
+}
+.student-filter input {
+  width: 17px;
+  height: 17px;
+  accent-color: #1d4ed8;
+  flex: none;
+}
+.student-filter-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+.student-filter-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.student-filter-text strong {
+  font-size: 15px;
+}
+.student-filter-text small {
+  font-size: 12.5px;
+  opacity: 0.8;
+}
+.student-filter .filter-count {
+  color: inherit;
+  opacity: 0.75;
+}
+.student-filter.active {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #fff;
+}
+.student-check input {
+  accent-color: #1d4ed8;
+}
+.hero-students-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  background: #1d4ed8;
+  color: #fff;
+  border-radius: 100px;
+  padding: 10px 22px;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 6px 18px rgba(29, 78, 216, 0.25);
+}
+.hero-students-link:hover {
+  background: #1e40af;
+  color: #fff;
+}
 .filter-heading {
   font-family: 'Rubik', sans-serif;
   font-weight: 600;

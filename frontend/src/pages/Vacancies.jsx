@@ -8,6 +8,7 @@ import { pageList } from '../pagination';
 import { SkeletonBox, SkeletonOrderCard, SkeletonFilterList } from '../components/Skeleton';
 import { useMeta } from '../useMeta';
 import { vacancyWord } from '../plural';
+import { StudentFilter } from '../components/StudentField';
 
 const SORTS = [
   { value: 'new', label: 'Сначала новые' },
@@ -34,12 +35,17 @@ export default function Vacancies() {
   const [city, setCity] = useState('');
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [employmentType, setEmploymentType] = useState('');
+  const [students, setStudents] = useState(false);
+  const [studentCount, setStudentCount] = useState(0);
   const [sort, setSort] = useState('new');
   const [page, setPage] = useState(1);
 
   useEffect(() => {
     api.categories().then(({ categories }) => setCategories(categories));
-    api.vacancyCategoryCounts().then(({ counts }) => setCounts(counts));
+    api.vacancyCategoryCounts().then(({ counts, students }) => {
+      setCounts(counts);
+      setStudentCount(students || 0);
+    });
     api.employmentTypes().then(({ employmentTypes }) => setEmploymentTypes(employmentTypes));
   }, []);
 
@@ -52,9 +58,17 @@ export default function Vacancies() {
     setQ(searchParams.get('q') || '');
     const et = searchParams.get('employmentType');
     if (et) setEmploymentType(et);
+    // «Работа для студентов» с главной ведёт сюда с ?students=1.
+    setStudents(searchParams.get('students') === '1');
     setPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams.get('category'), searchParams.get('city'), searchParams.get('q'), searchParams.get('employmentType')]);
+  }, [
+    searchParams.get('category'),
+    searchParams.get('city'),
+    searchParams.get('q'),
+    searchParams.get('employmentType'),
+    searchParams.get('students'),
+  ]);
 
   useEffect(() => {
     setLoading(true);
@@ -66,6 +80,7 @@ export default function Vacancies() {
           city,
           category: selectedCategories,
           employmentType,
+          students: students ? 1 : '',
           sort,
           page,
           limit: 8,
@@ -78,7 +93,7 @@ export default function Vacancies() {
         .finally(() => setLoading(false));
     }, 250);
     return () => clearTimeout(handle);
-  }, [q, city, selectedCategories, employmentType, sort, page]);
+  }, [q, city, selectedCategories, employmentType, students, sort, page]);
 
   function toggleCategory(c) {
     setPage(1);
@@ -118,6 +133,14 @@ export default function Vacancies() {
 
       <div className="orders-layout">
         <aside className="orders-filters">
+          <StudentFilter
+            checked={students}
+            count={studentCount}
+            onChange={(v) => {
+              setPage(1);
+              setStudents(v);
+            }}
+          />
           <div className="admin-card">
             <h3 className="filter-heading">Категория</h3>
             {categories.length === 0 && <SkeletonFilterList rows={7} />}

@@ -54,6 +54,14 @@ function queueFor(listingType) {
   return waiting.get(listingType);
 }
 
+// Студенческие объявления ждут ролика в своей очереди: их выпуск — синий, с
+// первым экраном «для студентов» (см. drawIntro в card.js), и смешивать его с
+// обычными нельзя. Ключ без двоеточия: он же уходит в кнопку /now
+// (callback_data «fl:vacancy_students»), а там двоеточие — разделитель.
+function queueKey(listingType, parsed) {
+  return parsed && parsed.for_students && listingType !== 'board' ? `${listingType}_students` : listingType;
+}
+
 // Выбрасываем то, что уже не дождётся. Возвращает, сколько выбросили, — это
 // видно в логе: молчащая очередь и очередь, из которой всё утекает по сроку,
 // выглядят одинаково, а значат разное.
@@ -244,9 +252,12 @@ async function buildVideo(job) {
   console.log(`[видео] сборка ролика: объявлений ${job.items.length} — ${job.collection}`);
   // Название выпуска лежит в самом задании: у дайджеста с сайта оно своё
   // («Топ-5 вакансий · за 2 дня»), и повтор должен собрать ролик тем же.
-  const { buffer, credit } = await video.build(job.items, job);
+  const { buffer, credit, coverMs } = await video.build(job.items, job);
   console.log(`[видео] ролик собран: ${buffer.length} байт`);
   job.buffer = buffer;
+  // С какого кадра Instagram возьмёт обложку: у студенческого выпуска — первый
+  // экран «для студентов», у обычного — первая карточка.
+  job.coverMs = coverMs;
   job.caption = video.caption(job.items, credit, job);
 }
 
@@ -349,7 +360,7 @@ async function deliverInstagram(job) {
   // выветриться из hosting.
   const url = `${base}/api/social/video/${hosting.put(video.fileName(), job.buffer)}`;
   console.log(`[видео] отдаю ссылку ${url}`);
-  const result = await post('insta', () => instagram.publishReel(url, job.caption, video.COVER_MS));
+  const result = await post('insta', () => instagram.publishReel(url, job.caption, job.coverMs || video.COVER_MS));
   return result.posted ? result : withImageFallback(job, result);
 }
 
@@ -470,7 +481,9 @@ async function runBatch(entries, opts = {}) {
   const job = {
     items: entries.map(({ ctx, priority, ...item }) => item),
     listingType: entries[0].listingType,
-    collection: opts.collection || card.collectionTitle(entries[0].listingType, entries.length),
+    collection:
+      opts.collection ||
+      card.collectionTitle(entries[0].listingType, entries.length, { students: card.isStudentBatch(entries) }),
     day: opts.day,
     cta: opts.cta,
     digest: Boolean(opts.digest),
@@ -756,12 +769,12 @@ async function shareListing(parsed, listingType, siteLink, ctx, { priority = fal
     // заплатили, и ни ждать два с половиной часа, ни делить ролик с чужими
     // объявлениями она не должна — рекламодатель платит за свой пост.
     if (priority) runBatch([entry]).catch((err) => console.error('Автопостинг (реклама):', err));
-    else queueFor(listingType).push(entry);
+    else queueFor(queueKey(listingType, parsed)).push(entry);
     result.queued = true;
     // Название с оглядкой на размер пачки: ролик из одного объявления называется
     // «Вакансия дня», и обещать в ответе «Вакансии дня» нельзя — в Instagram
     // уедет не то, что написано в чате.
-    result.collection = card.collectionTitle(listingType, BATCH_SIZE);
+    result.collection = card.collectionTitle(queueKey(listingType, parsed), BATCH_SIZE);
   } else {
     skipped.push('instagram');
     console.log('[instagram] не настроен — пропускаю');
@@ -775,7 +788,7 @@ async function shareListing(parsed, listingType, siteLink, ctx, { priority = fal
   // Сколько объявлений этого типа ждёт ролика вместе с этим и когда выйдет
   // ближайший: объявление больше не уезжает в ту же секунду, и сказать об этом
   // надо прямо, иначе молчание Instagram читается как сбой.
-  result.waiting = queueFor(listingType).length;
+  result.waiting = queueFor(queueKey(listingType, parsed)).length;
   result.releaseInMin = nextReleaseInMin();
 
   // Реклама уже уехала сама (см. выше) — ни очереди, ни расписания у неё нет.
@@ -845,6 +858,7 @@ async function unpublish({ threadsPostId, instagramMediaId }) {
 }
 
 module.exports = {
+  queueKey,
   shareListing,
   shareMedia,
   postToThreads,

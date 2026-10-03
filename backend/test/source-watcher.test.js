@@ -5,7 +5,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { install, statsStub, at, chat, wait } = require('./helpers/stub');
+const { install, statsStub, at, chat, wait, adGroupsStub } = require('./helpers/stub');
 
 const tg = chat();
 const stats = statsStub();
@@ -13,7 +13,10 @@ const parsed = [];
 const ingested = [];
 let answer = () => [];
 
+const groups = adGroupsStub();
+
 const requireSrc = install({
+  [at('telegram/adGroups.js')]: groups,
   [at('telegram/api.js')]: tg.api,
   [at('telegram/notify.js')]: { ADMIN_IDS: new Set(['1']), isAllowed: () => true, notifyAdmins: async () => {} },
   [at('telegram/extract.js')]: {
@@ -123,4 +126,18 @@ test('разбор упал на лимите — повтор того же т�
   await post('Требуется сварщик на объект, Аламедин, 2500 сом в день, 0700 999 888');
   await wait(20);
   assert.equal(parsed.length, before + 2, 'после неудачи повтор не считается уже виденным');
+});
+
+test('наша же реклама в группе не разбирается как вакансия', async () => {
+  const before = parsed.length;
+  groups.isOwn = (message) => Boolean(message.out);
+  await watcher.handleMessage({
+    id: (seq += 1),
+    out: true,
+    message: 'Требуются бариста в кофейню, 1500 сом за смену. Ватсап 0500 160 633',
+    date: Math.floor(Date.now() / 1000),
+  });
+  await wait(10);
+  assert.equal(parsed.length, before, 'к модели не ходили');
+  assert.ok(!stats.blocked.has('+996500160633'), 'и номер рекламодателя не в чёрном списке');
 });

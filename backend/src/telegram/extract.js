@@ -2,6 +2,7 @@ const categoriesRepo = require('../categoriesRepo');
 const KNOWN_CITIES = require('../cities');
 const { abroadWork } = require('../abroad');
 const spam = require('../spam');
+const { forStudents } = require('../students');
 const { normalizePhone, hasPhone, phoneFrom } = require('../phone');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
 const EXPERIENCE_LEVELS = require('../experienceLevels');
@@ -185,6 +186,10 @@ function normalize(raw) {
   // Пометка нужна и тогда, когда заграницу опознала сама модель: после отказа по
   // рекламе бот выкладывает текст как есть (см. adJob в bot.js), а здесь так нельзя.
   listing.abroad = !listing.is_listing && /работа за границей/i.test(listing.note);
+  // «Можно студентам» — только по словам самого объявления (см. students.js):
+  // пометку на сайте и в ролике должен давать работодатель, а не модель.
+  listing.for_students =
+    listing.is_listing && listing.listing_type !== 'board' && forStudents([listing.title, listing.description].join('\n'));
   return listing;
 }
 

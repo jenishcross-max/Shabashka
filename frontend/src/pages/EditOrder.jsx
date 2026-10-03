@@ -7,6 +7,7 @@ import Logo from '../components/Logo';
 import FormatIcon from '../components/FormatIcon';
 import { SkeletonForm } from '../components/Skeleton';
 import CityAutocomplete from '../components/CityAutocomplete';
+import { StudentCheckbox } from '../components/StudentField';
 
 export default function EditOrder() {
   const { id } = useParams();
@@ -38,6 +39,7 @@ export default function EditOrder() {
           work_format: order.work_format || 'offline',
           budget: order.budget ?? '',
           whatsapp_phone: order.whatsapp_phone || '',
+          for_students: Boolean(order.for_students),
         });
       })
       .catch(() => setNotFound(true));
@@ -182,6 +184,11 @@ export default function EditOrder() {
               onChange={(e) => setForm((f) => ({ ...f, budget: e.target.value }))}
             />
           </label>
+          <StudentCheckbox
+            kind="order"
+            checked={form.for_students}
+            onChange={(v) => setForm((f) => ({ ...f, for_students: v }))}
+          />
           <div className="field">
             <label className="filter-checkbox">
               <input type="checkbox" checked={showPhone} onChange={(e) => setShowPhone(e.target.checked)} />

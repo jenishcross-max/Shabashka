@@ -160,6 +160,26 @@ function init() {
       await pool.query('ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS is_imported BOOLEAN NOT NULL DEFAULT false');
       await pool.query('ALTER TABLE board_posts ADD COLUMN IF NOT EXISTS is_imported BOOLEAN NOT NULL DEFAULT false');
 
+      // Работа, которая подходит студентам, — так сказал сам работодатель
+      // («можно студентам», «совмещать с учёбой»; см. students.js). По этой
+      // пометке на сайте фильтр «Для студентов», а ролик выходит своим выпуском.
+      // Индекс частичный: студенческих объявлений меньшинство, и искать нужно
+      // только их.
+      await pool.query('ALTER TABLE orders ADD COLUMN IF NOT EXISTS for_students BOOLEAN NOT NULL DEFAULT false');
+      await pool.query('ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS for_students BOOLEAN NOT NULL DEFAULT false');
+      await pool.query('CREATE INDEX IF NOT EXISTS idx_orders_students ON orders(created_at) WHERE for_students');
+      await pool.query('CREATE INDEX IF NOT EXISTS idx_vacancies_students ON vacancies(created_at) WHERE for_students');
+
+      // Платная реклама — отдельным списком в меню бота (см. listAds в
+      // telegram/imports.js). Задним числом помечаем ту, что уже выходила в
+      // Threads: её кампании знают свою карточку.
+      await pool.query('ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS is_ad BOOLEAN NOT NULL DEFAULT false');
+      await pool.query('CREATE INDEX IF NOT EXISTS idx_imported_ads ON imported_listings(created_at) WHERE is_ad');
+      await pool.query(
+        `UPDATE imported_listings SET is_ad = true WHERE NOT is_ad AND id IN
+           (SELECT import_id FROM ad_campaigns WHERE import_id IS NOT NULL)`
+      );
+
       // Задним числом помечаем то, что уже опубликовал бот: связи в
       // imported_listings для этого есть, а без разметки старые объявления
       // выглядели бы как поданные вручную.

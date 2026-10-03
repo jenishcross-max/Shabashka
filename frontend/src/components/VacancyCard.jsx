@@ -4,6 +4,7 @@ import { employmentLabel } from '../employmentTypes';
 import { experienceLabel } from '../experienceLevels';
 import FavoriteButton from './FavoriteButton';
 import FormatIcon from './FormatIcon';
+import { StudentBadge } from './StudentField';
 
 export function formatSalary(min, max) {
   if (!min && !max) return 'По договорённости';
@@ -22,6 +23,7 @@ export default function VacancyCard({ vacancy }) {
             <FormatIcon name={vacancy.work_format === 'online' ? 'online' : 'offline'} size={14} />
             {vacancy.work_format === 'online' ? 'Онлайн' : 'Офлайн'}
           </span>
+          {!!vacancy.for_students && <StudentBadge />}
           {!!vacancy.pinned && <span className="badge pinned">🔥 Топ</span>}
           {!!vacancy.is_example && <span className="badge badge-example">Пример</span>}
         </div>

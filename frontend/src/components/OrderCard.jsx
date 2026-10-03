@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { relativeDate } from '../formatDate';
 import FavoriteButton from './FavoriteButton';
 import FormatIcon from './FormatIcon';
+import { StudentBadge } from './StudentField';
 
 export default function OrderCard({ order }) {
   return (
@@ -13,6 +14,7 @@ export default function OrderCard({ order }) {
             <FormatIcon name={order.work_format === 'online' ? 'online' : 'offline'} size={14} />
             {order.work_format === 'online' ? 'Онлайн' : 'Офлайн'}
           </span>
+          {!!order.for_students && <StudentBadge />}
           {!!order.pinned && <span className="badge pinned">🔥 Топ</span>}
           {!!order.is_example && <span className="badge badge-example">Пример</span>}
         </div>
