@@ -203,6 +203,14 @@ function boardText(parsed) {
   return `${text.slice(0, BOARD_MAX_TEXT - 1).replace(/\s+\S*$/, '')}…`;
 }
 
+// Сумма для колонки INTEGER. Разбор отдаёт число, но в базу уходят и поля,
+// собранные без модели (реклама «как есть»), и пустая строка там валила
+// публикацию: «invalid input syntax for type integer».
+function amount(value) {
+  const digits = String(value ?? '').replace(/\D/g, '');
+  return digits ? Number(digits) : null;
+}
+
 async function publish(id) {
   const row = await get(id);
   if (!row) throw new Error('Объявление не найдено');
@@ -243,12 +251,12 @@ async function publish(id) {
         parsed.title,
         parsed.description,
         parsed.category,
-        parsed.employment_type,
+        parsed.employment_type || 'gig',
         parsed.city,
         parsed.address,
         parsed.work_format,
-        parsed.experience,
-        parsed.budget,
+        parsed.experience || 'no_experience',
+        amount(parsed.budget),
         parsed.phone,
         Boolean(parsed.for_students),
       ]
@@ -275,7 +283,7 @@ async function publish(id) {
       parsed.city,
       parsed.address,
       parsed.work_format,
-      parsed.budget,
+      amount(parsed.budget),
       parsed.phone,
       Boolean(parsed.for_students),
     ]

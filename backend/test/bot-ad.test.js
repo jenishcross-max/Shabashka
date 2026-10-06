@@ -25,6 +25,7 @@ process.env.PUBLIC_URL = 'https://xn--80aaac0cyed.com';
 const tg = chat();
 const stats = statsStub();
 const published = [];
+const created = [];
 // Вместо базы — список строк в памяти: проверяем, что бот пишет и убирает
 // отложенное, а не то, как это делает Postgres.
 const rows = [];
@@ -48,6 +49,7 @@ const requireSrc = install({
   [at('telegram/imports.js')]: {
     create: async ({ parsed }) => {
       published.push(parsed.title);
+      created.push(parsed);
       return 7;
     },
     get: async () => null,
@@ -270,4 +272,18 @@ test('группы не настроены — про них в отчёте н�
   await realWait(60);
   assert.ok(tg.has(/Реклама, контент выложен как есть/), tg.dump());
   assert.ok(!tg.has(/Группы Telegram|В группы Telegram/));
+});
+
+test('вакансия «как есть» уходит без пустых строк в числовых полях', async () => {
+  reset();
+  created.length = 0;
+  groups.enqueue = async () => ({ queued: 0, silent: true });
+  await say('/ad_fast Требуются официанты в кофейню, оплата 1500 сом за смену. Ватс ап 0500 16 06 33');
+  await realWait(60);
+  const ad = created.at(-1);
+  assert.equal(ad.listing_type, 'vacancy', tg.dump());
+  // Пустая строка вместо суммы роняла публикацию: «invalid input syntax for type integer».
+  assert.equal(ad.budget, null);
+  assert.equal(ad.employment_type, 'gig');
+  assert.equal(ad.experience, 'no_experience');
 });

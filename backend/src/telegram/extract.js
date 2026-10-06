@@ -3,7 +3,7 @@ const KNOWN_CITIES = require('../cities');
 const { abroadWork } = require('../abroad');
 const spam = require('../spam');
 const { forStudents } = require('../students');
-const { normalizePhone, hasPhone, phoneFrom } = require('../phone');
+const { normalizePhone, hasPhone, phoneFrom, phonesIn } = require('../phone');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
 const EXPERIENCE_LEVELS = require('../experienceLevels');
 const tg = require('./api');
@@ -878,15 +878,9 @@ async function run(system, content, { maxTokens = DEFAULT_MAX_TOKENS, kind = 'ad
   return text;
 }
 
-// JSON из ответа модели: сам объект без пояснений вокруг, с починкой
-// неэкранированных слэшей (см. repairJson).
-function parseJson(text) {
-  // Без response_format модель иногда добавляет пояснение до/после JSON или
-  // оборачивает его в markdown — вырезаем сам объект и уже его парсим.
-  const json = extractJson(text);
-  if (!json) throw new Error(`Модель вернула не JSON: ${text.slice(0, 200)}`);
-
-  // Сначала пробуем как есть: правильный ответ трогать незачем.
+// Один объект: сначала как есть — правильный ответ трогать незачем, — потом с
+// починкой неэкранированных слэшей (см. repairJson).
+function parseObject(json) {
   try {
     return JSON.parse(json);
   } catch (err) {
@@ -894,6 +888,39 @@ function parseJson(text) {
     console.log(`[extract] в ответе были неэкранированные слэши — починил (${err.message})`);
     return fixed;
   }
+}
+
+// Ответ без закрывающей скобки: модель оборвалась на потолке ответа или просто
+// забыла закрыть внешний объект. Целого JSON тогда нет, и раньше терялось всё —
+// хотя готовые объявления внутри "listings" лежат целиком. Их и берём; то, на
+// котором ответ оборвался, — нет: половину объявления публиковать нельзя.
+function salvageListings(text) {
+  const at = text.search(/"listings"\s*:\s*\[/);
+  if (at === -1) return null;
+  const items = [];
+  let from = text.indexOf('[', at) + 1;
+  for (;;) {
+    const start = text.indexOf('{', from);
+    if (start === -1) break;
+    const json = extractJson(text.slice(start));
+    if (!json) break;
+    items.push(json);
+    from = start + json.length;
+  }
+  return items.length ? items : null;
+}
+
+// JSON из ответа модели: сам объект без пояснений вокруг.
+function parseJson(text) {
+  // Без response_format модель иногда добавляет пояснение до/после JSON или
+  // оборачивает его в markdown — вырезаем сам объект и уже его парсим.
+  const json = extractJson(text);
+  if (json) return parseObject(json);
+
+  const items = salvageListings(text);
+  if (!items) throw new Error(`Модель вернула не JSON: ${text.slice(0, 200)}`);
+  console.log(`[extract] ответ модели оборван — взял целые объявления: ${items.length}`);
+  return { listings: items.map(parseObject) };
 }
 
 // Разбор объявлений. content — текст user-сообщения. Возвращает массив
@@ -944,6 +971,17 @@ function screen(listing, { ad = false } = {}) {
   return { ...listing, is_listing: false, note: spam.describe(found), spam: found.kind, forbidden: found.kind === 'drop' };
 }
 
+// Номер на всё сообщение один — значит, он и у каждого объявления в нём.
+// Работодатель перечисляет три вакансии и ставит «Ватсап: 0500…» в самом
+// конце, а модель приписывает номер одной из них или ни одной — и вакансии без
+// номера не публикуются: откликнуться некуда. Номеров несколько — не гадаем,
+// какой чей.
+function shareSolePhone(listings, text) {
+  const phones = phonesIn(text);
+  if (phones.length !== 1) return listings;
+  return listings.map((l) => (l.is_listing && !l.phone ? { ...l, phone: phones[0] } : l));
+}
+
 // trusted — админ сам сказал «это не спам» (кнопка в /spam): проверку по
 // словам на сетевое тогда не повторяем, иначе она отсеяла бы пост второй раз.
 // Оформление на чужие документы проверяется всё равно — оно запрещено и за
@@ -956,7 +994,8 @@ async function fromText(text, { ad = false, background = false, trusted = false 
   let lastErr = null;
   for (const maxTokens of TEXT_STEPS) {
     try {
-      return (await ask(task, ad ? AD_SUFFIX : undefined, { maxTokens, kind })).map((l) => screen(l, { ad: ad || trusted }));
+      const listings = await ask(task, ad ? AD_SUFFIX : undefined, { maxTokens, kind });
+      return shareSolePhone(listings, text).map((l) => screen(l, { ad: ad || trusted }));
     } catch (err) {
       // Подвинуться можно только местом, зарезервированным под ответ.
       // Остальные отказы на второй попытке повторятся один в один.

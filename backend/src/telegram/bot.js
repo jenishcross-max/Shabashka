@@ -845,7 +845,11 @@ async function adFields(text, classify) {
     city: '',
     category: '',
     address: '',
-    budget: '',
+    // Те же значения, что даёт разбор (см. normalize в extract.js): пустая
+    // строка вместо суммы роняла публикацию вакансии ошибкой Postgres.
+    budget: null,
+    employment_type: 'gig',
+    experience: 'no_experience',
     work_format: 'offline',
   };
   byHand.for_students = byHand.listing_type !== 'board' && students.forStudents(text);
