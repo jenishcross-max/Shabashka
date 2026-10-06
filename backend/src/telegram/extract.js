@@ -2,7 +2,7 @@ const categoriesRepo = require('../categoriesRepo');
 const KNOWN_CITIES = require('../cities');
 const { abroadWork } = require('../abroad');
 const spam = require('../spam');
-const { forStudents } = require('../students');
+const { forStudents, refused } = require('../students');
 const { normalizePhone, hasPhone, phoneFrom, phonesIn } = require('../phone');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
 const EXPERIENCE_LEVELS = require('../experienceLevels');
@@ -982,6 +982,15 @@ function shareSolePhone(listings, text) {
   return listings.map((l) => (l.is_listing && !l.phone ? { ...l, phone: phones[0] } : l));
 }
 
+// Пометку «для студентов» normalize ставит по описанию — а его пересказала
+// модель. Слабая модель лесенки может «Студенты не рассматриваются» выбросить,
+// а «гибкий график, подойдёт студентам» дописать. Отказ в самом сообщении
+// поэтому важнее пересказа — для всех объявлений из него.
+function studentsAsSaid(listings, text) {
+  if (!refused(text)) return listings;
+  return listings.map((l) => (l.for_students ? { ...l, for_students: false } : l));
+}
+
 // trusted — админ сам сказал «это не спам» (кнопка в /spam): проверку по
 // словам на сетевое тогда не повторяем, иначе она отсеяла бы пост второй раз.
 // Оформление на чужие документы проверяется всё равно — оно запрещено и за
@@ -995,7 +1004,7 @@ async function fromText(text, { ad = false, background = false, trusted = false 
   for (const maxTokens of TEXT_STEPS) {
     try {
       const listings = await ask(task, ad ? AD_SUFFIX : undefined, { maxTokens, kind });
-      return shareSolePhone(listings, text).map((l) => screen(l, { ad: ad || trusted }));
+      return studentsAsSaid(shareSolePhone(listings, text), text).map((l) => screen(l, { ad: ad || trusted }));
     } catch (err) {
       // Подвинуться можно только местом, зарезервированным под ответ.
       // Остальные отказы на второй попытке повторятся один в один.

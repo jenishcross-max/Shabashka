@@ -87,3 +87,11 @@ test('«можно студентам» в тексте — пометка дл�
   assert.equal(board.for_students, false);
   assert.equal(order.for_students, true);
 });
+
+test('в сообщении «не студенты» — пометки нет, что бы модель ни пересказала', async () => {
+  // Пересказ модели зовёт студентов, а сам работодатель — нет.
+  reply = [{ is_listing: true, listing_type: 'vacancy', title: 'Бариста', description: 'Гибкий график, подойдёт студентам', phone: '0700111333' }];
+  const [vacancy] = await extract.fromText('Требуется бариста в кофейню. Возраст от 20 лет, не студенты. График 8:30–21:00. 0700111333');
+  assert.equal(vacancy.is_listing, true);
+  assert.equal(vacancy.for_students, false);
+});

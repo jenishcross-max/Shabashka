@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const { Pool } = require('pg');
+const { refused } = require('../students');
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -169,6 +170,20 @@ function init() {
       await pool.query('ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS for_students BOOLEAN NOT NULL DEFAULT false');
       await pool.query('CREATE INDEX IF NOT EXISTS idx_orders_students ON orders(created_at) WHERE for_students');
       await pool.query('CREATE INDEX IF NOT EXISTS idx_vacancies_students ON vacancies(created_at) WHERE for_students');
+      // Поначалу бот не узнавал отказ — «Не студенты», «Студенты – не
+      // беспокоить», «Студенттер кабыл алынбайт» — и ставил на такие вакансии
+      // пометку «для студентов». Снимаем её там, где текст прямо говорит «нет»;
+      // галочку из формы, поставленную без таких слов, не трогаем.
+      for (const [table, fields] of [
+        ['vacancies', 'title, description, requirements, conditions, schedule'],
+        ['orders', 'title, description'],
+      ]) {
+        const { rows } = await pool.query(`SELECT id, ${fields} FROM ${table} WHERE for_students`);
+        const wrong = rows.filter(({ id, ...text }) => refused(Object.values(text).filter(Boolean).join('\n')));
+        if (!wrong.length) continue;
+        await pool.query(`UPDATE ${table} SET for_students = false WHERE id = ANY($1)`, [wrong.map((r) => r.id)]);
+        console.log(`[db] ${table}: снял «для студентов» с ${wrong.length}, где в тексте отказ`);
+      }
 
       // Платная реклама — отдельным списком в меню бота (см. listAds в
       // telegram/imports.js). Задним числом помечаем ту, что уже выходила в
