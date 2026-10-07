@@ -1,5 +1,5 @@
 const tg = require('./api');
-const { num, viewsWord, clamp, clock, whenText, agoText } = require('./format');
+const { num, plural, viewsWord, clamp, clock, whenText, agoText } = require('./format');
 
 // Меню бота: кнопки вместо того, чтобы помнить полтора десятка команд.
 //
@@ -56,7 +56,10 @@ function homeView() {
         { text: '📣 Реклама', callback_data: 'm:ads' },
         { text: '📊 Сводка', callback_data: 'm:stats' },
       ],
-      [{ text: '🛍 Мои продукты', callback_data: 'm:products' }],
+      [
+        { text: '🛍 Мои продукты', callback_data: 'm:products' },
+        { text: '🔁 Поднятия рекламы', callback_data: 'm:raise' },
+      ],
       [
         { text: '📥 Последние из групп', callback_data: 'm:last' },
         { text: '🧹 Отсеянное', callback_data: 'm:spam' },
@@ -168,6 +171,7 @@ function adInfoView({
   boostable = false,
   goal = 1000,
   reportAfterMs = 24 * HOUR_MS,
+  raises = null,
   now = Date.now(),
 }) {
   const p = ad.parsed || {};
@@ -206,9 +210,10 @@ function adInfoView({
   if (typeof channel === 'number') lines.push('', `📢 Наш канал: 👁 ${num(channel)} ${viewsWord(channel)}`);
 
   if (groups.length) {
-    const reached = groups.filter((g) => g.status === 'sent' || g.status === 'deleted').length;
-    lines.push('', `👥 <b>Группы Telegram</b> — ${reached} из ${groups.length}`);
-    for (const g of groups) lines.push(groupLine(g, now));
+    const latest = latestByGroup(groups);
+    const reached = latest.filter((g) => g.sent).length;
+    lines.push('', `👥 <b>Группы Telegram</b> — ${reached} из ${latest.length}`);
+    for (const g of latest) lines.push(`${groupLine(g.row, now)}${g.sent > 1 ? ` · вышла ${g.sent} ${plural(g.sent, ['раз', 'раза', 'раз'])}` : ''}`);
     if (groups.some((g) => g.status === 'sent') && !groups.some((g) => typeof g.views === 'number')) {
       lines.push('Просмотры в группах Telegram не считает — только в каналах.');
     }
@@ -216,15 +221,138 @@ function adInfoView({
     lines.push('', '👥 В группы Telegram не уходила.');
   }
 
+  lines.push('', `🔁 <b>Поднятия</b>: ${raiseSummaryText(raises)}`);
+
   const top = [{ text: '🔄 Обновить', callback_data: `ai:${ad.id}:${page}:f` }];
   if (boostable && campaign) top.push({ text: '🔁 Поднять в Threads', callback_data: `ib:${campaign.id}:${ad.id}:${page}` });
-  const mid = [];
+  const mid = [{ text: '🔁 Поднятия', callback_data: `rz:v:${ad.id}:${page}` }];
   if (campaign) mid.push({ text: '📄 Отчёт для рекламодателя', callback_data: `ar:${campaign.id}` });
   if (ad.status === 'published') mid.push({ text: '🗑 Снять', callback_data: `ax:${ad.id}:${page}` });
   return {
     text: lines.join('\n'),
     extra: keyboard([top, ...(mid.length ? [mid] : []), [{ text: '⬅️ К списку', callback_data: `al:${page}` }, BACK]]),
   };
+}
+
+// ─── Поднятия рекламы (см. adRaises.js)
+
+const PLATFORM_NAMES = { site: '🌐 сайт', threads: '🧵 Threads', instagram: '📸 Instagram', groups: '👥 группы Telegram' };
+const PLATFORM_KEYS = { site: 'Сайт', threads: 'Threads', instagram: 'Instagram', groups: 'Группы' };
+const RAISE_PLATFORMS = ['site', 'threads', 'instagram', 'groups'];
+
+const timesText = (times) =>
+  times.length > 1 ? `${times.slice(0, -1).join(', ')} и ${times[times.length - 1]}` : times[0] || '';
+const daysText = (days) => `${days} ${plural(days, ['день', 'дня', 'дней'])}`;
+
+// Строка плана для отчёта о публикации и для экрана настроек.
+function raisePlanText(plan) {
+  const count = plan.days * plan.times.length;
+  const where = RAISE_PLATFORMS.filter((k) => plan.to[k]).map((k) => PLATFORM_NAMES[k]);
+  return `${count} ${plural(count, ['поднятие', 'поднятия', 'поднятий'])}: ${
+    plan.days === 1 ? 'завтра' : `${daysText(plan.days)} подряд с завтрашнего`
+  } в ${timesText(plan.times)} — ${where.join(', ')}`;
+}
+
+// «☰ Меню → 🔁 Поднятия рекламы»: план для новой рекламы.
+function raiseSettingsView(plan, { dayOptions, timePresets, active }) {
+  const lines = ['🔁 <b>Поднятия рекламы</b>'];
+  if (active) {
+    lines.push('Новая платная реклама после выхода поднимается сама:', raisePlanText(plan) + '.');
+  } else {
+    lines.push('Сейчас выключены: новая реклама сама не поднимается.');
+  }
+  lines.push(
+    '',
+    'Поднятие — та же реклама ещё раз: на сайте карточка снова наверху, в Threads и Instagram — новый пост, в группы — ещё раз через ту же очередь с паузами.',
+    'Время — по Бишкеку. Настройки действуют на новую рекламу; у вышедшей план меняется в «📣 Реклама» → «ℹ️» → «🔁 Поднятия».'
+  );
+  if (active && plan.to.groups && plan.times.length > 1) {
+    lines.push('', '⚠️ Одна реклама в группе по нескольку раз в день — админы групп могут счесть это спамом и выгнать.');
+  }
+  const mark = (on) => (on ? '✅ ' : '');
+  const days = dayOptions.map((d) => ({
+    text: `${mark(plan.days === d)}${d ? d : 'Выкл'}`,
+    callback_data: `rs:d:${d}`,
+  }));
+  const times = timePresets.map((preset, i) => ({
+    text: `${mark(preset.join() === plan.times.join())}${timesText(preset)}`,
+    callback_data: `rs:t:${i}`,
+  }));
+  const platforms = RAISE_PLATFORMS.map((k) => ({
+    text: `${plan.to[k] ? '✅' : '⬜'} ${PLATFORM_KEYS[k]}`,
+    callback_data: `rs:p:${k}`,
+  }));
+  return {
+    text: lines.join('\n'),
+    extra: keyboard([
+      [{ text: 'Сколько дней:', callback_data: 'rs:noop' }],
+      days,
+      ...times.map((b) => [b]),
+      platforms.slice(0, 2),
+      platforms.slice(2),
+      [BACK],
+    ]),
+  };
+}
+
+const parseResult = (r) => (typeof r.result === 'string' ? JSON.parse(r.result) : r.result) || {};
+
+function raiseLine(r) {
+  const at = whenText(r.due_at);
+  const res = parseResult(r);
+  if (r.status === 'pending') return `⏳ ${at}`;
+  if (r.status === 'running') return `🔄 ${at} — идёт`;
+  if (r.status === 'skipped') return `⏭ ${at} — пропущено: ${tg.esc(res.note || '')}`;
+  if (r.status === 'failed') return `⚠️ ${at} — не вышло${res.note ? `: ${tg.esc(res.note)}` : ''}`;
+  const parts = [];
+  if (res.site === true) parts.push('сайт');
+  if (res.threads) parts.push(res.threads.posted ? 'Threads' : 'Threads ✗');
+  if (res.instagram) parts.push(res.instagram.posted ? 'Instagram' : 'Instagram ✗');
+  if (res.groups) parts.push(res.groups.queued ? `группы: ${res.groups.queued}` : 'группы ✗');
+  return `✅ ${at} — ${parts.join(' · ')}`;
+}
+
+// Строка про поднятия в карточке рекламы.
+function raiseSummaryText(s) {
+  if (!s || !s.total) return s && s.stopped ? 'остановлены' : 'не запланированы';
+  const head = `${s.done} из ${s.total}`;
+  if (s.next) return `${head} · следующее — ${whenText(s.next)}`;
+  if (s.stopped) return `${head} · остановлены`;
+  return `${head} · закончились`;
+}
+
+// План поднятий одной рекламы: что сделано, что ждёт, и кнопки.
+function raisesView({ ad, list, summary, page = 0 }) {
+  const title = (ad.parsed && ad.parsed.title) || 'реклама';
+  const live = list.filter((r) => r.status !== 'cancelled');
+  const lines = [`🔁 <b>Поднятия «${tg.esc(clamp(title, 60))}»</b>`, raiseSummaryText(summary)];
+  if (live.length) lines.push('', ...live.map(raiseLine));
+  const cancelled = list.length - live.length;
+  if (cancelled) lines.push('', `Отменено: ${cancelled}`);
+  const rows = [];
+  if (summary.pending) rows.push([{ text: '⏹ Остановить', callback_data: `rz:s:${ad.id}:${page}` }]);
+  if (ad.status === 'published') {
+    rows.push([
+      { text: '➕ Ещё день', callback_data: `rz:e:${ad.id}:${page}` },
+      { text: '🔄 Заново по настройкам', callback_data: `rz:r:${ad.id}:${page}` },
+    ]);
+  }
+  rows.push([{ text: '⬅️ К рекламе', callback_data: `ai:${ad.id}:${page}` }, BACK]);
+  return { text: lines.join('\n'), extra: keyboard(rows) };
+}
+
+// После поднятий у одной группы несколько постов одной рекламы: показываем
+// последний и сколько всего вышло, иначе карточка разрасталась бы на десятки
+// строк и упиралась в 4096 знаков.
+function latestByGroup(groups) {
+  const byTarget = new Map();
+  for (const row of groups) {
+    const entry = byTarget.get(row.target) || { row, sent: 0 };
+    entry.row = row;
+    if (row.status === 'sent' || row.status === 'deleted') entry.sent += 1;
+    byTarget.set(row.target, entry);
+  }
+  return [...byTarget.values()];
 }
 
 // Снятие оплаченной рекламы — с вопросом: в меню кнопка стоит рядом с
@@ -329,6 +457,10 @@ module.exports = {
   adsListView,
   adInfoView,
   confirmRemoveView,
+  raiseSettingsView,
+  raisesView,
+  raisePlanText,
+  raiseSummaryText,
   groupsView,
   adHowView,
 };

@@ -216,7 +216,9 @@ const titleOf = (entity, target) => (entity && entity.title) || target;
 // Поставить рекламу в очередь по группам. Сразу ничего не шлёт — это делает
 // tick, по одной группе за раз. Возвращает, сколько встало и когда примерно
 // уйдёт последняя: это строка в отчёте админу.
-async function enqueue({ importId, chatId, text, media = null }) {
+// repeat — поднятие (см. adRaises.js): в группы, где реклама уже вышла, она
+// уходит снова — в этом и смысл. Пропускаем только те, где она ещё ждёт.
+async function enqueue({ importId, chatId, text, media = null, repeat = false }) {
   if (!TARGETS.length) return { queued: 0, silent: true };
   if (!client) return { queued: 0, reason: 'аккаунт Telegram для групп не подключён' };
   // Длиннее 4096 знаков Telegram сообщение не примет — и три попытки ушли бы
@@ -230,16 +232,18 @@ async function enqueue({ importId, chatId, text, media = null }) {
   const now = Date.now();
   const open = TARGETS.filter((target) => !state.off.includes(target) && !brokenOf(state, target, now));
   const { rows: done } = await db.query(
-    "SELECT DISTINCT target FROM ad_group_posts WHERE import_id = $1 AND status IN ('pending', 'sent')",
-    [importId]
+    'SELECT DISTINCT target FROM ad_group_posts WHERE import_id = $1 AND status = ANY($2)',
+    [importId, repeat ? ['pending'] : ['pending', 'sent']]
   );
   const already = new Set(done.map((row) => row.target));
   const targets = open.filter((target) => !already.has(target));
   if (!targets.length) {
-    return {
-      queued: 0,
-      reason: already.size ? 'эта реклама уже разослана или ждёт очереди' : 'все группы выключены или в них нельзя писать',
-    };
+    const reason = !already.size
+      ? 'все группы выключены или в них нельзя писать'
+      : repeat
+        ? 'прошлое поднятие ещё не разошлось по группам'
+        : 'эта реклама уже разослана или ждёт очереди';
+    return { queued: 0, reason };
   }
 
   // Когда группа освободится: последний пост в неё (вышедший или ждущий) плюс
@@ -278,6 +282,21 @@ async function enqueue({ importId, chatId, text, media = null }) {
     off: TARGETS.length - open.length,
     lastAt: Math.max(...plan.map((p) => p.when)),
   };
+}
+
+// Поднятие рекламы в группах (см. adRaises.js) — тем же текстом и файлом, что
+// и в первый раз: они лежат в первой строке этой рекламы. Не уходила в группы
+// вовсе — шлём текст рекламы, без файла.
+async function repeat({ importId, chatId, text }) {
+  const { rows } = await db.query(
+    'SELECT text, media_kind, media_file_id, media_meta FROM ad_group_posts WHERE import_id = $1 ORDER BY id LIMIT 1',
+    [importId]
+  );
+  const first = rows[0];
+  if (!first) return enqueue({ importId, chatId, text, repeat: true });
+  const meta = typeof first.media_meta === 'string' ? JSON.parse(first.media_meta) : first.media_meta || {};
+  const media = first.media_kind ? { kind: first.media_kind, fileId: first.media_file_id, ...meta } : null;
+  return enqueue({ importId, chatId, text: first.text, media, repeat: true });
 }
 
 // Один заход: самый ранний созревший пост. По одному за раз — паузу между
@@ -611,6 +630,7 @@ module.exports = {
   start,
   isOwn,
   enqueue,
+  repeat,
   tick,
   forImport,
   channelViews,

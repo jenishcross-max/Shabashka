@@ -246,4 +246,32 @@ function productStoreStub() {
   };
 }
 
-module.exports = { install, at, chat, wait, dmStub, statsStub, adGroupsStub, productStoreStub, SRC };
+// Поднятия рекламы (см. src/telegram/adRaises.js) живут в базе. Тестам бота
+// хватает копилки: какие рекламы поставили на поднятия и какие сняли с них.
+function adRaisesStub(extra = {}) {
+  const planned = [];
+  const cancelled = [];
+  const plan = { days: 3, times: ['09:00', '13:00'], to: { site: true, threads: true, instagram: true, groups: true } };
+  return {
+    planned,
+    cancelled,
+    start: () => {},
+    settings: async () => plan,
+    active: () => true,
+    plan: async (importId, chatId) => {
+      planned.push({ importId, chatId });
+      return { count: 6, plan };
+    },
+    cancel: async (importId) => {
+      cancelled.push(importId);
+      return 0;
+    },
+    rows: async () => [],
+    summarize: () => ({ total: 0, done: 0, failed: 0, pending: 0, next: null, stopped: false }),
+    DAY_OPTIONS: [0, 1, 2, 3, 5, 7],
+    TIME_PRESETS: [['09:00'], ['09:00', '13:00']],
+    ...extra,
+  };
+}
+
+module.exports = { install, at, chat, wait, dmStub, statsStub, adGroupsStub, adRaisesStub, productStoreStub, SRC };

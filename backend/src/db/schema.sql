@@ -403,3 +403,21 @@ CREATE TABLE IF NOT EXISTS product_posts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_product_posts_product ON product_posts(product_id, created_at);
+
+-- Поднятия платной рекламы по расписанию (см. telegram/adRaises.js): строка —
+-- одно поднятие одной рекламы. План строится при публикации по настройкам
+-- («☰ Меню → 🔁 Поднятия рекламы») и дальше живёт сам: перезапуск Render его
+-- не теряет.
+CREATE TABLE IF NOT EXISTS ad_raises (
+  id          SERIAL PRIMARY KEY,
+  import_id   INTEGER NOT NULL,      -- реклама (imported_listings)
+  chat_id     BIGINT NOT NULL,       -- куда писать о сбоях и об итоге
+  due_at      TIMESTAMPTZ NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'pending',  -- pending | running | done | failed | skipped | cancelled
+  result      JSONB,                 -- что вышло где: { site, threads, instagram, groups, note }
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  done_at     TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_ad_raises_due ON ad_raises(due_at) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_ad_raises_import ON ad_raises(import_id);

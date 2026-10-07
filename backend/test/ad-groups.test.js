@@ -31,8 +31,12 @@ async function query(sql, params = []) {
   const q = sql.replace(/\s+/g, ' ').trim();
   const pending = (r) => r.status === 'pending';
   if (q.startsWith('SELECT DISTINCT target')) {
-    const targets = rows.filter((r) => r.import_id === params[0] && ['pending', 'sent'].includes(r.status)).map((r) => r.target);
+    const targets = rows.filter((r) => r.import_id === params[0] && params[1].includes(r.status)).map((r) => r.target);
     return { rows: [...new Set(targets)].map((target) => ({ target })) };
+  }
+  if (q.startsWith('SELECT text, media_kind, media_file_id, media_meta FROM ad_group_posts')) {
+    const first = rows.filter((r) => r.import_id === params[0]).sort((a, b) => a.id - b.id)[0];
+    return { rows: first ? [{ ...first }] : [] };
   }
   if (q.startsWith('SELECT target, MAX(COALESCE')) {
     const last = new Map();
@@ -248,6 +252,30 @@ test('та же реклама второй раз не встаёт, а сле�
   await groups.enqueue({ importId: 6, chatId: 1, text: 'Нужен грузчик на склад, оплата 1000 сом в день, 0700111222' });
   const second = rows.filter((r) => r.target === '@vac')[1].not_before.getTime();
   assert.ok(second - first >= 60 * MIN, 'в одну группу — не чаще раза в час');
+});
+
+// Поднятие рекламы (см. adRaises.js): та же реклама в те же группы ещё раз —
+// с тем же файлом, а пока прошлый круг не разошёлся, новый не встаёт.
+test('поднятие: туда, где реклама уже вышла, она уходит снова, тем же файлом', async () => {
+  fresh();
+  const media = { kind: 'image', fileId: 'макет', width: 1080, height: 1350 };
+  await groups.enqueue({ importId: 5, chatId: 1, text: AD, media });
+  const early = await groups.repeat({ importId: 5, chatId: 1, text: 'другой текст' });
+  assert.equal(early.queued, 0);
+  assert.match(early.reason, /прошлое поднятие ещё не разошлось/);
+
+  await drain();
+  assert.equal(posted.length, 3);
+  later(2 * 60 * MIN);
+  const again = await groups.repeat({ importId: 5, chatId: 1, text: 'другой текст' });
+  assert.equal(again.queued, 3);
+  const repeats = rows.slice(3);
+  assert.ok(repeats.every((r) => r.text === AD && r.media_file_id === 'макет'), 'текст и файл — как в первый раз');
+  assert.match(String(repeats[0].media_meta), /1350/);
+
+  // В группы реклама не уходила вовсе — поднятие шлёт её текст.
+  const fresh6 = await groups.repeat({ importId: 6, chatId: 1, text: 'Нужен грузчик на склад, оплата 1000 сом в день, 0700111222' });
+  assert.equal(fresh6.queued, 3);
 });
 
 test('группа, где писать нельзя, выпадает на сутки — с причиной админу', async () => {

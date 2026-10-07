@@ -369,6 +369,27 @@ async function countAds() {
 // что в разбор попало лишнее — чужая переписка, не тот телефон, мошенническое
 // объявление, — и это как раз те случаи, по которым потом спрашивают, что было
 // на сайте и как быстро это убрали.
+// Поднятие рекламы на сайте (см. adRaises.js): вакансия и заказ — наверх
+// ленты, записка на доске — ещё на сутки. Доска живёт сутки, а поднятия идут
+// три дня: без продления на второй день группы и Threads вели бы на пропавшую
+// карточку. Возвращает, получилось ли.
+async function bump(id) {
+  const row = await get(id);
+  if (!row || row.status !== 'published') return false;
+  let result = null;
+  if (row.vacancy_id) {
+    result = await db.query('UPDATE vacancies SET bumped_at = NOW() WHERE id = $1', [row.vacancy_id]);
+  } else if (row.order_id) {
+    result = await db.query('UPDATE orders SET bumped_at = NOW() WHERE id = $1', [row.order_id]);
+  } else if (row.board_post_id) {
+    result = await db.query(
+      "UPDATE board_posts SET expires_at = GREATEST(expires_at, NOW() + INTERVAL '24 hours') WHERE id = $1",
+      [row.board_post_id]
+    );
+  }
+  return Boolean(result && result.rowCount);
+}
+
 async function remove(id) {
   const row = await get(id);
   if (!row) throw new Error('Объявление не найдено');
@@ -391,6 +412,7 @@ async function remove(id) {
 }
 
 module.exports = {
+  bump,
   create,
   get,
   setParsed,

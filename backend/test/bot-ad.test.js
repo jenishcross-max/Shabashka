@@ -12,7 +12,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { install, dmStub, statsStub, at, chat, adGroupsStub, productStoreStub } = require('./helpers/stub');
+const { install, dmStub, statsStub, at, chat, adGroupsStub, adRaisesStub, productStoreStub } = require('./helpers/stub');
 
 // Час ожидания превращается в доли секунды: проверяем поведение, а не сроки.
 const realSetTimeout = global.setTimeout;
@@ -33,10 +33,12 @@ let rowSeq = 0;
 let parse = async () => [];
 
 const groups = adGroupsStub();
+const raises = adRaisesStub();
 
 const requireSrc = install({
   [at('telegram/adGroups.js')]: groups,
   [at('telegram/productStore.js')]: productStoreStub(),
+  [at('telegram/adRaises.js')]: raises,
   [at('telegram/api.js')]: tg.api,
   [at('telegram/notify.js')]: { ADMIN_IDS: new Set(['1']), isAllowed: () => true, notifyAdmins: async () => {} },
   [at('telegram/extract.js')]: {
@@ -264,6 +266,16 @@ test('реклама уходит и в группы Telegram — тем тек�
   assert.equal(published.length, 2, tg.dump());
   assert.equal(groups.queued.length, 1, 'одна реклама — один пост в группе');
   assert.equal(groups.queued[0].text, text);
+});
+
+test('реклама сама встаёт на поднятия, и в отчёте об этом строка', async () => {
+  reset();
+  raises.planned.length = 0;
+  groups.enqueue = async () => ({ queued: 0, silent: true });
+  await say('/ad_fast Требуются раннеры на ночную смену, 1500 сом за смену. Ватс ап 0500 16 06 33');
+  await realWait(60);
+  assert.deepEqual(raises.planned.map((p) => p.importId), [7]);
+  assert.ok(tg.has(/🔁 Поднятия: 6 поднятий: 3 дня подряд с завтрашнего в 09:00 и 13:00 — 🌐 сайт, 🧵 Threads, 📸 Instagram, 👥 группы Telegram/), tg.dump());
 });
 
 test('группы не настроены — про них в отчёте ни слова', async () => {

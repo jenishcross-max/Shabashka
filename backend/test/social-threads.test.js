@@ -196,3 +196,32 @@ test('продукт: карусель на обе площадки, без фо
   assert.equal(bare.instagram.posted, false);
   assert.match(bare.instagram.reason, /без фото/);
 });
+
+// Поднятие рекламы по расписанию (см. telegram/adRaises.js): тот же пост ещё
+// раз. Файл рекламодателя — файлом, без файла — карточкой, и Instagram тоже
+// получает картинку, а не отказ «нечего показать».
+test('поднятие рекламы: файл — файлом, без файла — карточкой на обе площадки', async () => {
+  posted.length = 0;
+  const withFile = await social.raiseAd({
+    text: 'Требуются бариста',
+    threadsText: 'Требуются бариста — шабашка.com/vacancies/7',
+    media: { kind: 'image', buffer: Buffer.from('макет') },
+  });
+  assert.equal(withFile.threads.posted, true);
+  assert.equal(withFile.instagram.posted, true);
+  assert.equal(posted.find((p) => p.kind === 'image').text, 'Требуются бариста — шабашка.com/vacancies/7');
+  assert.ok(posted.some((p) => p.kind === 'ig-image'));
+
+  posted.length = 0;
+  const byCard = await social.raiseAd({ text: 'Нужен сантехник', card: { parsed, listingType: 'order' }, siteLink: 'шабашка.com/orders/3' });
+  assert.equal(byCard.threads.posted, true);
+  assert.equal(byCard.instagram.posted, true);
+  assert.match(posted.find((p) => p.kind === 'image').text, /Нужен сантехник/, 'текст для Threads собран из рекламы');
+  assert.match(posted.find((p) => p.kind === 'ig-image').text, /шабашка\.com\/orders\/3/);
+
+  const onlyThreads = await social.raiseAd({ text: 'Текст', instagram: false });
+  assert.equal(onlyThreads.instagram, null, 'в Instagram не поднимали');
+  const bare = await social.raiseAd({ text: 'Текст', threads: false });
+  assert.equal(bare.threads, null);
+  assert.match(bare.instagram.reason, /нечего показать/);
+});

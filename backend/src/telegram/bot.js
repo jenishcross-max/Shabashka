@@ -21,6 +21,7 @@ const rejected = require('./rejected');
 const adGroups = require('./adGroups');
 const menu = require('./menu');
 const products = require('./products');
+const adRaises = require('./adRaises');
 const { num, plural, viewsWord, clamp, clock, whenText, agoText } = require('./format');
 const { money } = require('../money');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
@@ -1003,6 +1004,8 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
   if (id) {
     const line = groupsLine(await queueGroups(id, chatId, text, media));
     if (line) lines.push(line);
+    const raises = raisesLine(await planRaises(id, chatId));
+    if (raises) lines.push(raises);
   }
 
   const sent = await tg.sendMessage(
@@ -1029,6 +1032,18 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
 // сайте и в канале она к этому моменту уже есть.
 function queueGroups(importId, chatId, text, media = null) {
   return adGroups.enqueue({ importId, chatId, text, media }).catch((err) => ({ queued: 0, reason: err.message }));
+}
+
+// Поднятия рекламы по расписанию (см. adRaises.js). Ошибка базы рекламу не
+// роняет — она уже вышла, поднятия можно запланировать из её карточки.
+function planRaises(importId, chatId) {
+  return adRaises.plan(importId, chatId).catch((err) => ({ count: 0, reason: err.message }));
+}
+
+function raisesLine(result) {
+  if (result.reason) return `⚠️ Поднятия не запланированы: ${tg.esc(result.reason)}`;
+  if (!result.count) return '';
+  return `🔁 Поднятия: ${menu.raisePlanText(result.plan)}`;
 }
 
 // Строка отчёта про группы. silent — групп нет вовсе (автоимпорт не настроен):
@@ -1150,7 +1165,9 @@ async function handleParsed(chatId, listings, { source, rawText, priority = fals
   // И в группы Telegram — тоже одним постом на сообщение, тем текстом, каким
   // его написал рекламодатель, а не нашими карточками по одной на вакансию.
   if (priority && firstId && rawText) {
-    const line = groupsLine(await queueGroups(firstId, chatId, rawText));
+    const line = [groupsLine(await queueGroups(firstId, chatId, rawText)), raisesLine(await planRaises(firstId, chatId))]
+      .filter(Boolean)
+      .join('\n');
     if (line) await tg.sendMessage(chatId, line).catch(() => {});
   }
   // Сколько объявлений вышло — по этому числу реклама решает, не пора ли
@@ -1415,6 +1432,10 @@ async function sendHelp(chatId) {
     [
       '☰ Меню — кнопки внизу экрана и /menu: реклама с просмотрами, сводка,',
       'посты из групп, группы для рекламы. Команды ниже работают и так.',
+      '',
+      '🔁 Поднятия рекламы — «☰ Меню»: платная реклама сама поднимается после',
+      'выхода (по умолчанию 3 дня в 09:00 и 13:00) на сайте, в Threads, Instagram и',
+      'группах. План рекламы — в «📣 Реклама» → «ℹ️» → «🔁 Поднятия».',
       '',
       '🛍 Мои продукты — /products или «☰ Меню»: свои товары (пригласительные,',
       'Scroll Book). У каждого несколько текстов и фото; бот выкладывает их в',
@@ -1851,6 +1872,42 @@ async function onCallback(query) {
   const chatId = query.message.chat.id;
   const messageId = query.message.message_id;
 
+  // «☰ Меню → 🔁 Поднятия рекламы»: rawId — что меняем, arg2 — значение.
+  if (action === 'rs') {
+    if (rawId === 'noop') {
+      await tg.answerCallbackQuery(query.id, 'Выберите число дней в строке ниже');
+      return;
+    }
+    if (rawId === 'd') await adRaises.setDays(arg2);
+    else if (rawId === 't') await adRaises.setTimes(arg2);
+    else if (rawId === 'p') await adRaises.toggle(arg2);
+    await tg.answerCallbackQuery(query.id, 'Сохранил — для новой рекламы');
+    await show(chatId, await raiseSettingsView(), messageId);
+    return;
+  }
+
+  // Поднятия одной рекламы: rawId — v (показать), s (остановить), e (ещё день),
+  // r (заново по настройкам); arg2 — реклама, arg3 — страница списка.
+  if (action === 'rz') {
+    const importId = Number(arg2);
+    const done = {
+      v: async () => '',
+      s: async () => `Остановил: ${await adRaises.cancel(importId)}`,
+      e: async () => `Добавил: ${await adRaises.extend(importId, chatId)}`,
+      r: async () => {
+        const result = await adRaises.restart(importId, chatId);
+        return result.count ? `Запланировал: ${result.count}` : 'Поднятия выключены в настройках';
+      },
+    }[rawId];
+    if (!done) {
+      await tg.answerCallbackQuery(query.id);
+      return;
+    }
+    await tg.answerCallbackQuery(query.id, await done());
+    await show(chatId, await raisesView(importId, arg3), messageId);
+    return;
+  }
+
   // «🛍 Мои продукты» (см. products.js).
   if (action === 'pr') {
     await products.onCallback(query, [rawId, arg2, arg3], { show });
@@ -2218,6 +2275,32 @@ async function unpublishLines(row) {
     );
   }
 
+  // Поднятия рекламы: ждущие отменяем, а их посты в Threads (и повторы
+  // кнопкой) удаляем вслед за первым — иначе снятая реклама висела бы в ленте
+  // ещё шестью постами.
+  if (row.is_ad) {
+    const cancelled = await adRaises.cancel(row.id).catch(() => 0);
+    if (cancelled) lines.push(`🔁 Поднятия отменены: ${cancelled}.`);
+    const campaign = await social.adTracker.byImport(row.id).catch(() => null);
+    const repeats = campaign
+      ? (await social.adTracker.postsOf(campaign.id).catch(() => [])).filter(
+          (p) => String(p.threads_post_id) !== String(row.threads_post_id)
+        )
+      : [];
+    let removed = 0;
+    for (const post of repeats) {
+      const away = await social.unpublish({ threadsPostId: post.threads_post_id });
+      if (away.threads && away.threads.removed) removed += 1;
+    }
+    if (repeats.length) {
+      lines.push(
+        removed === repeats.length
+          ? `🧵 Повторы в Threads удалены: ${removed}.`
+          : `⚠️ Повторы в Threads удалены не все: ${removed} из ${repeats.length} — остальные уберите вручную.`
+      );
+    }
+  }
+
   // Реклама в группах Telegram: ждущие посты отменяем, вышедшие удаляем.
   if (row.is_ad) {
     const groups = await adGroups
@@ -2581,6 +2664,10 @@ function startWatchers() {
   products.start({
     report: (view) => tg.sendMessage(process.env.SOURCE_REPORT_CHAT_ID || adminChat(), view.text, view.extra),
   });
+  adRaises.start({
+    report: (chatId, text) => tg.sendMessage(chatId || adminChat(), text),
+    siteLink: (ad) => prettyLink(adSiteUrl(ad)),
+  });
 }
 
 // Повтор рекламы кнопкой. Выходит тем же постом, что и первый: с файлом
@@ -2667,6 +2754,8 @@ async function sectionView(section) {
       return menu.groupsView(await adGroups.overview());
     case 'products':
       return products.listView();
+    case 'raise':
+      return raiseSettingsView();
     case 'threads':
       return menu.withBack({ text: await threadsStatsText() });
     case 'limits':
@@ -2761,8 +2850,8 @@ async function adInfoView(importId, page = 0, { force = false, noBoost = false }
     adGroups.forImport(ad.id, { views: true }).catch(() => []),
     ad.channel_message_id ? adGroups.channelViews(CHANNEL_ID, ad.channel_message_id).catch(() => null) : null,
   ]);
-  const type = ad.vacancy_id ? 'vacancy' : ad.order_id ? 'order' : ad.board_post_id ? 'board' : null;
-  const siteLink = type ? listingUrl(type, ad.vacancy_id || ad.order_id || ad.board_post_id) : '';
+  const siteLink = adSiteUrl(ad);
+  const raises = adRaises.summarize(await adRaises.rows(ad.id).catch(() => []));
   return menu.adInfoView({
     ad,
     campaign,
@@ -2777,7 +2866,30 @@ async function adInfoView(importId, page = 0, { force = false, noBoost = false }
     boostable,
     goal: social.adTracker.GOAL,
     reportAfterMs: social.adTracker.REPORT_AFTER_MS,
+    raises,
   });
+}
+
+// Адрес карточки рекламы на сайте — по тому, чем она стала.
+function adSiteUrl(ad) {
+  const type = ad.vacancy_id ? 'vacancy' : ad.order_id ? 'order' : ad.board_post_id ? 'board' : null;
+  return type ? listingUrl(type, ad.vacancy_id || ad.order_id || ad.board_post_id) : '';
+}
+
+async function raiseSettingsView() {
+  const plan = await adRaises.settings();
+  return menu.raiseSettingsView(plan, {
+    dayOptions: adRaises.DAY_OPTIONS,
+    timePresets: adRaises.TIME_PRESETS,
+    active: adRaises.active(plan),
+  });
+}
+
+async function raisesView(importId, page = 0) {
+  const ad = await imports.get(Number(importId));
+  if (!ad) return menu.withBack({ text: '📣 Этой рекламы уже нет в базе.' });
+  const list = await adRaises.rows(ad.id);
+  return menu.raisesView({ ad, list, summary: adRaises.summarize(list), page: Number(page) || 0 });
 }
 
 // В боте появилось меню — один раз говорим об этом админу и показываем

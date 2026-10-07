@@ -732,6 +732,69 @@ function postToThreads(item, title, ctx, { priority = true } = {}) {
   return scheduleThreads(item, title, ctx, priority);
 }
 
+// Поднятие рекламы по расписанию (см. telegram/adRaises.js): тот же пост ещё
+// раз — в Threads и в Instagram, без очереди, как и сама реклама. Итог отдаём
+// тому, кто поднимал, а не в onThreads: сообщение о каждом из шести поднятий
+// было бы шумом в чате, их считает сводка. card — объявление для картинки,
+// когда своего файла у рекламы нет: Instagram без картинки пост не примет.
+// threads / instagram — поднимать ли там; null в ответе — не поднимали.
+function raiseAd({
+  text = '',
+  threadsText = '',
+  media = null,
+  card: cardData = null,
+  siteLink = '',
+  threads: toThreads = true,
+  instagram: toInstagram = true,
+}) {
+  const skip = (reason) => Promise.resolve({ posted: false, reason });
+
+  const threadsDone = !toThreads
+    ? Promise.resolve(null)
+    : !threads.isConfigured()
+      ? skip('Threads не подключён')
+      : paceThreads(
+          () =>
+            post('threads', () =>
+              publishToThreads({
+                text: threadsText || video.threadsCaption(text, siteLink, { ad: true }),
+                media,
+                card: cardData,
+              })
+            ),
+          { priority: true }
+        );
+
+  const instagramDone = !toInstagram
+    ? Promise.resolve(null)
+    : !instagram.isConfigured()
+      ? skip('Instagram не подключён')
+      : !media && !cardData
+        ? skip('нечего показать: у рекламы нет ни файла, ни карточки')
+        : schedule(
+            async () => {
+              inFlight += 1;
+              try {
+                const job = media
+                  ? { kind: media.kind, buffer: media.buffer }
+                  : { kind: 'image', buffer: await card.renderStill(cardData, {}) };
+                const caption = [video.adLine(), text, siteLink].filter(Boolean).join('\n\n').trim();
+                return await deliverRawMedia({ ...job, caption });
+              } catch (err) {
+                return { posted: false, reason: err.message };
+              } finally {
+                inFlight -= 1;
+              }
+            },
+            { priority: true }
+          );
+
+  return Promise.all([threadsDone, instagramDone]).then(([threadsResult, instagramResult]) => ({
+    threads: threadsResult,
+    instagram: instagramResult,
+  }));
+}
+
 // Свой продукт (см. telegram/products.js): текст и фото — в Threads и в
 // Instagram. Одно фото — пост картинкой, несколько — каруселью, без фото —
 // в Threads текстом, а в Instagram никак: без картинки он поста не примет.
@@ -911,6 +974,7 @@ module.exports = {
   shareListing,
   shareMedia,
   shareProduct,
+  raiseAd,
   postToThreads,
   unpublish,
   shareDigest,
