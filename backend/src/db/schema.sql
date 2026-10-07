@@ -373,3 +373,33 @@ CREATE TABLE IF NOT EXISTS ad_group_posts (
 
 CREATE INDEX IF NOT EXISTS idx_ad_group_posts_due ON ad_group_posts(not_before) WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS idx_ad_group_posts_import ON ad_group_posts(import_id);
+
+-- Свои продукты админа (см. telegram/products.js): пригласительные,
+-- приложение и всё, что он продаёт сам, а не размещает за других. Бот
+-- выкладывает их в Threads и Instagram по кнопке и по расписанию, каждый раз со
+-- следующим текстом из списка, чтобы посты не повторялись слово в слово.
+CREATE TABLE IF NOT EXISTS products (
+  id          SERIAL PRIMARY KEY,
+  name        TEXT NOT NULL,                -- для меню, в посты не идёт
+  texts       JSONB NOT NULL DEFAULT '[]',  -- варианты текста поста, по очереди
+  photos      JSONB NOT NULL DEFAULT '[]',  -- фото в Telegram: { file_id, kind }, по порядку
+  every_days  INTEGER,                      -- раз в сколько дней выходить; NULL — только по кнопке
+  paused      BOOLEAN NOT NULL DEFAULT false,
+  turn        INTEGER NOT NULL DEFAULT 0,   -- сколько раз выходил: по нему следующий текст
+  posted_at   TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Каждый выход продукта на каждой площадке — и удачный, и нет.
+CREATE TABLE IF NOT EXISTS product_posts (
+  id          SERIAL PRIMARY KEY,
+  product_id  INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  platform    TEXT NOT NULL,     -- threads | instagram
+  post_id     TEXT,              -- id поста на площадке; NULL — не вышло
+  link        TEXT,
+  text_no     INTEGER NOT NULL,  -- какой по счёту текст ушёл, с нуля
+  note        TEXT,              -- почему не вышло
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_posts_product ON product_posts(product_id, created_at);

@@ -732,6 +732,55 @@ function postToThreads(item, title, ctx, { priority = true } = {}) {
   return scheduleThreads(item, title, ctx, priority);
 }
 
+// Свой продукт (см. telegram/products.js): текст и фото — в Threads и в
+// Instagram. Одно фото — пост картинкой, несколько — каруселью, без фото —
+// в Threads текстом, а в Instagram никак: без картинки он поста не примет.
+//
+// Очереди те же, что у объявлений: промежутки между постами держат антиспам
+// площадок, и своя реклама не должна их ломать. Норма Instagram — обычная,
+// суточная: продукт выходит по расписанию, и сутки подождать он может, а
+// платную рекламу ему вытеснять незачем. Фото выкладываем наружу в самом
+// задании, вплотную к публикации, — ссылка живёт двадцать минут.
+//
+// Возвращает обещание { threads, instagram } — оба в форме post().
+function shareProduct({ text, threadsImages = [], instagramImages = [] }) {
+  const base = backendUrl();
+  const host = (buffers) =>
+    buffers.map((buffer) => `${base}/api/social/image/${hosting.put(card.stillName(), buffer)}`);
+
+  const toThreads = !threads.isConfigured()
+    ? Promise.resolve({ posted: false, reason: 'Threads не подключён' })
+    : threadsImages.length && !base
+      ? Promise.resolve({ posted: false, reason: 'не задан адрес бэкенда — фото Threads не забрать' })
+      : paceThreads(() =>
+          post('threads', () => {
+            if (!threadsImages.length) return threads.publishText(text);
+            const urls = host(threadsImages);
+            return urls.length > 1 ? threads.publishCarousel(urls, text) : threads.publishImage(urls[0], text);
+          })
+        );
+
+  const toInstagram = !instagram.isConfigured()
+    ? Promise.resolve({ posted: false, reason: 'Instagram не подключён' })
+    : !instagramImages.length
+      ? Promise.resolve({ posted: false, reason: 'без фото Instagram пост не принимает' })
+      : !base
+        ? Promise.resolve({ posted: false, reason: 'не задан адрес бэкенда — фото Instagram не забрать' })
+        : schedule(async () => {
+            await quota.sync(instagram.publishingLimit);
+            if (!quota.take()) return quotaFailure(quota.dailyLimit());
+            return post('insta', () => {
+              const urls = host(instagramImages.slice(0, instagram.CAROUSEL_MAX));
+              return urls.length > 1 ? instagram.publishCarousel(urls, text) : instagram.publishImage(urls[0], text);
+            });
+          });
+
+  return Promise.all([toThreads, toInstagram]).then(([threadsResult, instagramResult]) => ({
+    threads: threadsResult,
+    instagram: instagramResult,
+  }));
+}
+
 // Объявление уходит в Threads по одному и текстом, а в очередь на ролик — ждать
 // компанию. Threads пачками не собираем: своей квоты Instagram он не тратит,
 // лимиты у него заметно щедрее, и отдельными постами объявление и находят
@@ -861,6 +910,7 @@ module.exports = {
   queueKey,
   shareListing,
   shareMedia,
+  shareProduct,
   postToThreads,
   unpublish,
   shareDigest,
@@ -886,6 +936,8 @@ module.exports = {
   adLine: () => video.adLine(),
   accountInsights: (range) => threads.accountInsights(range),
   threadsPermalink: (id) => threads.permalink(id),
+  threadsInsights: (id) => threads.insights(id),
+  instagramPermalink: (id) => instagram.permalink(id),
   isPermissionError: (err) => threads.isPermissionError(err),
   BATCH_SIZE,
   RELEASE_INTERVAL_MIN: Math.round(RELEASE_INTERVAL_MS / 60000),

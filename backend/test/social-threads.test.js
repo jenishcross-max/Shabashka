@@ -45,12 +45,24 @@ const requireSrc = install({
       posted.push({ kind: 'video', url, text, opts });
       return `v${posted.length}`;
     },
+    publishCarousel: async (urls, text) => {
+      posted.push({ kind: 'carousel', urls, text });
+      return `c${posted.length}`;
+    },
     publishingLimit: async () => ({ used: 0, total: 250 }),
   },
   [at('social/instagram.js')]: {
     isConfigured: () => true,
     publishReel: async () => 'reel',
-    publishImage: async () => 'ig-image',
+    publishImage: async (url, caption) => {
+      posted.push({ kind: 'ig-image', url, text: caption });
+      return 'ig-image';
+    },
+    publishCarousel: async (urls, caption) => {
+      posted.push({ kind: 'ig-carousel', urls, text: caption });
+      return 'ig-carousel';
+    },
+    CAROUSEL_MAX: 10,
     publishingLimit: async () => ({ used: 0, total: 100 }),
     permalink: async () => '',
   },
@@ -153,4 +165,34 @@ test('повтор рекламы кнопкой идёт только в Thread
   assert.equal(posted.length, 1);
   assert.equal(posted[0].kind, 'image');
   assert.equal(handled.at(-1).ctx.campaignId, 3);
+});
+
+// Свои продукты (см. telegram/products.js): одно фото — картинкой, несколько —
+// каруселью, без фото — в Threads текстом, а Instagram честно отказывает.
+test('продукт: карусель на обе площадки, без фото — только Threads', async () => {
+  posted.length = 0;
+  const jpeg = (n) => Buffer.from(`jpeg${n}`);
+  const both = await social.shareProduct({
+    text: 'Свадебные пригласительные',
+    threadsImages: [jpeg(1), jpeg(2)],
+    instagramImages: [jpeg(1), jpeg(2)],
+  });
+  assert.equal(both.threads.posted, true);
+  assert.equal(both.instagram.posted, true);
+  const carousel = posted.find((p) => p.kind === 'carousel');
+  assert.equal(carousel.text, 'Свадебные пригласительные');
+  assert.equal(carousel.urls.length, 2);
+  assert.match(carousel.urls[0], /^https:\/\/shabashka\.test\/api\/social\/image\//, 'фото выложены наружу для Meta');
+  assert.ok(posted.some((p) => p.kind === 'ig-carousel'));
+
+  posted.length = 0;
+  const one = await social.shareProduct({ text: 'Scroll Book', threadsImages: [jpeg(1)], instagramImages: [jpeg(1)] });
+  assert.deepEqual(posted.map((p) => p.kind).sort(), ['ig-image', 'image']);
+  assert.equal(one.instagram.posted, true);
+
+  posted.length = 0;
+  const bare = await social.shareProduct({ text: 'Только текст' });
+  assert.deepEqual(posted.map((p) => p.kind), ['text']);
+  assert.equal(bare.instagram.posted, false);
+  assert.match(bare.instagram.reason, /без фото/);
 });

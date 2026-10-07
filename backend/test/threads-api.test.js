@@ -155,3 +155,42 @@ test('Instagram: «media is not ready» пережидается, а не ухо
   assert.equal(await instagram.publishImage('https://x.test/i.jpg', 'подпись'), 'ig-post');
   assert.equal(publishes, 3, 'две неудачи «не готов» и успех');
 });
+
+// Свои продукты (см. telegram/products.js) выходят каруселью: каждое фото —
+// свой контейнер с is_carousel_item, потом общий со списком детей.
+test('карусель в Threads и в Instagram: дети с пометкой, потом общий контейнер', async () => {
+  calls.length = 0;
+  let seq = 0;
+  respond = (p, params) => {
+    if (p.endsWith('/111/threads')) return { body: { id: params.media_type === 'CAROUSEL' ? 'car' : `ch${(seq += 1)}` } };
+    if (/\/(ch\d|car)$/.test(p)) return { body: { status: 'FINISHED' } };
+    if (p.endsWith('/threads_publish')) return { body: { id: 'post-car' } };
+    return {};
+  };
+  assert.equal(await threads.publishCarousel(['https://x/1.jpg', 'https://x/2.jpg'], 'Пригласительные'), 'post-car');
+  const created = calls.filter((c) => c.path.endsWith('/111/threads'));
+  assert.deepEqual(
+    created.map((c) => [c.params.media_type, c.params.is_carousel_item || '', c.params.children || '']),
+    [
+      ['IMAGE', 'true', ''],
+      ['IMAGE', 'true', ''],
+      ['CAROUSEL', '', 'ch1,ch2'],
+    ]
+  );
+  assert.equal(created[2].params.text, 'Пригласительные');
+
+  calls.length = 0;
+  seq = 0;
+  respond = (p, params) => {
+    if (p.endsWith('/222/media')) return { body: { id: params.media_type === 'CAROUSEL' ? 'igcar' : `ig${(seq += 1)}` } };
+    if (p.endsWith('/media_publish')) return { body: { id: 'ig-post' } };
+    return {};
+  };
+  const urls = Array.from({ length: 12 }, (_, i) => `https://x/${i}.jpg`);
+  assert.equal(await instagram.publishCarousel(urls, 'Подпись'), 'ig-post');
+  const media = calls.filter((c) => c.path.endsWith('/222/media'));
+  assert.equal(media.length, 11, 'больше десяти фото Instagram в карусель не берёт');
+  assert.equal(media.at(-1).params.media_type, 'CAROUSEL');
+  assert.equal(media.at(-1).params.children.split(',').length, 10);
+  assert.equal(media.at(-1).params.caption, 'Подпись');
+});

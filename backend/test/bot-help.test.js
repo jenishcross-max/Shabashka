@@ -5,7 +5,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { install, dmStub, statsStub, at, chat, adGroupsStub } = require('./helpers/stub');
+const { install, dmStub, statsStub, at, chat, adGroupsStub, productStoreStub } = require('./helpers/stub');
 
 const tg = chat();
 const stats = statsStub();
@@ -14,6 +14,7 @@ const groups = adGroupsStub();
 
 const requireSrc = install({
   [at('telegram/adGroups.js')]: groups,
+  [at('telegram/productStore.js')]: productStoreStub(),
   [at('telegram/api.js')]: tg.api,
   [at('telegram/notify.js')]: {
     ADMIN_IDS: new Set(['1']),

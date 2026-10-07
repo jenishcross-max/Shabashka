@@ -18,7 +18,10 @@ const RETRY_CHECK_DELAY_MS = 5000;
 // статус: обычно это один лишний вызов, а не потерянная минута. Картинке нужно
 // чуть больше, видео — заметно больше: Meta его перекодирует у себя.
 const STATUS_INTERVAL_MS = 5000;
-const STATUS_ATTEMPTS = { TEXT: 6, IMAGE: 12, VIDEO: 36 };
+const STATUS_ATTEMPTS = { TEXT: 6, IMAGE: 12, VIDEO: 36, CAROUSEL: 12 };
+
+// Сколько картинок Meta принимает в одной карусели.
+const CAROUSEL_MAX = 20;
 
 // Тег темы у Threads один на пост — второй и дальше в тексте становятся просто
 // словами с решёткой. Так и выглядели наши посты: «шабашка #вакансиибишкек
@@ -161,6 +164,24 @@ function publishVideo(videoUrl, text, opts) {
   return publish('VIDEO', { video_url: videoUrl, ...(text ? { text } : {}) }, opts);
 }
 
+// Карусель — несколько картинок одним постом. Так выходят свои продукты
+// (см. telegram/products.js): там фото — это и есть товар. Каждая картинка —
+// свой контейнер с пометкой is_carousel_item, потом общий — со списком детей и
+// текстом. Картинок от двух до двадцати.
+async function publishCarousel(imageUrls, text, opts) {
+  const children = [];
+  for (const url of imageUrls.slice(0, CAROUSEL_MAX)) {
+    const { id } = await safeCall('картинка карусели', 'POST', `${USER_ID}/threads`, {
+      media_type: 'IMAGE',
+      image_url: url,
+      is_carousel_item: 'true',
+    });
+    await waitReady(id, STATUS_ATTEMPTS.IMAGE);
+    children.push(id);
+  }
+  return publish('CAROUSEL', { children: children.join(','), ...(text ? { text } : {}) }, opts);
+}
+
 // Снимает пост. Нужно, когда автор объявления нашёл работника и попросил убрать
 // его: на сайте карточку удаляем сами, а пост в Threads без этого висел бы
 // дальше и приводил людей к закрытой вакансии.
@@ -282,6 +303,7 @@ module.exports = {
   cleanTag,
   publishText,
   publishImage,
+  publishCarousel,
   publishVideo,
   publishingLimit,
   remove,

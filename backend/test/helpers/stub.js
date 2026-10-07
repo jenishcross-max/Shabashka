@@ -173,4 +173,77 @@ function adGroupsStub(extra = {}) {
   };
 }
 
-module.exports = { install, at, chat, wait, dmStub, statsStub, adGroupsStub, SRC };
+// Свои продукты (см. src/telegram/productStore.js) — в памяти, с тем же
+// поведением: пределы на тексты и фото, «занять выход» только при прежнем turn,
+// срок по every_days. Боту она нужна, чтобы не лезть в базу при загрузке, а
+// тестам продуктов — вместо неё.
+function productStoreStub() {
+  const MAX_TEXTS = 20;
+  const MAX_PHOTOS = 10;
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const rows = new Map();
+  const log = [];
+  let seq = 0;
+  const copy = (p) => (p ? JSON.parse(JSON.stringify(p)) : null);
+  // fn меняет строку; false — не меняем и отвечаем null, как UPDATE без строк.
+  const update = async (id, fn) => {
+    const p = rows.get(Number(id));
+    if (!p || fn(p) === false) return null;
+    return copy(p);
+  };
+  return {
+    rows,
+    log,
+    MAX_TEXTS,
+    MAX_PHOTOS,
+    list: async () => [...rows.values()].map(copy),
+    get: async (id) => copy(rows.get(Number(id))),
+    create: async (name) => {
+      seq += 1;
+      const p = { id: seq, name, texts: [], photos: [], every_days: null, paused: false, turn: 0, posted_at: null };
+      rows.set(seq, p);
+      return copy(p);
+    },
+    addText: (id, text) =>
+      update(id, (p) => {
+        if (p.texts.length >= MAX_TEXTS) return false;
+        p.texts.push(text);
+        return true;
+      }),
+    addPhoto: (id, photo) =>
+      update(id, (p) => {
+        if (p.photos.length >= MAX_PHOTOS) return false;
+        p.photos.push({ file_id: photo.file_id, kind: photo.kind });
+        return true;
+      }),
+    removeText: (id, i) => update(id, (p) => void p.texts.splice(i, 1)),
+    removePhoto: (id, i) => update(id, (p) => void p.photos.splice(i, 1)),
+    setEvery: (id, days) => update(id, (p) => void (p.every_days = days || null)),
+    setPaused: (id, paused) => update(id, (p) => void (p.paused = paused)),
+    remove: async (id) => rows.delete(Number(id)),
+    due: async () =>
+      copy(
+        [...rows.values()].find(
+          (p) =>
+            !p.paused &&
+            p.every_days &&
+            p.texts.length &&
+            (!p.posted_at || Date.parse(p.posted_at) <= Date.now() - p.every_days * DAY_MS)
+        )
+      ),
+    claim: (id, turn) =>
+      update(id, (p) => {
+        if (p.turn !== turn) return false;
+        p.turn += 1;
+        p.posted_at = new Date().toISOString();
+        return true;
+      }),
+    unclaim: (id) => update(id, (p) => void (p.turn = Math.max(p.turn - 1, 0))),
+    logPost: async (row) => {
+      log.push({ ...row, post_id: row.postId, created_at: new Date().toISOString() });
+    },
+    posts: async (productId) => log.filter((p) => p.productId === productId).reverse(),
+  };
+}
+
+module.exports = { install, at, chat, wait, dmStub, statsStub, adGroupsStub, productStoreStub, SRC };

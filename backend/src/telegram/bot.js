@@ -20,6 +20,7 @@ const summary = require('./summary');
 const rejected = require('./rejected');
 const adGroups = require('./adGroups');
 const menu = require('./menu');
+const products = require('./products');
 const { num, plural, viewsWord, clamp, clock, whenText, agoText } = require('./format');
 const { money } = require('../money');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
@@ -1415,6 +1416,10 @@ async function sendHelp(chatId) {
       '☰ Меню — кнопки внизу экрана и /menu: реклама с просмотрами, сводка,',
       'посты из групп, группы для рекламы. Команды ниже работают и так.',
       '',
+      '🛍 Мои продукты — /products или «☰ Меню»: свои товары (пригласительные,',
+      'Scroll Book). У каждого несколько текстов и фото; бот выкладывает их в',
+      'Threads и Instagram по кнопке и по расписанию, каждый раз со следующим текстом.',
+      '',
       '👋 Пересылай сообщение из чата или кидай текст объявления.',
       'Публикую сразу, ничего не переспрашивая: объявление уходит на сайт,',
       'в Telegram-канал и роликом в Instagram и Threads. Если объявлений в сообщении',
@@ -1602,6 +1607,10 @@ async function onMessage(message) {
     return;
   }
 
+  // Ждём тексты и фото для своего продукта (см. products.js) — присланное
+  // идёт туда, а не на разбор как объявление.
+  if (await products.onMessage(message, { isMenuKey: (t) => Boolean(menu.KEYS[t]) })) return;
+
   const raw = (message.text || message.caption || '').trim();
 
   // «/ad» можно послать и отдельным сообщением, и вместе с текстом объявления
@@ -1656,6 +1665,11 @@ async function onMessage(message) {
 
   if (text === '/groups') {
     await openSection(chatId, 'groups');
+    return;
+  }
+
+  if (text === '/products') {
+    await openSection(chatId, 'products');
     return;
   }
 
@@ -1836,6 +1850,12 @@ async function onCallback(query) {
   const [action, rawId, arg2, arg3] = String(query.data || '').split(':');
   const chatId = query.message.chat.id;
   const messageId = query.message.message_id;
+
+  // «🛍 Мои продукты» (см. products.js).
+  if (action === 'pr') {
+    await products.onCallback(query, [rawId, arg2, arg3], { show });
+    return;
+  }
 
   // Меню (см. menu.js): разделы открываются в том же сообщении.
   if (action === 'm') {
@@ -2558,6 +2578,9 @@ function startWatchers() {
   summary.start((text) => tg.sendMessage(process.env.SOURCE_REPORT_CHAT_ID || adminChat(), text), {
     extra: pendingLines,
   });
+  products.start({
+    report: (view) => tg.sendMessage(process.env.SOURCE_REPORT_CHAT_ID || adminChat(), view.text, view.extra),
+  });
 }
 
 // Повтор рекламы кнопкой. Выходит тем же постом, что и первый: с файлом
@@ -2642,6 +2665,8 @@ async function sectionView(section) {
       return menu.withBack(spamText());
     case 'groups':
       return menu.groupsView(await adGroups.overview());
+    case 'products':
+      return products.listView();
     case 'threads':
       return menu.withBack({ text: await threadsStatsText() });
     case 'limits':

@@ -149,6 +149,28 @@ async function publishImage(imageUrl, caption) {
   return publishContainer(id);
 }
 
+// Карусель из нескольких фото — для своих продуктов (см. telegram/products.js).
+// Каждое фото — свой контейнер с пометкой is_carousel_item, потом общий с
+// подписью. В суточную норму карусель идёт одним постом. Фото — до десяти.
+const CAROUSEL_MAX = 10;
+
+async function publishCarousel(imageUrls, caption) {
+  const children = [];
+  for (const url of imageUrls.slice(0, CAROUSEL_MAX)) {
+    const { id } = await safeCall('фото карусели', 'POST', `${USER_ID}/media`, {
+      image_url: url,
+      is_carousel_item: 'true',
+    });
+    children.push(id);
+  }
+  const { id } = await safeCall('создание карусели', 'POST', `${USER_ID}/media`, {
+    media_type: 'CAROUSEL',
+    children: children.join(','),
+    caption,
+  });
+  return publishContainer(id);
+}
+
 // Сколько публикаций за скользящие сутки уже потрачено и сколько их всего
 // положено. Считает это Instagram у себя и по аккаунту — вместе с постами,
 // сделанными руками из приложения, и вместе с неудачными попытками. Свой
@@ -190,4 +212,13 @@ async function permalink(mediaId) {
   return link || '';
 }
 
-module.exports = { isConfigured, publishReel, publishImage, publishingLimit, followers, permalink };
+module.exports = {
+  isConfigured,
+  publishReel,
+  publishImage,
+  publishCarousel,
+  publishingLimit,
+  followers,
+  permalink,
+  CAROUSEL_MAX,
+};
