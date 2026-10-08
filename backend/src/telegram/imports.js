@@ -310,19 +310,42 @@ async function countThreadsPosts(days = 7) {
   return rows[0].n;
 }
 
-// Последние опубликованные из одного источника — для /last. Посты из групп бот
-// выкладывает молча, без карточки на каждый, и снять лишнее можно только из
-// этого списка. Сутки — дальше записки с доски всё равно пропадают сами.
-async function recentPublished(source = 'channel', limit = 10) {
+// Опубликованное — для «📥 Из групп» (/last), постранично, сначала новое. Посты
+// из групп бот выкладывает молча, без карточки на каждый, и снять лишнее можно
+// только из этого списка; присланное вручную — во вкладке «Мои».
+// Снятое кнопкой (status = 'rejected') сюда не попадает. А то, что сошло с
+// сайта само — записка с доски через сутки, закрытая вакансия, — остаётся с
+// live = false: пост в канале и в Threads по-прежнему висит.
+const PUBLISHED_FROM = {
+  groups: "i.source = 'channel'",
+  mine: "i.source <> 'channel'",
+  all: 'true',
+};
+const publishedWhere = (from) => `i.status = 'published' AND ${PUBLISHED_FROM[from] || PUBLISHED_FROM.groups}`;
+
+async function listPublished({ from = 'groups', limit = 10, offset = 0 } = {}) {
   const { rows } = await db.query(
-    `SELECT id, parsed, published_at, vacancy_id, order_id, board_post_id
-       FROM imported_listings
-      WHERE source = $1 AND status = 'published' AND published_at > NOW() - INTERVAL '24 hours'
-      ORDER BY published_at DESC
-      LIMIT $2`,
-    [source, limit]
+    `SELECT i.id, i.parsed, i.source, i.is_ad, i.published_at, i.vacancy_id, i.order_id, i.board_post_id,
+            CASE
+              WHEN i.vacancy_id IS NOT NULL THEN v.status = 'open'
+              WHEN i.order_id IS NOT NULL THEN o.status = 'open'
+              ELSE b.id IS NOT NULL AND NOT b.hidden AND b.expires_at > NOW()
+            END AS live
+       FROM imported_listings i
+       LEFT JOIN vacancies v ON v.id = i.vacancy_id
+       LEFT JOIN orders o ON o.id = i.order_id
+       LEFT JOIN board_posts b ON b.id = i.board_post_id
+      WHERE ${publishedWhere(from)}
+      ORDER BY i.published_at DESC NULLS LAST, i.id DESC
+      LIMIT $1 OFFSET $2`,
+    [limit, offset]
   );
   return rows;
+}
+
+async function countPublished(from = 'groups') {
+  const { rows } = await db.query(`SELECT COUNT(*)::int AS n FROM imported_listings i WHERE ${publishedWhere(from)}`);
+  return rows[0].n;
 }
 
 // Платная реклама для меню бота: сначала новые. Только та, что дошла до сайта
@@ -423,7 +446,8 @@ module.exports = {
   validate,
   applyDefaults,
   countThreadsPosts,
-  recentPublished,
+  listPublished,
+  countPublished,
   listAds,
   countAds,
   remove,

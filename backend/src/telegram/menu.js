@@ -37,7 +37,7 @@ const COMMANDS = [
   { command: 'ads', description: 'Вся реклама и её просмотры' },
   { command: 'products', description: 'Мои продукты: свои посты по расписанию' },
   { command: 'stats', description: 'Сводка за сегодня' },
-  { command: 'last', description: 'Последние посты из групп' },
+  { command: 'last', description: 'Всё опубликованное: из групп и ваше' },
   { command: 'spam', description: 'Что отсеяно как мусор' },
   { command: 'groups', description: 'Группы для рекламы' },
   { command: 'threads', description: 'Статистика Threads' },
@@ -61,7 +61,7 @@ function homeView() {
         { text: '🔁 Поднятия рекламы', callback_data: 'm:raise' },
       ],
       [
-        { text: '📥 Последние из групп', callback_data: 'm:last' },
+        { text: '📥 Опубликованное', callback_data: 'm:last' },
         { text: '🧹 Отсеянное', callback_data: 'm:spam' },
       ],
       [
@@ -355,6 +355,67 @@ function latestByGroup(groups) {
   return [...byTarget.values()];
 }
 
+// ─── «📥 Из групп» (/last): всё опубликованное, по десять на страницу
+
+const PUBLISHED_PAGE = 10;
+const PUBLISHED_TABS = {
+  groups: { tab: 'Из групп', title: '📥 <b>Из групп</b>', empty: 'Из групп ещё ничего не выходило.' },
+  mine: { tab: 'Мои', title: '✍️ <b>Присланное вами</b>', empty: 'Вы ещё ничего не присылали.' },
+  all: { tab: 'Всё', title: '📋 <b>Всё опубликованное</b>', empty: 'Ещё ничего не выходило.' },
+};
+const TYPE_ICONS = { vacancy: '💼', order: '🧰', board: '📌' };
+
+const rowsOf = (buttons, size = 5) => {
+  const out = [];
+  for (let i = 0; i < buttons.length; i += size) out.push(buttons.slice(i, i + size));
+  return out;
+};
+
+// rows — из imports.listPublished; type и url (только у того, что ещё на
+// сайте) добавляет бот. Кнопки 🗑 и 🚫 — ldel и lspm: отчёт о снятии приходит
+// отдельным сообщением, а список остаётся как был — по нему снимают дальше.
+function publishedView({ rows, from = 'groups', page = 0, pages = 1, total = 0, blockDays = 30, now = Date.now() }) {
+  const tab = PUBLISHED_TABS[from] || PUBLISHED_TABS.groups;
+  const tabs = Object.entries(PUBLISHED_TABS).map(([key, t]) => ({
+    text: `${key === from ? '✅ ' : ''}${t.tab}`,
+    callback_data: `lp:${key}:0`,
+  }));
+  if (!rows.length) return { text: `${tab.title}\n\n${tab.empty}`, extra: keyboard([tabs, [BACK]]) };
+
+  const lines = [`${tab.title} — сначала новое · всего ${num(total)}`];
+  if (pages > 1) lines.push(`Страница ${page + 1} из ${pages}`);
+  lines.push('');
+  const del = [];
+  const junk = [];
+  rows.forEach((row, i) => {
+    const n = page * PUBLISHED_PAGE + i + 1;
+    const p = row.parsed || {};
+    const title = tg.esc(clamp(p.title || 'без названия', 60));
+    const icon = row.is_ad ? '📣' : TYPE_ICONS[row.type] || '📄';
+    const parts = [`${n}. ${icon} ${row.url ? `<a href="${row.url}">${title}</a>` : title}`];
+    if (p.phone) parts.push(tg.esc(p.phone));
+    if (row.published_at) parts.push(ageLabel(row.published_at, now));
+    if (from === 'all' && row.source !== 'channel') parts.push('✍️ ваше');
+    if (!row.live) parts.push('⌛ уже не на сайте');
+    lines.push(parts.join(' · '));
+    del.push({ text: `🗑 ${n}`, callback_data: `ldel:${row.id}` });
+    // Чёрный список — против спама из групп; своё так не отсеивают.
+    if (p.phone && row.source === 'channel') junk.push({ text: `🚫 ${n}`, callback_data: `lspm:${row.id}` });
+  });
+  lines.push(
+    '',
+    `🗑 — снять отовсюду.${junk.length ? ` 🚫 — снять и ${blockDays} дней не брать из групп посты с этим номером.` : ''}`
+  );
+  const nav = [];
+  if (page > 1) nav.push({ text: '⏮ Свежие', callback_data: `lp:${from}:0` });
+  if (page > 0) nav.push({ text: '⬅️ Новее', callback_data: `lp:${from}:${page - 1}` });
+  if (page < pages - 1) nav.push({ text: 'Старее ➡️', callback_data: `lp:${from}:${page + 1}` });
+  return {
+    text: lines.join('\n'),
+    extra: keyboard([...rowsOf(del), ...rowsOf(junk), ...(nav.length ? [nav] : []), tabs, [BACK]]),
+  };
+}
+
 // Снятие оплаченной рекламы — с вопросом: в меню кнопка стоит рядом с
 // «Обновить», и промах стоил бы рекламодателю его публикации.
 function confirmRemoveView(ad, page = 0) {
@@ -451,10 +512,13 @@ module.exports = {
   KEYBOARD,
   COMMANDS,
   PAGE_SIZE,
+  PUBLISHED_PAGE,
+  PUBLISHED_TABS,
   BACK,
   homeView,
   withBack,
   adsListView,
+  publishedView,
   adInfoView,
   confirmRemoveView,
   raiseSettingsView,

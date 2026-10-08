@@ -1590,7 +1590,8 @@ async function sendHelp(chatId) {
       'их выходит под сотню в день, и за ними терялось важное. Что вышло',
       'и что отсеяно, видно в сводке (/stats).',
       '',
-      '/last — последние 10 из групп. Под списком кнопки: 🗑 — снять отовсюду,',
+      '/last (или «📥 Из групп») — всё опубликованное, сначала новое, по 10 на',
+      'страницу; вкладки «Из групп», «Мои» и «Всё». Под списком кнопки: 🗑 — снять отовсюду,',
       `🚫 — снять и ${blocklist.DEFAULT_DAYS} дней не брать из групп посты с этим номером. Та же 🚫`,
       'есть под карточкой того, что прислали вы.',
       '',
@@ -1721,7 +1722,7 @@ async function onMessage(message) {
   }
 
   if (text === '/last') {
-    const { text: report, extra } = await lastText();
+    const { text: report, extra } = await publishedView();
     await tg.sendMessage(chatId, report, extra);
     return;
   }
@@ -1918,6 +1919,13 @@ async function onCallback(query) {
   if (action === 'm') {
     await tg.answerCallbackQuery(query.id);
     await openSection(chatId, rawId, messageId);
+    return;
+  }
+
+  // «📥 Из групп»: rawId — вкладка, arg2 — страница.
+  if (action === 'lp') {
+    await tg.answerCallbackQuery(query.id);
+    await show(chatId, await publishedView(rawId, arg2), messageId);
     return;
   }
 
@@ -2135,7 +2143,7 @@ async function onCallback(query) {
   }
 
   // del и spm — кнопки под карточкой: отчёт о снятии встаёт на место карточки.
-  // ldel и lspm — те же кнопки в списке /last: список трогать нельзя, по нему
+  // ldel и lspm — те же кнопки в списке «📥 Из групп» (/last): список трогать нельзя, по нему
   // снимают дальше, поэтому отчёт приходит отдельным сообщением.
   // spm и lspm заодно запоминают номер: посты с ним из групп больше не берём.
   if (['del', 'spm', 'ldel', 'lspm'].includes(action)) {
@@ -2187,47 +2195,32 @@ function spamText() {
   return { text: lines.join('\n'), extra: { reply_markup: { inline_keyboard: rows } } };
 }
 
-// /last — последние объявления из групп. Их бот публикует молча, без карточки
-// на каждое (см. isQuiet), и снять лишнее можно только отсюда.
-const LAST_LIMIT = 10;
-const TYPE_ICONS = { vacancy: '💼', order: '🧰', board: '📌' };
-
-async function lastText() {
-  const rows = await imports.recentPublished('channel', LAST_LIMIT);
-  if (!rows.length) return { text: '📥 Из групп за последние сутки ничего не выходило.' };
-
-  const lines = ['📥 Последние из групп:'];
-  const del = [];
-  const junk = [];
-  for (const [i, row] of rows.entries()) {
-    const p = row.parsed || {};
-    const type = row.vacancy_id ? 'vacancy' : row.order_id ? 'order' : 'board';
-    const postId = row.vacancy_id || row.order_id || row.board_post_id;
-    const path = type === 'board' ? `board#p${postId}` : `${LISTING_PATHS[type]}/${postId}`;
-    const title = tg.esc(clamp(p.title || 'без названия', 60));
-    const ago = row.published_at ? ` · ${agoText(Date.now() - new Date(row.published_at).getTime())}` : '';
-    lines.push(
-      `${i + 1}. ${TYPE_ICONS[type]} ${SITE_URL ? `<a href="${SITE_URL}/${path}">${title}</a>` : title}${
-        p.phone ? ` · ${tg.esc(p.phone)}` : ''
-      }${ago}`
-    );
-    del.push({ text: `🗑 ${i + 1}`, callback_data: `ldel:${row.id}` });
-    if (p.phone) junk.push({ text: `🚫 ${i + 1}`, callback_data: `lspm:${row.id}` });
-  }
-  lines.push(
-    '',
-    `🗑 — снять отовсюду. 🚫 — снять и ${blocklist.DEFAULT_DAYS} дней не брать из групп посты с этим номером.`
-  );
-
-  const rowsOf = (buttons) => {
-    const out = [];
-    for (let i = 0; i < buttons.length; i += 5) out.push(buttons.slice(i, i + 5));
-    return out;
-  };
-  return {
-    text: lines.join('\n'),
-    extra: { reply_markup: { inline_keyboard: [...rowsOf(del), ...rowsOf(junk)] } },
-  };
+// «📥 Из групп» и /last — всё опубликованное, по десять на страницу, сначала
+// новое. Посты из групп бот публикует молча, без карточки на каждое (см.
+// isQuiet), и снять лишнее можно только отсюда. from — вкладка: groups (из
+// групп), mine (присланное вручную) или all.
+async function publishedView(from = 'groups', page = 0) {
+  const tab = menu.PUBLISHED_TABS[from] ? from : 'groups';
+  const total = await imports.countPublished(tab);
+  const pages = Math.max(1, Math.ceil(total / menu.PUBLISHED_PAGE));
+  const current = Math.min(Math.max(0, Number(page) || 0), pages - 1);
+  const rows = await imports.listPublished({
+    from: tab,
+    limit: menu.PUBLISHED_PAGE,
+    offset: current * menu.PUBLISHED_PAGE,
+  });
+  return menu.publishedView({
+    rows: rows.map((row) => {
+      const type = row.vacancy_id ? 'vacancy' : row.order_id ? 'order' : row.board_post_id ? 'board' : null;
+      const url = type && row.live ? listingUrl(type, row.vacancy_id || row.order_id || row.board_post_id) : '';
+      return { ...row, type, url };
+    }),
+    from: tab,
+    page: current,
+    pages,
+    total,
+    blockDays: blocklist.DEFAULT_DAYS,
+  });
 }
 
 // Куда объявление ушло, оттуда его и снимаем. Автор пишет «нашли людей» — и
@@ -2747,7 +2740,7 @@ async function sectionView(section) {
     case 'stats':
       return menu.withBack({ text: await statsText() });
     case 'last':
-      return menu.withBack(await lastText());
+      return publishedView();
     case 'spam':
       return menu.withBack(spamText());
     case 'groups':

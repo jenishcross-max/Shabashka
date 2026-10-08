@@ -1,7 +1,7 @@
 // Посты из групп бот публикует молча: на сайт, в канал и на площадки они уходят
 // как раньше, но в чат админа — ни карточки, ни расписки площадок, ни отчётов
 // Threads и Instagram. Вместо этого счётчики для сводки, а снять лишнее можно
-// из /last (см. isQuiet и lastText в src/telegram/bot.js).
+// из /last (см. isQuiet и publishedView в src/telegram/bot.js).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -31,6 +31,14 @@ const shared = [];
 const removed = [];
 let rows = new Map();
 let importSeq = 0;
+
+// Как imports.listPublished: вкладка «из групп», «мои» или всё, сначала новое.
+const published = (from) =>
+  [...rows.values()]
+    .filter((r) => r.status === 'published')
+    .filter((r) => from === 'all' || (from === 'mine' ? r.source !== 'channel' : r.source === 'channel'))
+    .reverse()
+    .map((r) => ({ ...r, live: true }));
 
 const groups = adGroupsStub();
 const raises = adRaisesStub();
@@ -74,7 +82,8 @@ const requireSrc = install({
       rows.get(id).status = 'published';
       return { type: 'board', id: 50 + id };
     },
-    recentPublished: async () => [...rows.values()].filter((r) => r.status === 'published' && r.source === 'channel'),
+    listPublished: async ({ from }) => published(from),
+    countPublished: async (from) => published(from).length,
   },
   [at('telegram/deferred.js')]: { add: async () => 1, remove: async () => {}, restorable: async () => [] },
   [at('dm/index.js')]: dmStub(),
@@ -186,6 +195,16 @@ test('/last показывает посты из групп, а 🚫 снима�
   const data = list.extra.reply_markup.inline_keyboard.flat().map((b) => b.callback_data);
   const spamButton = data.find((d) => d.startsWith('lspm:'));
   assert.ok(spamButton);
+  assert.ok(data.includes('lp:mine:0'), 'вкладка «Мои» — присланное вручную');
+
+  byChat.length = 0;
+  await bot.handleUpdate({
+    callback_query: { id: 'q', data: 'lp:mine:0', from: { id: 1 }, message: { chat: { id: 1 }, message_id: 7 } },
+  });
+  const mine = toAdmin()[0];
+  assert.ok(mine.edited, 'вкладка открывается в том же сообщении');
+  assert.match(mine.text, /Продаю шкаф/);
+  assert.doesNotMatch(mine.text, /Продаю диван/);
 
   byChat.length = 0;
   await bot.handleUpdate({
