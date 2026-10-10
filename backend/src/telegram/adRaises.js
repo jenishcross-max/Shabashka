@@ -167,15 +167,15 @@ const brief = (r) => (r ? { posted: Boolean(r.posted), id: r.id || null, reason:
 // уйдёт текстом с карточкой, Instagram — карточкой.
 async function payload(listing) {
   const campaign = await social.adTracker.byImport(listing.id).catch(() => null);
-  const group = (await adGroups.forImport(listing.id).catch(() => []))[0] || null;
   const notes = [];
 
   let kind = null;
   let fileId = null;
   if (campaign && (campaign.media_kind === 'image' || campaign.media_kind === 'video') && campaign.media_file_id) {
     [kind, fileId] = [campaign.media_kind, campaign.media_file_id];
-  } else if (group && group.media_kind && group.media_file_id) {
-    [kind, fileId] = [group.media_kind, group.media_file_id];
+  } else {
+    const group = await adGroups.firstPost(listing.id).catch(() => null);
+    if (group && group.media && group.media.fileId) [kind, fileId] = [group.media.kind, group.media.fileId];
   }
   let media = null;
   if (fileId) {
@@ -197,8 +197,9 @@ async function payload(listing) {
   return { campaign, media, card, notes };
 }
 
-// deps: { report(chatId, text), siteLink(listing) } — из bot.js.
-async function raiseOne(row, deps) {
+// deps: { report(chatId, text), siteLink(listing) } — из bot.js; to — куда
+// поднимать, из настроек (читает их заход, один раз на все поднятия).
+async function raiseOne(row, deps, to) {
   const listing = await imports.get(row.import_id);
   if (!listing || listing.status !== 'published') {
     await cancel(row.import_id);
@@ -206,11 +207,10 @@ async function raiseOne(row, deps) {
     return;
   }
 
-  const { to } = await settings();
   const result = { note: null };
   const text = listing.raw_text || '';
 
-  if (to.site) result.site = await imports.bump(listing.id).catch(() => false);
+  if (to.site) result.site = await imports.bump(listing).catch(() => false);
 
   if (to.threads || to.instagram) {
     const { campaign, media, card, notes } = await payload(listing);
@@ -269,12 +269,13 @@ function failLines(result) {
 // рекламодателю.
 async function reportIfLast(row, listing, title, deps) {
   const list = await rows(row.import_id);
-  const live = list.filter((r) => r.status !== 'cancelled');
-  if (live.some((r) => r.status === 'pending' || r.status === 'running')) return;
-  const results = live.map((r) => (typeof r.result === 'string' ? JSON.parse(r.result) : r.result) || {});
+  const summary = summarize(list);
+  if (summary.pending) return;
+  const results = list
+    .filter((r) => r.status !== 'cancelled')
+    .map((r) => (typeof r.result === 'string' ? JSON.parse(r.result) : r.result) || {});
   const count = (fn) => results.filter(fn).length;
-  const done = live.filter((r) => r.status === 'done').length;
-  const lines = [`🔁 Поднятия «${title}» закончились: ${done} из ${live.length}.`];
+  const lines = [`🔁 Поднятия «${title}» закончились: ${summary.done} из ${summary.total}.`];
   const threads = count((r) => r.threads && r.threads.posted);
   const instagram = count((r) => r.instagram && r.instagram.posted);
   const groups = results.reduce((sum, r) => sum + ((r.groups && r.groups.queued) || 0), 0);
@@ -297,13 +298,14 @@ async function tick(deps, now = Date.now()) {
                    ORDER BY due_at LIMIT ${BATCH} FOR UPDATE SKIP LOCKED)
       RETURNING *`
   );
+  const { to } = due.length ? await settings() : DEFAULT_PLAN;
   const runs = due.map(async (row) => {
     try {
       if (now - new Date(row.due_at).getTime() > LATE_MS) {
         await finish(row, 'skipped', { note: 'в это время сервер не работал' });
         return;
       }
-      await raiseOne(row, deps);
+      await raiseOne(row, deps, to);
     } catch (err) {
       console.error('[поднятия]', err);
       await finish(row, 'failed', { note: err.message }).catch(() => {});
@@ -356,10 +358,8 @@ module.exports = {
   cancel,
   extend,
   restart,
-  raiseOne,
   tick,
   start,
-  PLATFORMS,
   DAY_OPTIONS,
   TIME_PRESETS,
   DEFAULT_PLAN,

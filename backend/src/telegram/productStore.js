@@ -107,6 +107,5 @@ module.exports = {
   unclaim,
   logPost,
   posts,
-  MAX_TEXTS,
   MAX_PHOTOS,
 };

@@ -238,7 +238,7 @@ function adInfoView({
 
 const PLATFORM_NAMES = { site: '🌐 сайт', threads: '🧵 Threads', instagram: '📸 Instagram', groups: '👥 группы Telegram' };
 const PLATFORM_KEYS = { site: 'Сайт', threads: 'Threads', instagram: 'Instagram', groups: 'Группы' };
-const RAISE_PLATFORMS = ['site', 'threads', 'instagram', 'groups'];
+const RAISE_PLATFORMS = Object.keys(PLATFORM_KEYS);
 
 const timesText = (times) =>
   times.length > 1 ? `${times.slice(0, -1).join(', ')} и ${times[times.length - 1]}` : times[0] || '';
@@ -513,6 +513,8 @@ module.exports = {
   COMMANDS,
   PAGE_SIZE,
   PUBLISHED_PAGE,
+  keyboard,
+  rowsOf,
   PUBLISHED_TABS,
   BACK,
   homeView,

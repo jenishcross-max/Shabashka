@@ -53,14 +53,19 @@ function forInstagram(img, ratio) {
 
 // buffers — фото по порядку. Возвращает JPEG для каждой площадки, в том же
 // порядке.
+// По одному фото: «файлом» приходят исходники, скриншот раскрывается в
+// 15–20 МБ пикселей, и десять сразу — это сотни мегабайт на сервере, где их
+// всего 512. Так в памяти одно раскрытое фото и его два холста.
 async function prepare(buffers) {
-  if (!buffers.length) return { threads: [], instagram: [] };
-  const images = await Promise.all(buffers.map((b) => loadImage(b)));
-  const ratio = clamp(images[0].width / images[0].height, INSTAGRAM_MIN_RATIO, INSTAGRAM_MAX_RATIO);
-  return {
-    threads: await Promise.all(images.map(forThreads)),
-    instagram: await Promise.all(images.map((img) => forInstagram(img, ratio))),
-  };
+  const out = { threads: [], instagram: [] };
+  let ratio = null;
+  for (const buffer of buffers) {
+    const img = await loadImage(buffer);
+    if (ratio === null) ratio = clamp(img.width / img.height, INSTAGRAM_MIN_RATIO, INSTAGRAM_MAX_RATIO);
+    out.threads.push(await forThreads(img));
+    out.instagram.push(await forInstagram(img, ratio));
+  }
+  return out;
 }
 
 module.exports = { prepare };

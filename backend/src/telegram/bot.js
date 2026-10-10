@@ -2210,11 +2210,11 @@ async function publishedView(from = 'groups', page = 0) {
     offset: current * menu.PUBLISHED_PAGE,
   });
   return menu.publishedView({
-    rows: rows.map((row) => {
-      const type = row.vacancy_id ? 'vacancy' : row.order_id ? 'order' : row.board_post_id ? 'board' : null;
-      const url = type && row.live ? listingUrl(type, row.vacancy_id || row.order_id || row.board_post_id) : '';
-      return { ...row, type, url };
-    }),
+    rows: rows.map((row) => ({
+      ...row,
+      type: row.vacancy_id ? 'vacancy' : row.order_id ? 'order' : row.board_post_id ? 'board' : null,
+      url: row.live ? adSiteUrl(row) : '',
+    })),
     from: tab,
     page: current,
     pages,

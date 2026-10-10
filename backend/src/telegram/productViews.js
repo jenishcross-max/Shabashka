@@ -1,5 +1,6 @@
 const tg = require('./api');
 const { num, plural, viewsWord, clamp, whenText } = require('./format');
+const { keyboard, rowsOf, BACK: MENU } = require('./menu');
 
 // Экраны раздела «🛍 Мои продукты» (см. products.js). Как и menu.js — только
 // тексты и кнопки из готовых данных, без базы и без Telegram.
@@ -13,9 +14,7 @@ const DAY_FROM = 10;
 const DAY_TO = 21;
 const EVERY = [1, 2, 3, 7];
 
-const keyboard = (rows) => ({ reply_markup: { inline_keyboard: rows } });
 const cb = (...parts) => ['pr', ...parts].join(':');
-const MENU = { text: '☰ Меню', callback_data: 'm:home' };
 const LIST = { text: '⬅️ Продукты', callback_data: 'm:products' };
 const toCard = (product) => ({ text: '⬅️ К продукту', callback_data: cb('open', product.id) });
 const CANCEL = { text: '✖️ Отмена', callback_data: cb('cancel') };
@@ -39,12 +38,6 @@ function nextText(product, now) {
   if (!product.texts.length) return 'ждёт хотя бы одного текста';
   const at = product.posted_at ? new Date(product.posted_at).getTime() + product.every_days * DAY_MS : now;
   return at <= now ? 'при ближайшей проверке' : `≈ ${whenText(at)}`;
-}
-
-function rowsOf(buttons, size) {
-  const rows = [];
-  for (let i = 0; i < buttons.length; i += size) rows.push(buttons.slice(i, i + size));
-  return rows;
 }
 
 function listView(products) {
@@ -264,5 +257,4 @@ module.exports = {
   TEXT_MAX,
   DAY_FROM,
   DAY_TO,
-  EVERY,
 };

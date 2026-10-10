@@ -158,13 +158,27 @@ function moreLinks(base, path, heading, rows) {
   return `<nav>\n<h2>${heading}</h2>\n<ul>\n${items}\n</ul>\n</nav>`;
 }
 
+// Соседи у всех объявлений одной категории одни и те же, а запрос сортирует
+// все открытые: индексом такой порядок не взять. Робот обходит тысячи страниц
+// подряд — держим список по категории десять минут и убираем из него саму
+// страницу уже здесь.
+const NEIGHBOURS = 10;
+const NEIGHBOURS_TTL_MS = 10 * 60 * 1000;
+const neighboursCache = new Map();
+
 async function neighbours(table, item) {
-  const { rows } = await db.query(
-    `SELECT id, title, city FROM ${table} WHERE status = 'open' AND id <> $1
-     ORDER BY (category = $2) DESC, COALESCE(bumped_at, created_at) DESC LIMIT 10`,
-    [item.id, item.category]
-  );
-  return rows;
+  const key = `${table}:${item.category}`;
+  const cached = neighboursCache.get(key);
+  let rows = cached && Date.now() - cached.at < NEIGHBOURS_TTL_MS ? cached.rows : null;
+  if (!rows) {
+    ({ rows } = await db.query(
+      `SELECT id, title, city FROM ${table} WHERE status = 'open'
+       ORDER BY (category = $1) DESC, COALESCE(bumped_at, created_at) DESC LIMIT ${NEIGHBOURS + 1}`,
+      [item.category]
+    ));
+    neighboursCache.set(key, { at: Date.now(), rows });
+  }
+  return rows.filter((r) => r.id !== item.id).slice(0, NEIGHBOURS);
 }
 
 function missing(res, base) {
@@ -196,122 +210,94 @@ function article({ title, facts, closed, sections, url }) {
     .join('\n');
 }
 
-router.get(
-  '/orders/:id',
-  asyncHandler(async (req, res, next) => {
-    const ua = req.headers['user-agent'] || '';
-    if (!BOT_UA_RE.test(ua)) return next();
+// Заказ и вакансия — одна страница: разное только то, что из записи достаём.
+// describe(item) → { description, facts, sections, jsonLd }.
+function listingPage({ path, table, fields, moreHeading, describe }) {
+  router.get(
+    `/${path}/:id`,
+    asyncHandler(async (req, res, next) => {
+      const ua = req.headers['user-agent'] || '';
+      if (!BOT_UA_RE.test(ua)) return next();
 
-    const id = toId(req.params.id);
-    if (id === null) return next();
+      const id = toId(req.params.id);
+      if (id === null) return next();
 
-    const base = baseUrl(req);
-    const { rows } = await db.query(
-      `SELECT ${ORDER_FIELDS} FROM orders LEFT JOIN users ON users.id = orders.user_id WHERE orders.id = $1`,
-      [id]
-    );
-    const order = rows[0];
-    if (!order) return missing(res, base);
+      const base = baseUrl(req);
+      const { rows } = await db.query(
+        `SELECT ${fields} FROM ${table} LEFT JOIN users ON users.id = ${table}.user_id WHERE ${table}.id = $1`,
+        [id]
+      );
+      const item = rows[0];
+      if (!item) return missing(res, base);
 
-    const url = `${base}/orders/${order.id}`;
-    const title = `${order.title} — Шабашка`;
-    const description = `${order.category} · ${order.city}${
-      order.budget ? ` · ${money(order.budget)} сом` : ''
-    } — ${order.description}`.slice(0, 200);
-    const closed = order.status !== 'open';
-    const more = moreLinks(base, 'orders', 'Ещё заказы', await neighbours('orders', order));
+      const url = `${base}/${path}/${item.id}`;
+      const closed = item.status !== 'open';
+      const { description, facts, sections, jsonLd = null } = describe(item, closed);
+      const more = moreLinks(base, path, moreHeading, await neighbours(table, item));
 
-    res.send(
-      page({
-        base,
-        url,
-        title,
-        description,
-        robots: closed ? 'noindex' : '',
-        body: [
-          article({
-            title: order.title,
-            facts: [
-              order.category,
-              order.city,
-              order.work_format === 'online' ? 'Удалённо' : order.address,
-              order.budget ? `${money(order.budget)} сом` : 'Цена договорная',
-              `опубликовано ${posted(order.created_at)}`,
-            ],
-            closed,
-            sections: [section('Описание', order.description)],
-            url,
-          }),
-          more,
-        ].join('\n'),
-      })
-    );
-  })
-);
+      res.send(
+        page({
+          base,
+          url,
+          title: `${item.title} — Шабашка`,
+          description: description.slice(0, 200),
+          robots: closed ? 'noindex' : '',
+          jsonLd,
+          body: [article({ title: item.title, facts, closed, sections, url }), more].join('\n'),
+        })
+      );
+    })
+  );
+}
 
-router.get(
-  '/vacancies/:id',
-  asyncHandler(async (req, res, next) => {
-    const ua = req.headers['user-agent'] || '';
-    if (!BOT_UA_RE.test(ua)) return next();
+const place = (item) => (item.work_format === 'online' ? 'Удалённо' : item.address);
 
-    const id = toId(req.params.id);
-    if (id === null) return next();
+listingPage({
+  path: 'orders',
+  table: 'orders',
+  fields: ORDER_FIELDS,
+  moreHeading: 'Ещё заказы',
+  describe: (order) => {
+    const budget = order.budget ? `${money(order.budget)} сом` : '';
+    return {
+      description: `${order.category} · ${order.city}${budget ? ` · ${budget}` : ''} — ${order.description}`,
+      facts: [order.category, order.city, place(order), budget || 'Цена договорная', `опубликовано ${posted(order.created_at)}`],
+      sections: [section('Описание', order.description)],
+    };
+  },
+});
 
-    const base = baseUrl(req);
-    const { rows } = await db.query(
-      `SELECT ${VACANCY_FIELDS} FROM vacancies LEFT JOIN users ON users.id = vacancies.user_id WHERE vacancies.id = $1`,
-      [id]
-    );
-    const vacancy = rows[0];
-    if (!vacancy) return missing(res, base);
-
-    const url = `${base}/vacancies/${vacancy.id}`;
-    const title = `${vacancy.title} — Шабашка`;
-    const description = `${vacancy.category} · ${vacancy.city} · ${salary(vacancy.salary_min, vacancy.salary_max)} — ${
-      vacancy.description
-    }`.slice(0, 200);
-    const closed = vacancy.status !== 'open';
-    const more = moreLinks(base, 'vacancies', 'Ещё вакансии', await neighbours('vacancies', vacancy));
-
-    res.send(
-      page({
-        base,
-        url,
-        title,
-        description,
-        robots: closed ? 'noindex' : '',
-        // Закрытой вакансии разметка вредна: Google показал бы её в блоке
-        // вакансий как открытую.
-        jsonLd: closed ? null : jobPosting(vacancy),
-        body: [
-          article({
-            title: vacancy.title,
-            facts: [
-              vacancy.category,
-              vacancy.city,
-              vacancy.work_format === 'online' ? 'Удалённо' : vacancy.address,
-              salary(vacancy.salary_min, vacancy.salary_max),
-              label(EMPLOYMENT_TYPES, vacancy.employment_type),
-              label(EXPERIENCE_LEVELS, vacancy.experience),
-              vacancy.for_students ? 'Можно студентам' : '',
-              `опубликовано ${posted(vacancy.created_at)}`,
-            ],
-            closed,
-            sections: [
-              section('Описание', vacancy.description),
-              section('Требования', vacancy.requirements),
-              section('Условия', vacancy.conditions),
-              section('График', vacancy.schedule),
-            ],
-            url,
-          }),
-          more,
-        ].join('\n'),
-      })
-    );
-  })
-);
+listingPage({
+  path: 'vacancies',
+  table: 'vacancies',
+  fields: VACANCY_FIELDS,
+  moreHeading: 'Ещё вакансии',
+  describe: (vacancy, closed) => {
+    const pay = salary(vacancy.salary_min, vacancy.salary_max);
+    return {
+      description: `${vacancy.category} · ${vacancy.city} · ${pay} — ${vacancy.description}`,
+      facts: [
+        vacancy.category,
+        vacancy.city,
+        place(vacancy),
+        pay,
+        label(EMPLOYMENT_TYPES, vacancy.employment_type),
+        label(EXPERIENCE_LEVELS, vacancy.experience),
+        vacancy.for_students ? 'Можно студентам' : '',
+        `опубликовано ${posted(vacancy.created_at)}`,
+      ],
+      sections: [
+        section('Описание', vacancy.description),
+        section('Требования', vacancy.requirements),
+        section('Условия', vacancy.conditions),
+        section('График', vacancy.schedule),
+      ],
+      // Закрытой вакансии разметка вредна: Google показал бы её в блоке
+      // вакансий как открытую.
+      jsonLd: closed ? null : jobPosting(vacancy),
+    };
+  },
+});
 
 router.get('/robots.txt', (req, res) => {
   res.type('text/plain').send(

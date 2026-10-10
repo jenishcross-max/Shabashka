@@ -220,5 +220,4 @@ module.exports = {
   publishingLimit,
   followers,
   permalink,
-  CAROUSEL_MAX,
 };

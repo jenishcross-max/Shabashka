@@ -162,14 +162,14 @@ async function build({ now = Date.now(), previous = null, tech = false, title = 
   if (n('adm.ok')) lines.push('', `✍️ Прислано вручную: ${num(n('adm.ok'))}`);
 
   lines.push('', ...(await adLines(n('ad.ok'))));
-  // Реклама в группах Telegram (см. adGroups.js): постов, а не реклам — одна
-  // реклама уходит в несколько групп.
   // Поднятия рекламы по расписанию (см. adRaises.js).
   if (n('raise.ok') || n('raise.fail')) {
     lines.push(
       `🔁 Поднятий рекламы: ${num(n('raise.ok'))}${n('raise.fail') ? ` · не вышло ${num(n('raise.fail'))}` : ''}`
     );
   }
+  // Реклама в группах Telegram (см. adGroups.js): постов, а не реклам — одна
+  // реклама уходит в несколько групп.
   if (n('adgrp.ok') || n('adgrp.fail')) {
     lines.push(
       `👥 В группах Telegram: ${num(n('adgrp.ok'))} ${plural(n('adgrp.ok'), ['пост', 'поста', 'постов'])}${

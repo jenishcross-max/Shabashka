@@ -17,6 +17,7 @@ const views = require('./productViews');
 const social = require('../social');
 const photos = require('../social/photos');
 const { clamp } = require('./format');
+const { bishkekHour } = require('../keepalive');
 
 // Сколько ждём продолжения ввода. Забытое ожидание не должно вечером съесть
 // чужое объявление, присланное на разбор.
@@ -226,6 +227,26 @@ async function publish(id, report) {
   }
 }
 
+// Фото из Telegram — в JPEG для обеих площадок. Отдельной функцией, чтобы
+// скачанные исходники (до десятка файлов по несколько мегабайт) отпускались
+// сразу, а не висели в памяти, пока пост ждёт своей очереди в Threads.
+async function preparePhotos(list, notes) {
+  const buffers = [];
+  for (const photo of list) {
+    try {
+      buffers.push(await tg.downloadFile(photo.file_id));
+    } catch (err) {
+      notes.push(`одно фото не скачалось из Telegram (${err.message})`);
+    }
+  }
+  try {
+    return await photos.prepare(buffers);
+  } catch (err) {
+    notes.push(`фото не обработались (${err.message}) — в Threads пост уйдёт текстом`);
+    return { threads: [], instagram: [] };
+  }
+}
+
 async function publishOnce(id, report) {
   const product = await store.get(id);
   if (!product) return report({ text: 'Этого продукта уже нет.' });
@@ -242,20 +263,7 @@ async function publishOnce(id, report) {
   const text = product.texts[textNo];
   const notes = [];
 
-  const buffers = [];
-  for (const photo of rotate(product.photos, product.turn)) {
-    try {
-      buffers.push(await tg.downloadFile(photo.file_id));
-    } catch (err) {
-      notes.push(`одно фото не скачалось из Telegram (${err.message})`);
-    }
-  }
-  let prepared = { threads: [], instagram: [] };
-  try {
-    prepared = await photos.prepare(buffers);
-  } catch (err) {
-    notes.push(`фото не обработались (${err.message}) — в Threads пост уйдёт текстом`);
-  }
+  const prepared = await preparePhotos(rotate(product.photos, product.turn), notes);
 
   const ahead = social.threadsQueued();
   await report({
@@ -399,19 +407,12 @@ async function onCallback(query, [sub, rawId, arg], { show }) {
   }
 }
 
-// Час по Бишкеку: Render живёт по UTC.
-function bishkekHour(now) {
-  return Number(
-    new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bishkek', hour: '2-digit', hourCycle: 'h23' }).format(now)
-  );
-}
-
 // Расписание: раз в десять минут — один продукт, чей срок подошёл. По одному,
 // а не всех разом: три продукта подряд в ленте — это уже поток рекламы.
 let busy = false;
 async function tick(report, now = Date.now()) {
   if (busy) return;
-  const hour = bishkekHour(now);
+  const hour = bishkekHour(new Date(now));
   if (hour < views.DAY_FROM || hour >= views.DAY_TO) return;
   busy = true;
   try {

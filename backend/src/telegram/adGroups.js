@@ -284,19 +284,25 @@ async function enqueue({ importId, chatId, text, media = null, repeat = false })
   };
 }
 
-// Поднятие рекламы в группах (см. adRaises.js) — тем же текстом и файлом, что
-// и в первый раз: они лежат в первой строке этой рекламы. Не уходила в группы
-// вовсе — шлём текст рекламы, без файла.
-async function repeat({ importId, chatId, text }) {
+// С каким текстом и файлом реклама ушла в группы в первый раз — по первой её
+// строке. Тем же её и поднимают (см. adRaises.js). null — в группы не уходила.
+async function firstPost(importId) {
   const { rows } = await db.query(
     'SELECT text, media_kind, media_file_id, media_meta FROM ad_group_posts WHERE import_id = $1 ORDER BY id LIMIT 1',
     [importId]
   );
   const first = rows[0];
+  if (!first) return null;
+  const meta = typeof first.media_meta === 'string' ? parseJson(first.media_meta, {}) : first.media_meta || {};
+  return { text: first.text, media: first.media_kind ? { kind: first.media_kind, fileId: first.media_file_id, ...meta } : null };
+}
+
+// Поднятие рекламы в группах (см. adRaises.js) — тем же текстом и файлом, что
+// и в первый раз. Не уходила в группы вовсе — шлём текст рекламы, без файла.
+async function repeat({ importId, chatId, text }) {
+  const first = await firstPost(importId);
   if (!first) return enqueue({ importId, chatId, text, repeat: true });
-  const meta = typeof first.media_meta === 'string' ? JSON.parse(first.media_meta) : first.media_meta || {};
-  const media = first.media_kind ? { kind: first.media_kind, fileId: first.media_file_id, ...meta } : null;
-  return enqueue({ importId, chatId, text: first.text, media, repeat: true });
+  return enqueue({ importId, chatId, text: first.text, media: first.media, repeat: true });
 }
 
 // Один заход: самый ранний созревший пост. По одному за раз — паузу между
@@ -633,6 +639,7 @@ module.exports = {
   repeat,
   tick,
   forImport,
+  firstPost,
   channelViews,
   unpublish,
   overview,

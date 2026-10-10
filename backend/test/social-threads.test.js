@@ -62,7 +62,6 @@ const requireSrc = install({
       posted.push({ kind: 'ig-carousel', urls, text: caption });
       return 'ig-carousel';
     },
-    CAROUSEL_MAX: 10,
     publishingLimit: async () => ({ used: 0, total: 100 }),
     permalink: async () => '',
   },

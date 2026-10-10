@@ -98,6 +98,12 @@ function init() {
       // берём created_at, для них это ближайшая правда.
       await pool.query('ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ');
       await pool.query("UPDATE imported_listings SET published_at = created_at WHERE status = 'published' AND published_at IS NULL");
+      // «📥 Из групп» в боте листает всё опубликованное, сначала новое (см.
+      // listPublished в telegram/imports.js), — без индекса каждая страница
+      // сортировала бы всю таблицу.
+      await pool.query(
+        "CREATE INDEX IF NOT EXISTS idx_imported_published ON imported_listings(published_at DESC) WHERE status = 'published'"
+      );
 
       // Доска сначала была только для зарегистрированных — доращиваем её до гостей
       await pool.query('ALTER TABLE board_posts ADD COLUMN IF NOT EXISTS guest_id TEXT');
@@ -174,15 +180,23 @@ function init() {
       // беспокоить», «Студенттер кабыл алынбайт» — и ставил на такие вакансии
       // пометку «для студентов». Снимаем её там, где текст прямо говорит «нет»;
       // галочку из формы, поставленную без таких слов, не трогаем.
-      for (const [table, fields] of [
-        ['vacancies', 'title, description, requirements, conditions, schedule'],
-        ['orders', 'title, description'],
-      ]) {
-        const { rows } = await pool.query(`SELECT id, ${fields} FROM ${table} WHERE for_students`);
-        const wrong = rows.filter(({ id, ...text }) => refused(Object.values(text).filter(Boolean).join('\n')));
-        if (!wrong.length) continue;
-        await pool.query(`UPDATE ${table} SET for_students = false WHERE id = ANY($1)`, [wrong.map((r) => r.id)]);
-        console.log(`[db] ${table}: снял «для студентов» с ${wrong.length}, где в тексте отказ`);
+      // Один раз: новые объявления уже размечает исправленный forStudents, а
+      // галочку, которую потом поставят руками, снимать при каждом перезапуске
+      // нельзя — да и читать все тексты на каждом старте незачем.
+      const studentsFix = 'migr:students-refusal';
+      const { rows: fixed } = await pool.query('SELECT 1 FROM app_settings WHERE key = $1', [studentsFix]);
+      if (!fixed.length) {
+        for (const [table, fields] of [
+          ['vacancies', 'title, description, requirements, conditions, schedule'],
+          ['orders', 'title, description'],
+        ]) {
+          const { rows } = await pool.query(`SELECT id, ${fields} FROM ${table} WHERE for_students`);
+          const wrong = rows.filter(({ id, ...text }) => refused(Object.values(text).filter(Boolean).join('\n')));
+          if (!wrong.length) continue;
+          await pool.query(`UPDATE ${table} SET for_students = false WHERE id = ANY($1)`, [wrong.map((r) => r.id)]);
+          console.log(`[db] ${table}: снял «для студентов» с ${wrong.length}, где в тексте отказ`);
+        }
+        await pool.query("INSERT INTO app_settings (key, value) VALUES ($1, '1') ON CONFLICT (key) DO NOTHING", [studentsFix]);
       }
 
       // Платная реклама — отдельным списком в меню бота (см. listAds в

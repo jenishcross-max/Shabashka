@@ -67,13 +67,13 @@ const requireSrc = install({
   [at('telegram/feedStats.js')]: stats.feedStats,
   [at('telegram/imports.js')]: {
     get: async (id) => (listings.has(id) ? { ...listings.get(id) } : null),
-    bump: async (id) => {
-      bumped.push(id);
+    bump: async (row) => {
+      bumped.push(row.id);
       return true;
     },
   },
   [at('telegram/adGroups.js')]: {
-    forImport: async () => [],
+    firstPost: async () => null,
     repeat: async (args) => {
       repeated.push(args);
       return groupsResult(args);

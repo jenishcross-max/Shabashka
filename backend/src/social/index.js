@@ -653,21 +653,30 @@ function shareMedia({ kind, buffer, text = '', siteLink = '', title = 'рекл�
     return result;
   }
 
-  const caption = [ad && video.adLine(), text, siteLink].filter(Boolean).join('\n\n').trim();
+  const caption = adCaption(text, siteLink, ad);
   result.instagramQueued = true;
   result.caption = caption;
-  result.done = schedule(
+  result.done = scheduleAdInstagram(async () => ({ kind, buffer }), caption, { priority });
+  return result;
+}
+
+// Подпись рекламы в Instagram: пометка «реклама», текст рекламодателя, ссылка.
+const adCaption = (text, siteLink, ad = true) => [ad && video.adLine(), text, siteLink].filter(Boolean).join('\n\n').trim();
+
+// Реклама «как есть» в общей очереди Instagram — и при выходе, и при поднятии.
+// load отдаёт { kind, buffer } и зовётся в самом задании.
+function scheduleAdInstagram(load, caption, { priority = false } = {}) {
+  return schedule(
     async () => {
       inFlight += 1;
       try {
-        return await deliverRawMedia({ kind, buffer, caption });
+        return await deliverRawMedia({ ...(await load()), caption });
       } finally {
         inFlight -= 1;
       }
     },
     { priority }
   );
-  return result;
 }
 
 // Один пост в Threads: текстом, картинкой или роликом. Файл выкладываем наружу
@@ -738,7 +747,7 @@ function postToThreads(item, title, ctx, { priority = true } = {}) {
 // было бы шумом в чате, их считает сводка. card — объявление для картинки,
 // когда своего файла у рекламы нет: Instagram без картинки пост не примет.
 // threads / instagram — поднимать ли там; null в ответе — не поднимали.
-function raiseAd({
+async function raiseAd({
   text = '',
   threadsText = '',
   media = null,
@@ -747,52 +756,38 @@ function raiseAd({
   threads: toThreads = true,
   instagram: toInstagram = true,
 }) {
-  const skip = (reason) => Promise.resolve({ posted: false, reason });
+  // Карточку рисуем один раз на обе площадки и только когда до неё дошло.
+  let still = null;
+  const image = () => (still = still || card.renderStill(cardData, {}));
 
-  const threadsDone = !toThreads
-    ? Promise.resolve(null)
-    : !threads.isConfigured()
-      ? skip('Threads не подключён')
-      : paceThreads(
-          () =>
-            post('threads', () =>
-              publishToThreads({
-                text: threadsText || video.threadsCaption(text, siteLink, { ad: true }),
-                media,
-                card: cardData,
-              })
-            ),
-          { priority: true }
-        );
+  const toThreadsDone = async () => {
+    if (!toThreads) return null;
+    if (!threads.isConfigured()) return { posted: false, reason: 'Threads не подключён' };
+    return paceThreads(
+      () =>
+        post('threads', async () => {
+          // Карточка не нарисовалась — пост уйдёт текстом, как в publishToThreads.
+          const buffer = !media && cardData ? await image().catch(() => null) : null;
+          return publishToThreads({
+            text: threadsText || video.threadsCaption(text, siteLink, { ad: true }),
+            media: media || (buffer && { kind: 'image', buffer }),
+          });
+        }),
+      { priority: true }
+    );
+  };
 
-  const instagramDone = !toInstagram
-    ? Promise.resolve(null)
-    : !instagram.isConfigured()
-      ? skip('Instagram не подключён')
-      : !media && !cardData
-        ? skip('нечего показать: у рекламы нет ни файла, ни карточки')
-        : schedule(
-            async () => {
-              inFlight += 1;
-              try {
-                const job = media
-                  ? { kind: media.kind, buffer: media.buffer }
-                  : { kind: 'image', buffer: await card.renderStill(cardData, {}) };
-                const caption = [video.adLine(), text, siteLink].filter(Boolean).join('\n\n').trim();
-                return await deliverRawMedia({ ...job, caption });
-              } catch (err) {
-                return { posted: false, reason: err.message };
-              } finally {
-                inFlight -= 1;
-              }
-            },
-            { priority: true }
-          );
+  const toInstagramDone = async () => {
+    if (!toInstagram) return null;
+    if (!instagram.isConfigured()) return { posted: false, reason: 'Instagram не подключён' };
+    if (!media && !cardData) return { posted: false, reason: 'нечего показать: у рекламы нет ни файла, ни карточки' };
+    return scheduleAdInstagram(async () => media || { kind: 'image', buffer: await image() }, adCaption(text, siteLink), {
+      priority: true,
+    }).catch((err) => ({ posted: false, reason: err.message }));
+  };
 
-  return Promise.all([threadsDone, instagramDone]).then(([threadsResult, instagramResult]) => ({
-    threads: threadsResult,
-    instagram: instagramResult,
-  }));
+  const [threadsResult, instagramResult] = await Promise.all([toThreadsDone(), toInstagramDone()]);
+  return { threads: threadsResult, instagram: instagramResult };
 }
 
 // Свой продукт (см. telegram/products.js): текст и фото — в Threads и в
@@ -806,42 +801,35 @@ function raiseAd({
 // задании, вплотную к публикации, — ссылка живёт двадцать минут.
 //
 // Возвращает обещание { threads, instagram } — оба в форме post().
-function shareProduct({ text, threadsImages = [], instagramImages = [] }) {
+async function shareProduct({ text, threadsImages = [], instagramImages = [] }) {
   const base = backendUrl();
-  const host = (buffers) =>
-    buffers.map((buffer) => `${base}/api/social/image/${hosting.put(card.stillName(), buffer)}`);
+  // Одно фото — пост картинкой, несколько — каруселью.
+  const publishPhotos = (api, buffers) => {
+    const urls = buffers.map((buffer) => `${base}/api/social/image/${hosting.put(card.stillName(), buffer)}`);
+    return urls.length > 1 ? api.publishCarousel(urls, text) : api.publishImage(urls[0], text);
+  };
 
-  const toThreads = !threads.isConfigured()
-    ? Promise.resolve({ posted: false, reason: 'Threads не подключён' })
-    : threadsImages.length && !base
-      ? Promise.resolve({ posted: false, reason: 'не задан адрес бэкенда — фото Threads не забрать' })
-      : paceThreads(() =>
-          post('threads', () => {
-            if (!threadsImages.length) return threads.publishText(text);
-            const urls = host(threadsImages);
-            return urls.length > 1 ? threads.publishCarousel(urls, text) : threads.publishImage(urls[0], text);
-          })
-        );
+  const toThreads = async () => {
+    if (!threads.isConfigured()) return { posted: false, reason: 'Threads не подключён' };
+    if (threadsImages.length && !base) return { posted: false, reason: 'не задан адрес бэкенда — фото Threads не забрать' };
+    return paceThreads(() =>
+      post('threads', () => (threadsImages.length ? publishPhotos(threads, threadsImages) : threads.publishText(text)))
+    );
+  };
 
-  const toInstagram = !instagram.isConfigured()
-    ? Promise.resolve({ posted: false, reason: 'Instagram не подключён' })
-    : !instagramImages.length
-      ? Promise.resolve({ posted: false, reason: 'без фото Instagram пост не принимает' })
-      : !base
-        ? Promise.resolve({ posted: false, reason: 'не задан адрес бэкенда — фото Instagram не забрать' })
-        : schedule(async () => {
-            await quota.sync(instagram.publishingLimit);
-            if (!quota.take()) return quotaFailure(quota.dailyLimit());
-            return post('insta', () => {
-              const urls = host(instagramImages.slice(0, instagram.CAROUSEL_MAX));
-              return urls.length > 1 ? instagram.publishCarousel(urls, text) : instagram.publishImage(urls[0], text);
-            });
-          });
+  const toInstagram = async () => {
+    if (!instagram.isConfigured()) return { posted: false, reason: 'Instagram не подключён' };
+    if (!instagramImages.length) return { posted: false, reason: 'без фото Instagram пост не принимает' };
+    if (!base) return { posted: false, reason: 'не задан адрес бэкенда — фото Instagram не забрать' };
+    return schedule(async () => {
+      await quota.sync(instagram.publishingLimit);
+      if (!quota.take()) return quotaFailure(quota.dailyLimit());
+      return post('insta', () => publishPhotos(instagram, instagramImages));
+    });
+  };
 
-  return Promise.all([toThreads, toInstagram]).then(([threadsResult, instagramResult]) => ({
-    threads: threadsResult,
-    instagram: instagramResult,
-  }));
+  const [threadsResult, instagramResult] = await Promise.all([toThreads(), toInstagram()]);
+  return { threads: threadsResult, instagram: instagramResult };
 }
 
 // Объявление уходит в Threads по одному и текстом, а в очередь на ролик — ждать

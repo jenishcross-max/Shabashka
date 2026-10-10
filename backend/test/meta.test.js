@@ -51,7 +51,9 @@ const requireSrc = install({
     query: async (sql, params) => {
       const table = /FROM (vacancies|orders)/.exec(sql)[1];
       // Соседние объявления для ссылок внизу.
-      if (/id <> \$1/.test(sql)) return { rows: [{ id: 200, title: 'Бариста в кофейню', city: 'Бишкек' }] };
+      if (/ORDER BY \(category/.test(sql)) {
+        return { rows: [{ id: 131, title: 'Сама эта вакансия', city: 'Бишкек' }, { id: 200, title: 'Бариста в кофейню', city: 'Бишкек' }] };
+      }
       return { rows: rows[table].filter((r) => r.id === params[0]) };
     },
   },
@@ -95,6 +97,7 @@ test('Googlebot получает вакансию целиком, без пер�
   assert.doesNotMatch(html, /name="robots"/, 'открытую вакансию индексировать можно');
   assert.doesNotMatch(html, /<script>alert/, 'текст объявления экранирован');
   assert.match(html, /href="https:\/\/xn--80aaac0cyed\.com\/vacancies\/200"/, 'ссылки на соседние вакансии');
+  assert.doesNotMatch(html, /Сама эта вакансия/, 'на саму себя страница не ссылается');
 
   const ld = JSON.parse(/<script type="application\/ld\+json">(.*?)<\/script>/s.exec(html)[1]);
   assert.equal(ld['@type'], 'JobPosting');
