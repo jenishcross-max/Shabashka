@@ -37,13 +37,29 @@ const SITE_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
 // просто пропускаем этот шаг, остальная публикация работает как раньше.
 const CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID || '';
 // Кнопка «Подписаться» под постами канала: пересланный пост видят и те, кто на
-// канал не подписан. У публичного канала (@имя) ссылка собирается сама; для
-// числового id — TELEGRAM_CHANNEL_URL, иначе тот же канал, что на сайте.
-const CHANNEL_URL =
-  process.env.TELEGRAM_CHANNEL_URL ||
-  (CHANNEL_ID.startsWith('@') ? `https://t.me/${CHANNEL_ID.slice(1)}` : 'https://t.me/Shabashkacom');
+// канал не подписан. Ведёт туда, куда бот постит: при запуске спрашиваем у
+// Telegram (resolveChannelUrl) — публичный канал по имени, закрытый — по
+// ссылке-приглашению. t.me/Shabashkacom с сайта — группа, а «Подписаться на
+// канал», ведущая в группу, — обман: если в TELEGRAM_CHANNEL_ID группа, кнопки
+// нет. TELEGRAM_CHANNEL_URL — задать ссылку вручную.
+let channelUrl =
+  process.env.TELEGRAM_CHANNEL_URL || (CHANNEL_ID.startsWith('@') ? `https://t.me/${CHANNEL_ID.slice(1)}` : '');
+async function resolveChannelUrl() {
+  if (process.env.TELEGRAM_CHANNEL_URL || !CHANNEL_ID) return channelUrl;
+  try {
+    const chat = await tg.call('getChat', { chat_id: CHANNEL_ID });
+    channelUrl =
+      chat.type === 'channel' ? (chat.username ? `https://t.me/${chat.username}` : chat.invite_link || '') : '';
+    if (!channelUrl) console.warn(`[канал] ссылку для кнопки «Подписаться» не узнал (${chat.type}) — кнопки нет`);
+  } catch (err) {
+    console.error('[канал] ссылка для кнопки «Подписаться»:', err.message);
+  }
+  return channelUrl;
+}
 const subscribeButton = () =>
-  follow.EVERY ? { reply_markup: { inline_keyboard: [[{ text: '🔔 Подписаться на канал', url: CHANNEL_URL }]] } } : undefined;
+  follow.EVERY && channelUrl
+    ? { reply_markup: { inline_keyboard: [[{ text: '🔔 Подписаться на канал', url: channelUrl }]] } }
+    : undefined;
 
 const LISTING_PATHS = { vacancy: 'vacancies', order: 'orders' };
 
@@ -2659,6 +2675,7 @@ function startWatchers() {
   // Список команд у синей кнопки «Меню» рядом с полем ввода.
   tg.call('setMyCommands', { commands: menu.COMMANDS }).catch((err) => console.error('Команды бота:', err.message));
   announceMenu().catch((err) => console.error('Меню бота:', err.message));
+  resolveChannelUrl();
   social.adTracker.start({ onReport: onAdReport, onWarn: onAdWarn, onDenied: onAdStatsDenied });
   social.leads.start({ onLead, onDenied: onLeadsDenied });
   dm.start({ publish: publishFromDm, admin: onDmEvent });
@@ -2979,6 +2996,7 @@ module.exports = {
   handleUpdate,
   restoreDeferred,
   startWatchers,
+  resolveChannelUrl,
   isConfigured: () => tg.hasToken() && ADMIN_IDS.size > 0,
   // Тот же путь публикации, которым идут скриншоты из личных сообщений —
   // используется автоимпортом из чужого канала (см. sourceWatcher.js), чтобы

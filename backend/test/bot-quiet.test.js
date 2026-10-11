@@ -296,3 +296,30 @@ test('/spam показывает отсеянное, а «✅ Не спам» с
   assert.equal(parse.opts.trusted, true, 'без повторной проверки на сетевое');
   assert.equal(rejected.list().length, 0, 'из списка убран — второй раз не нажать');
 });
+
+test('кнопка «Подписаться» ведёт на канал, куда бот постит, — не в группу', async () => {
+  const button = async (title, phone) => {
+    byChat.length = 0;
+    await bot.ingestFromSource(1, [listing(title, phone)], { source: 'channel', rawText: title });
+    await settle();
+    const { extra } = toChannel()[0];
+    return extra && extra.reply_markup.inline_keyboard.flat()[0].url;
+  };
+  const getChat = (chat) => {
+    tg.api.call = async (method) => (method === 'getChat' ? chat : { ok: true });
+  };
+
+  getChat({ type: 'channel', username: 'shabashka_kg' });
+  await bot.resolveChannelUrl();
+  assert.equal(await button('Продаю стол', '+996700777001'), 'https://t.me/shabashka_kg', 'публичный — по имени');
+
+  getChat({ type: 'channel', invite_link: 'https://t.me/+AbCdEf' });
+  await bot.resolveChannelUrl();
+  assert.equal(await button('Продаю стул', '+996700777002'), 'https://t.me/+AbCdEf', 'закрытый — по приглашению');
+
+  getChat({ type: 'supergroup', username: 'Shabashkacom' });
+  await bot.resolveChannelUrl();
+  assert.equal(await button('Продаю полку', '+996700777003'), undefined, 'группа — кнопки «на канал» нет');
+
+  tg.api.call = async () => ({ ok: true });
+});
