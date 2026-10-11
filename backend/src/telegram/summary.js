@@ -238,6 +238,14 @@ async function build({ now = Date.now(), previous = null, tech = false, title = 
     `📸 Instagram: роликов ${num(n('ig.reel'))}, картинкой ${num(n('ig.image'))}${
       n('ig.fail') ? ` · не вышло ${num(n('ig.fail'))}` : ''
     }`,
+    // Рубрики по расписанию (см. rubrics.js).
+    ...(n('rub.ok') || n('rub.skip') || n('rub.fail')
+      ? [
+          `📅 Рубрик: ${num(n('rub.ok'))}${n('rub.skip') ? ` · мало данных ${num(n('rub.skip'))}` : ''}${
+            n('rub.fail') ? ` · не вышло ${num(n('rub.fail'))}` : ''
+          }`,
+        ]
+      : []),
     ...(await followerLines(now))
   );
 

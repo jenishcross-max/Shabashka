@@ -22,6 +22,7 @@ const rejected = require('./rejected');
 const adGroups = require('./adGroups');
 const menu = require('./menu');
 const products = require('./products');
+const rubrics = require('./rubrics');
 const adRaises = require('./adRaises');
 const { num, plural, viewsWord, clamp, clock, whenText, agoText } = require('./format');
 const { money } = require('../money');
@@ -41,6 +42,8 @@ const CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID || '';
 const CHANNEL_URL =
   process.env.TELEGRAM_CHANNEL_URL ||
   (CHANNEL_ID.startsWith('@') ? `https://t.me/${CHANNEL_ID.slice(1)}` : 'https://t.me/Shabashkacom');
+const subscribeButton = () =>
+  follow.EVERY ? { reply_markup: { inline_keyboard: [[{ text: '🔔 Подписаться на канал', url: CHANNEL_URL }]] } } : undefined;
 
 const LISTING_PATHS = { vacancy: 'vacancies', order: 'orders' };
 
@@ -731,11 +734,7 @@ async function publishOne(chatId, id, parsed, priority = false, { quiet = false 
   if (CHANNEL_ID) {
     try {
       // У рекламы кнопки нет: рекламодатель платит за свой пост (см. follow.js).
-      const subscribe =
-        !priority && follow.EVERY
-          ? { reply_markup: { inline_keyboard: [[{ text: '🔔 Подписаться на канал', url: CHANNEL_URL }]] } }
-          : undefined;
-      const inChannel = await tg.sendMessage(CHANNEL_ID, `${tg.esc(body)}${linkTag}`, subscribe);
+      const inChannel = await tg.sendMessage(CHANNEL_ID, `${tg.esc(body)}${linkTag}`, priority ? undefined : subscribeButton());
       await imports.setPosts(id, { channelMessageId: inChannel.message_id });
       channelLine = '📢 Выложено в Telegram-канал';
     } catch (err) {
@@ -2681,6 +2680,11 @@ function startWatchers() {
       .catch((err) => console.error('[подписка] число за сутки:', err.message));
   countDaily();
   setInterval(countDaily, 60 * 60 * 1000).unref();
+  rubrics.start({
+    siteUrl: (type) => (SITE_URL && LISTING_PATHS[type] ? `${SITE_URL}/${LISTING_PATHS[type]}` : ''),
+    pretty: prettyLink,
+    channel: CHANNEL_ID ? (html) => tg.sendMessage(CHANNEL_ID, html, subscribeButton()) : null,
+  });
 }
 
 // Повтор рекламы кнопкой. Выходит тем же постом, что и первый: с файлом

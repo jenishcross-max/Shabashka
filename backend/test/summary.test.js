@@ -134,6 +134,15 @@ test('подписчики площадок — с приростом от вч�
   assert.match(partial, /👥 Подписчики: Threads 1\s240 \(\+12\) · Instagram 830 \(−1\)\n/);
 });
 
+test('рубрики — сколько вышло и почему нет', async () => {
+  Object.assign(stats.counters, { 'rub.ok': 2, 'rub.skip': 1 });
+  const { text } = await summary.build();
+  assert.match(text, /📅 Рубрик: 2 · мало данных 1\n/);
+  delete stats.counters['rub.ok'];
+  delete stats.counters['rub.skip'];
+  assert.doesNotMatch((await summary.build()).text, /Рубрик/, 'не было — строки нет');
+});
+
 test('часы сводки: off выключает, мусор отбрасывается', () => {
   assert.deepEqual(summary.parseHours('off'), []);
   assert.deepEqual(summary.parseHours('21, 9,x,25,9'), [9, 21]);

@@ -299,9 +299,10 @@ function quotaFailure(ceiling = quota.hardLimit()) {
 // не дожидаясь, пока окно сдвинется. Раньше до сборки в этом случае просто не
 // доходило, и в чат приходила одна строка об отказе — выкладывать было нечего.
 // Только для рекламы: собирать минуту ffmpeg на бесплатном Render ради ролика,
-// которого никто не просил, незачем.
+// которого никто не просил, незачем. У рубрики (см. shareRubric) очередь та же,
+// что у рекламы, но выкладывать её руками никто не будет.
 async function buildForHand(job, failure) {
-  if (!job.priority || job.buffer) return failure;
+  if (!job.ad || job.buffer) return failure;
   try {
     await buildVideo(job);
   } catch (err) {
@@ -848,6 +849,36 @@ async function shareProduct({ text, threadsImages = [], instagramImages = [] }) 
   return { threads: threadsResult, instagram: instagramResult };
 }
 
+// Рубрика (см. telegram/rubrics.js): подборка из базы по расписанию — пост в
+// Threads и, если есть объявления для кадров, ролик в Instagram. Обе очереди —
+// как у рекламы: «в 9:00» за потоком объявлений из групп превратилось бы в
+// «к обеду», а ролик не должен ждать места в своей суточной норме. Пометки
+// «реклама» нет: это наша подборка, — зато есть строка «подпишись».
+// Возвращает { threads, instagram } в форме post(); null — туда не шли.
+async function shareRubric({ text, items = [], collection, cta }) {
+  const toThreads = async () =>
+    threads.isConfigured()
+      ? paceThreads(() => post('threads', () => publishToThreads({ text })), { priority: true })
+      : null;
+  const toInstagram = async () => {
+    if (!instagram.isConfigured() || !items.length) return null;
+    const job = {
+      items,
+      listingType: items[0].listingType,
+      collection,
+      cta,
+      digest: true,
+      targets: ['instagram'],
+      priority: true,
+      ad: false,
+      follow: follow.line(),
+    };
+    return scheduleInstagram(job, true);
+  };
+  const [threadsResult, instagramResult] = await Promise.all([toThreads(), toInstagram()]);
+  return { threads: threadsResult, instagram: instagramResult };
+}
+
 // Объявление уходит в Threads по одному и текстом, а в очередь на ролик — ждать
 // компанию. Threads пачками не собираем: своей квоты Instagram он не тратит,
 // лимиты у него заметно щедрее, и отдельными постами объявление и находят
@@ -989,6 +1020,7 @@ module.exports = {
   shareListing,
   shareMedia,
   shareProduct,
+  shareRubric,
   raiseAd,
   postToThreads,
   unpublish,

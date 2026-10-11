@@ -23,6 +23,8 @@ global.setTimeout = (fn, ms, ...rest) => realSetTimeout(fn, ms >= 1000 ? 2 : ms,
 const settle = () => new Promise((r) => realSetTimeout(r, 40));
 
 const posted = [];
+// Подписи роликов Instagram — отдельно: число постов в Threads тесты считают.
+const reels = [];
 let imageFails = false;
 
 const requireSrc = install({
@@ -53,7 +55,10 @@ const requireSrc = install({
   },
   [at('social/instagram.js')]: {
     isConfigured: () => true,
-    publishReel: async () => 'reel',
+    publishReel: async (url, caption) => {
+      reels.push(caption);
+      return 'reel';
+    },
     publishImage: async (url, caption) => {
       posted.push({ kind: 'ig-image', url, text: caption });
       return 'ig-image';
@@ -276,4 +281,32 @@ test('каждый четвёртый пост-объявление зовёт �
   );
   assert.ok(video.weight(long) <= 500, `вес ${video.weight(long)}`);
   assert.match(long, /…\n\n🔔 Подпишись — каждый день 60\+[^\n]*\nшабашка\.com\/vacancies\/9$/);
+});
+
+// Рубрика (см. telegram/rubrics.js): в Threads — как реклама, перед объявлениями;
+// в Instagram — ролик без пометки рекламы, со строкой «подпишись».
+test('рубрика встаёт перед объявлениями, а ролик уходит без пометки рекламы', async () => {
+  posted.length = 0;
+  reels.length = 0;
+  for (const n of [31, 32]) social.shareListing(parsed, 'vacancy', `шабашка.com/vacancies/${n}`, { chatId: 1 }, {});
+  const item = { id: 7, listingType: 'vacancy', parsed, siteLink: 'шабашка.com/vacancies/7' };
+  const result = await social.shareRubric({
+    text: '💰 Топ-3 вакансий дня по зарплате',
+    items: [item, item, item],
+    collection: 'Топ-3 по зарплате',
+    cta: 'все вакансии — на сайте',
+  });
+  for (let i = 0; i < 50 && posted.length < 3; i += 1) await settle();
+
+  assert.equal(result.threads.posted, true);
+  assert.equal(posted[0].text, '💰 Топ-3 вакансий дня по зарплате', 'рубрика — первой, как реклама');
+  assert.equal(result.instagram.posted, true, result.instagram.reason);
+  const [caption] = reels;
+  assert.match(caption, /^📋 Топ-3 по зарплате/);
+  assert.doesNotMatch(caption, /Реклама/, 'это наша подборка, не реклама');
+  assert.match(caption, /🔔 Подпишись/);
+
+  const bare = await social.shareRubric({ text: '📊 Сколько платят в Бишкеке' });
+  assert.equal(bare.instagram, null, 'без объявлений ролика нет');
+  assert.equal(bare.threads.posted, true);
 });

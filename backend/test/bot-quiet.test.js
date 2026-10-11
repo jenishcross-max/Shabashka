@@ -122,6 +122,8 @@ const requireSrc = install({
     threadsConfigured: () => true,
   },
   [at('digestRepo.js')]: { SIZE: 5, DAYS: 2 },
+  // Рубрики по расписанию бот только запускает — выборки им здесь не нужны.
+  [at('rubricsRepo.js')]: {},
 });
 
 const bot = requireSrc('telegram/bot.js');
