@@ -55,12 +55,21 @@ const setPaused = (id, paused) =>
 const remove = (id) => db.query('DELETE FROM products WHERE id = $1', [id]);
 
 // Чей черёд выйти по расписанию: дольше всех ждущий — первым.
+//
+// Выход занимают до очереди (см. claim), а пишут в product_posts, когда
+// площадки ответили. Если между этим Render перезапустился — деплой, нехватка
+// памяти, — очередь стёрта вместе с постом, а продукт числится вышедшим и ждал
+// бы следующего срока через несколько дней. Поэтому выход без единой записи
+// через час после захвата считаем потерянным: продукт выходит снова. Час —
+// с запасом: впереди продукта в очереди только срочные, это минуты.
 const due = () =>
   db
     .query(
-      `SELECT * FROM products
+      `SELECT * FROM products p
        WHERE NOT paused AND every_days IS NOT NULL AND jsonb_array_length(texts) > 0
-         AND (posted_at IS NULL OR posted_at <= NOW() - make_interval(days => every_days))
+         AND (posted_at IS NULL OR posted_at <= NOW() - make_interval(days => every_days)
+           OR (posted_at <= NOW() - INTERVAL '1 hour' AND NOT EXISTS (
+             SELECT 1 FROM product_posts pp WHERE pp.product_id = p.id AND pp.created_at >= p.posted_at)))
        ORDER BY posted_at NULLS FIRST LIMIT 1`
     )
     .then(one);

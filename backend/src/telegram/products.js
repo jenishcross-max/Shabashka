@@ -265,7 +265,8 @@ async function publishOnce(id, report) {
 
   const prepared = await preparePhotos(rotate(product.photos, product.turn), notes);
 
-  const ahead = social.threadsQueued();
+  // Встаёт перед обычными объявлениями — впереди только срочные.
+  const ahead = social.threadsQueued({ priority: true });
   await report({
     text: [
       `🚀 «${tg.esc(product.name)}» — в очередь: текст №${textNo + 1} из ${product.texts.length}, фото: ${prepared.threads.length}.`,

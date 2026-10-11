@@ -172,19 +172,22 @@ function pacer(minIntervalMs) {
   }
 
   const schedule = (fn, { priority = false } = {}) => {
-    const task = { fn };
+    const task = { fn, priority };
     const promise = new Promise((resolve, reject) => {
       task.resolve = resolve;
       task.reject = reject;
     });
-    // Перед ждущими, но не перед тем, что уже уехало на площадку: отменить
-    // начатую отправку нельзя.
-    tasks.splice(priority ? 0 : tasks.length, 0, task);
+    // Перед обычными, но за срочными, что встали раньше: иначе каждое новое
+    // поднятие рекламы отодвигало бы продукт, а он — рекламу. И не перед тем,
+    // что уже уехало на площадку: отменить начатую отправку нельзя.
+    const first = priority ? tasks.findIndex((t) => !t.priority) : -1;
+    tasks.splice(first === -1 ? tasks.length : first, 0, task);
     if (!running) drain();
     return promise;
   };
   // Сколько заданий ещё не начинали выполняться, включая только что добавленное.
-  schedule.queued = () => tasks.length;
+  // priority — только срочные: срочному обычные не помеха.
+  schedule.queued = ({ priority = false } = {}) => (priority ? tasks.filter((t) => t.priority).length : tasks.length);
   return schedule;
 }
 
@@ -730,7 +733,7 @@ function scheduleThreads(item, title, ctx, priority = false) {
       if (threadsHandler) await threadsHandler({ ...result, title, ctx, retryId, text: item.text });
     })
     .catch((err) => console.error('Автопостинг (threads):', err));
-  return paceThreads.queued();
+  return paceThreads.queued({ priority });
 }
 
 // Пост только в Threads — для повтора рекламы, которая недобирает просмотры
@@ -794,11 +797,16 @@ async function raiseAd({
 // Instagram. Одно фото — пост картинкой, несколько — каруселью, без фото —
 // в Threads текстом, а в Instagram никак: без картинки он поста не примет.
 //
-// Очереди те же, что у объявлений: промежутки между постами держат антиспам
-// площадок, и своя реклама не должна их ломать. Норма Instagram — обычная,
-// суточная: продукт выходит по расписанию, и сутки подождать он может, а
-// платную рекламу ему вытеснять незачем. Фото выкладываем наружу в самом
-// задании, вплотную к публикации, — ссылка живёт двадцать минут.
+// Место в очередях — как у платной рекламы: на продуктах админ зарабатывает.
+// В конце общей очереди Threads продукт стоял за всеми объявлениями из групп:
+// при посте раз в десять минут полсотни объявлений впереди — это восемь часов,
+// и перезапуск Render стирал очередь раньше, чем до продукта доходило. А в
+// Instagram упирался в свою суточную норму, которую выбирают ролики объявлений.
+// Теперь он встаёт перед обычными и идёт под потолком площадки (см. adLimit в
+// quota.js).
+// Промежутки между постами те же: они держат антиспам площадок, и обгонять их
+// нельзя никому. Фото выкладываем наружу в самом задании, вплотную к
+// публикации, — ссылка живёт двадцать минут.
 //
 // Возвращает обещание { threads, instagram } — оба в форме post().
 async function shareProduct({ text, threadsImages = [], instagramImages = [] }) {
@@ -812,8 +820,9 @@ async function shareProduct({ text, threadsImages = [], instagramImages = [] }) 
   const toThreads = async () => {
     if (!threads.isConfigured()) return { posted: false, reason: 'Threads не подключён' };
     if (threadsImages.length && !base) return { posted: false, reason: 'не задан адрес бэкенда — фото Threads не забрать' };
-    return paceThreads(() =>
-      post('threads', () => (threadsImages.length ? publishPhotos(threads, threadsImages) : threads.publishText(text)))
+    return paceThreads(
+      () => post('threads', () => (threadsImages.length ? publishPhotos(threads, threadsImages) : threads.publishText(text))),
+      { priority: true }
     );
   };
 
@@ -821,11 +830,14 @@ async function shareProduct({ text, threadsImages = [], instagramImages = [] }) 
     if (!instagram.isConfigured()) return { posted: false, reason: 'Instagram не подключён' };
     if (!instagramImages.length) return { posted: false, reason: 'без фото Instagram пост не принимает' };
     if (!base) return { posted: false, reason: 'не задан адрес бэкенда — фото Instagram не забрать' };
-    return schedule(async () => {
-      await quota.sync(instagram.publishingLimit);
-      if (!quota.take()) return quotaFailure(quota.dailyLimit());
-      return post('insta', () => publishPhotos(instagram, instagramImages));
-    });
+    return schedule(
+      async () => {
+        await quota.sync(instagram.publishingLimit);
+        if (!quota.take(quota.adLimit())) return quotaFailure(quota.adLimit());
+        return post('insta', () => publishPhotos(instagram, instagramImages));
+      },
+      { priority: true }
+    );
   };
 
   const [threadsResult, instagramResult] = await Promise.all([toThreads(), toInstagram()]);
@@ -979,7 +991,7 @@ module.exports = {
   queued,
   queuedByType,
   collectionTitle: card.collectionTitle,
-  threadsQueued: () => paceThreads.queued(),
+  threadsQueued: (opts) => paceThreads.queued(opts),
   quota,
   tokens,
   adTracker,

@@ -224,3 +224,29 @@ test('поднятие рекламы: файл — файлом, без фай�
   assert.equal(bare.threads, null);
   assert.match(bare.instagram.reason, /нечего показать/);
 });
+
+// Продукт — как платная реклама: в Threads встаёт перед обычными объявлениями
+// (но за рекламой, вставшей раньше), а в Instagram идёт под потолком площадки,
+// когда своя суточная норма уже выбрана роликами.
+test('продукт идёт в очередях как реклама: перед объявлениями и сверх своей нормы', async () => {
+  posted.length = 0;
+  for (const n of [11, 12, 13]) social.shareListing(parsed, 'vacancy', `шабашка.com/vacancies/${n}`, { chatId: 1 }, {});
+  social.postToThreads({ text: 'Повтор рекламы' }, 'Реклама', { chatId: 1, ad: true });
+  const { quota } = social;
+  while (quota.left()) quota.take();
+  assert.equal(quota.take(), false, 'обычная норма Instagram выбрана');
+
+  const done = social.shareProduct({ text: 'Scroll Book', instagramImages: [Buffer.from('jpeg')] });
+  assert.equal(social.threadsQueued({ priority: true }), 2, 'впереди продукта только реклама');
+  assert.equal(social.threadsQueued(), 5);
+  const result = await done;
+  await settle();
+
+  assert.deepEqual(
+    posted.filter((p) => p.kind === 'text' || p.kind === 'image').map((p) => p.text.split('\n')[0]).slice(0, 2),
+    ['Повтор рекламы', 'Scroll Book'],
+    'реклама, вставшая раньше, — первой, продукт — сразу за ней, объявления — потом'
+  );
+  assert.equal(result.instagram.posted, true, result.instagram.reason);
+  assert.ok(posted.some((p) => p.kind === 'ig-image' && p.text === 'Scroll Book'));
+});

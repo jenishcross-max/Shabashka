@@ -14,6 +14,7 @@ tg.api.editMessageText = async (chatId, messageId, text) => {
 const store = productStoreStub();
 
 const shared = [];
+const asked = [];
 let shareResult = () => ({
   threads: { posted: true, id: 't1' },
   instagram: { posted: true, id: 'i1' },
@@ -23,7 +24,10 @@ const social = {
     shared.push(job);
     return shareResult(job);
   },
-  threadsQueued: () => 0,
+  threadsQueued: (opts) => {
+    asked.push(opts);
+    return 0;
+  },
   THREADS_INTERVAL_MIN: 10,
   threadsPermalink: async (id) => `https://threads.net/p/${id}`,
   instagramPermalink: async (id) => `https://instagram.com/p/${id}`,
@@ -144,6 +148,7 @@ test('каждый выход — следующий текст и карусе�
     'первым каждый раз идёт следующее фото'
   );
   assert.equal(shared[0].instagramImages.length, 3);
+  assert.deepEqual(asked.at(-1), { priority: true }, 'в отчёте — сколько впереди срочных, а не вся очередь');
   assert.match(reports.at(-1), /Threads: <a href="https:\/\/threads\.net\/p\/t1">вышел/);
   assert.equal((await store.get(product.id)).turn, 3);
   assert.equal(store.log.filter((p) => p.productId === product.id).length, 6, 'по записи на площадку');
