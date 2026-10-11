@@ -8,6 +8,7 @@ const quota = require('./quota');
 const tokens = require('./tokens');
 const adTracker = require('./adTracker');
 const leads = require('./leads');
+const follow = require('./follow');
 
 // Публичный адрес самого бэкенда — по нему площадки придут за роликом. Отдельной
 // переменной не заводим: адрес уже известен из настроек вебхука, а на Render его
@@ -500,6 +501,9 @@ async function runBatch(entries, opts = {}) {
     // так что смешанной пачки здесь не бывает.
     ad: entries.length > 0 && entries.every((entry) => entry.priority),
   };
+  // Зов подписаться — в подписи каждого ролика, кроме рекламного (см. follow.js).
+  // В задании, а не при сборке подписи: повтор выйдет с той же строкой.
+  job.follow = job.ad ? '' : follow.line();
   // Реклама едет вперёд остальных: между публикациями в Instagram полторы
   // минуты, и в тихий день их не видно, а на пачке скриншотов платное
   // объявление иначе стояло бы за всеми.
@@ -857,7 +861,10 @@ async function shareListing(parsed, listingType, siteLink, ctx, { priority = fal
   const result = { threads: null, skipped, batchSize: BATCH_SIZE };
 
   if (threads.isConfigured()) {
-    const text = video.threadsText(parsed, listingType, siteLink, { ad: priority });
+    const text = video.threadsText(parsed, listingType, siteLink, {
+      ad: priority,
+      follow: priority ? '' : follow.next(),
+    });
     const withCard = THREADS_CARDS === 'all' || (THREADS_CARDS === 'ads' && priority);
     result.threadsQueued = true;
     result.threadsWaiting = scheduleThreads(
@@ -926,6 +933,14 @@ async function shareListing(parsed, listingType, siteLink, ctx, { priority = fal
 // сам и оставляет прежний счётчик.
 const syncQuota = () => quota.sync(instagram.publishingLimit);
 
+// Подписчики на сейчас — для сводки (см. telegram/summary.js). Площадка, которая
+// не настроена или не ответила, отдаёт null: сводка обойдётся без её числа.
+async function followers() {
+  const ask = (platform) => (platform.isConfigured() ? platform.followers().catch(() => null) : null);
+  const [th, ig] = await Promise.all([ask(threads), ask(instagram)]);
+  return { threads: th, instagram: ig };
+}
+
 async function limits() {
   const ask = (platform) =>
     platform.isConfigured()
@@ -983,6 +998,7 @@ module.exports = {
   release,
   nextReleaseInMin,
   limits,
+  followers,
   syncQuota,
   retry,
   onReel,

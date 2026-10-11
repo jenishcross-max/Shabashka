@@ -12,6 +12,7 @@ const { num, plural, viewsWord, clamp, clock } = require('./format');
 // что с площадками. Приходит сама в часы из SUMMARY_HOURS и по /stats.
 
 const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 
 // Часы сводки по Бишкеку. Ночью сервис спит (см. keepalive.js), так что
 // ставить их туда бесполезно. SUMMARY_HOURS=off — только по /stats.
@@ -105,6 +106,58 @@ async function adLines(todayCount) {
   return lines;
 }
 
+// Подписчики площадок и прирост за сутки: по ним видно, работает ли зов
+// подписаться (см. social/follow.js). Снимок дня пишем в базу при первой
+// сводке дня, прирост считаем от вчерашнего. Площадку, которая не ответила,
+// просто не называем.
+const FOLLOWERS = 'followers:';
+const PLACES = [
+  ['threads', 'Threads'],
+  ['instagram', 'Instagram'],
+  ['channel', 'канал'],
+];
+
+async function readJson(key) {
+  try {
+    return JSON.parse((await feedStats.getSetting(key)) || 'null');
+  } catch {
+    return null;
+  }
+}
+
+async function followerCounts() {
+  const channelId = process.env.TELEGRAM_CHANNEL_ID;
+  const [platforms, channel] = await Promise.all([
+    (async () => social.followers())().catch(() => ({})),
+    channelId ? tg.call('getChatMemberCount', { chat_id: channelId }).catch(() => null) : null,
+  ]);
+  return { threads: platforms.threads, instagram: platforms.instagram, channel };
+}
+
+async function followerLines(now) {
+  const current = await followerCounts();
+  const known = PLACES.filter(([key]) => Number.isFinite(current[key]));
+  if (!known.length) return [];
+
+  const todayKey = `${FOLLOWERS}${feedStats.today(now)}`;
+  const [stored, yesterday] = await Promise.all([
+    readJson(todayKey),
+    readJson(`${FOLLOWERS}${feedStats.today(now - DAY_MS)}`),
+  ]);
+  if (!stored) {
+    await feedStats
+      .setSetting(todayKey, JSON.stringify(current))
+      .catch((err) => console.error('[сводка] снимок подписчиков не записать:', err.message));
+  }
+  const delta = (key) => {
+    const before = yesterday && yesterday[key];
+    if (!Number.isFinite(before)) return '';
+    const d = current[key] - before;
+    return ` (${d < 0 ? '−' : '+'}${num(Math.abs(d))})`;
+  };
+  return [`👥 Подписчики: ${known.map(([key, label]) => `${label} ${num(current[key])}${delta(key)}`).join(' · ')}`];
+}
+
 // Технические строки — только в /stats: в сводке по расписанию они шум, а
 // когда бот замолчал, именно по ним видно почему.
 function techLines() {
@@ -184,7 +237,8 @@ async function build({ now = Date.now(), previous = null, tech = false, title = 
     `🧵 Threads: ${num(n('th.ok'))}${n('th.fail') ? ` · не вышло ${num(n('th.fail'))}` : ''}`,
     `📸 Instagram: роликов ${num(n('ig.reel'))}, картинкой ${num(n('ig.image'))}${
       n('ig.fail') ? ` · не вышло ${num(n('ig.fail'))}` : ''
-    }`
+    }`,
+    ...(await followerLines(now))
   );
 
   // Разборы считаются в памяти процесса — после перезапуска Render с нуля.

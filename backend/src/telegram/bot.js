@@ -11,6 +11,7 @@ const imports = require('./imports');
 const deferred = require('./deferred');
 const queue = require('./queue');
 const social = require('../social');
+const follow = require('../social/follow');
 const dm = require('../dm');
 const spam = require('../spam');
 const digestRepo = require('../digestRepo');
@@ -34,6 +35,12 @@ const SITE_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
 // Публичный канал, куда бот сам постит опубликованные объявления. Не задан —
 // просто пропускаем этот шаг, остальная публикация работает как раньше.
 const CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID || '';
+// Кнопка «Подписаться» под постами канала: пересланный пост видят и те, кто на
+// канал не подписан. У публичного канала (@имя) ссылка собирается сама; для
+// числового id — TELEGRAM_CHANNEL_URL, иначе тот же канал, что на сайте.
+const CHANNEL_URL =
+  process.env.TELEGRAM_CHANNEL_URL ||
+  (CHANNEL_ID.startsWith('@') ? `https://t.me/${CHANNEL_ID.slice(1)}` : 'https://t.me/Shabashkacom');
 
 const LISTING_PATHS = { vacancy: 'vacancies', order: 'orders' };
 
@@ -723,7 +730,12 @@ async function publishOne(chatId, id, parsed, priority = false, { quiet = false 
   let channelLine = '';
   if (CHANNEL_ID) {
     try {
-      const inChannel = await tg.sendMessage(CHANNEL_ID, `${tg.esc(body)}${linkTag}`);
+      // У рекламы кнопки нет: рекламодатель платит за свой пост (см. follow.js).
+      const subscribe =
+        !priority && follow.EVERY
+          ? { reply_markup: { inline_keyboard: [[{ text: '🔔 Подписаться на канал', url: CHANNEL_URL }]] } }
+          : undefined;
+      const inChannel = await tg.sendMessage(CHANNEL_ID, `${tg.esc(body)}${linkTag}`, subscribe);
       await imports.setPosts(id, { channelMessageId: inChannel.message_id });
       channelLine = '📢 Выложено в Telegram-канал';
     } catch (err) {
@@ -2661,6 +2673,14 @@ function startWatchers() {
     report: (chatId, text) => tg.sendMessage(chatId || adminChat(), text),
     siteLink: (ad) => prettyLink(adSiteUrl(ad)),
   });
+  // Число объявлений за сутки для строки «подпишись» (см. social/follow.js).
+  const countDaily = () =>
+    imports
+      .countPublishedSince(24)
+      .then(follow.setDaily)
+      .catch((err) => console.error('[подписка] число за сутки:', err.message));
+  countDaily();
+  setInterval(countDaily, 60 * 60 * 1000).unref();
 }
 
 // Повтор рекламы кнопкой. Выходит тем же постом, что и первый: с файлом

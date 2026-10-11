@@ -123,3 +123,9 @@ test('студенческое объявление названо так пер
   assert.match(video.threadsText({ ...parsed, for_students: true }, 'order', ''), /^🎓 Подработка для студентов/);
   assert.doesNotMatch(video.caption([item], null, {}), /студент/, 'обычное — без пометки');
 });
+
+test('зов подписаться — следом за зовом на сайт, и только когда его дали', () => {
+  const text = video.caption([item], null, { follow: '🔔 Подпишись — каждый день 60+ новых вакансий и подработок' });
+  assert.match(text, /ссылка в шапке профиля\.\n🔔 Подпишись — каждый день 60\+/);
+  assert.doesNotMatch(video.caption([item], null, {}), /🔔/);
+});

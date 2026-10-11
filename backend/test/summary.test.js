@@ -7,14 +7,18 @@ const assert = require('node:assert/strict');
 const { install, statsStub, at, chat } = require('./helpers/stub');
 
 process.env.SUMMARY_HOURS = '9,13,21';
+process.env.TELEGRAM_CHANNEL_ID = '@shabashka';
 
 const tg = chat();
+tg.api.call = async (method) => (method === 'getChatMemberCount' ? 410 : { ok: true });
 const stats = statsStub();
+const HOUR = 3600 * 1000;
 const settings = new Map();
 stats.feedStats.getSetting = async (key) => settings.get(key) || null;
 stats.feedStats.setSetting = async (key, value) => settings.set(key, value);
+// День по Бишкеку, как в feedStats: снимок подписчиков — за сегодня, прирост — от вчера.
+stats.feedStats.today = (now = Date.now()) => new Date(now + 6 * HOUR).toISOString().slice(0, 10);
 
-const HOUR = 3600 * 1000;
 const campaign = { id: 3, title: 'Кофейня ищет бариста', goal: 1000, created_at: new Date(Date.now() - 5 * HOUR) };
 
 const requireSrc = install({
@@ -38,6 +42,7 @@ const requireSrc = install({
     pending: () => 0,
     queuedByType: () => [],
     threadsQueued: () => 2,
+    followers: async () => ({ threads: 1240, instagram: 830 }),
     collectionTitle: () => 'Заказы дня',
     quota: { used: () => 3, dailyLimit: () => 8, hardLimit: () => 10 },
     adTracker: {
@@ -112,6 +117,21 @@ test('последняя сводка дня называется итогом',
   await summary.tick(async (text) => sent.push(text), { now: Date.UTC(2026, 9, 3, 15, 2) });
   assert.match(sent[0], /^📊 Итог дня, 21:02/);
   assert.match(sent[0], /\+0 с прошлой сводки/, 'разница — с той, что была в 13:00');
+});
+
+test('подписчики площадок — с приростом от вчерашнего снимка', async () => {
+  settings.set('followers:2026-10-02', JSON.stringify({ threads: 1228, instagram: 831, channel: 405 }));
+  const { text } = await summary.build({ now: at1310 });
+  assert.match(text, /👥 Подписчики: Threads 1\s240 \(\+12\) · Instagram 830 \(−1\) · канал 410 \(\+5\)/);
+  assert.deepEqual(JSON.parse(settings.get('followers:2026-10-03')), { threads: 1240, instagram: 830, channel: 410 });
+
+  // Площадка не ответила — её просто нет в строке, сводка не падает.
+  settings.delete('followers:2026-10-03');
+  tg.api.call = async () => {
+    throw new Error('чат недоступен');
+  };
+  const { text: partial } = await summary.build({ now: at1310 });
+  assert.match(partial, /👥 Подписчики: Threads 1\s240 \(\+12\) · Instagram 830 \(−1\)\n/);
 });
 
 test('часы сводки: off выключает, мусор отбрасывается', () => {

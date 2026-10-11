@@ -148,6 +148,8 @@ test('пост из группы уходит на сайт, в канал и н
   assert.equal(published, 1);
   assert.equal(toAdmin().length, 0, `в чат ушло: ${toAdmin().map((m) => m.text).join(' | ')}`);
   assert.equal(toChannel().length, 1, 'в канал пост ушёл как обычно');
+  const [button] = toChannel()[0].extra.reply_markup.inline_keyboard.flat();
+  assert.equal(button.url, 'https://t.me/shabashka', 'под постом канала — «Подписаться»');
   assert.equal(shared.length, 1);
   assert.equal(shared[0].ctx.quiet, true, 'площадки знают, что отчитываться не надо');
   assert.equal(stats.counters['grp.ok.board'], 1, 'вышедшее посчитано для сводки');
@@ -249,6 +251,7 @@ test('рекламу с оформлением на чужие документ�
 });
 
 test('реклама с тремя вакансиями внутри в сводке — одна реклама', async () => {
+  byChat.length = 0;
   const before = stats.counters['ad.ok'] || 0;
   await bot.ingestFromSource(
     1,
@@ -257,6 +260,11 @@ test('реклама с тремя вакансиями внутри в свод
   );
   await settle();
   assert.equal((stats.counters['ad.ok'] || 0) - before, 1);
+  assert.equal(toChannel().length, 3);
+  assert.ok(
+    toChannel().every((m) => !m.extra),
+    'под рекламой в канале кнопки «Подписаться» нет: рекламодатель платит за свой пост'
+  );
 });
 
 test('/spam показывает отсеянное, а «✅ Не спам» снимает номер и разбирает пост заново без проверки на сетевое', async () => {

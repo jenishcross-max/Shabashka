@@ -237,6 +237,15 @@ async function permalink(mediaId) {
   return link || '';
 }
 
+// Подписчики на сейчас. За период Meta их не отдаёт — только число на сейчас,
+// отдельным запросом без дат.
+async function followers() {
+  const { data } = await safeCall('подписчики Threads', 'GET', `${USER_ID}/threads_insights`, {
+    metric: 'followers_count',
+  });
+  return metric(data, 'followers_count');
+}
+
 // Статистика аккаунта за период — для /threads: сколько просмотров набирает
 // лента. Этими числами и продаётся реклама. since/until — в секундах Unix.
 async function accountInsights({ since, until }) {
@@ -245,14 +254,9 @@ async function accountInsights({ since, until }) {
     since: String(since),
     until: String(until),
   });
-  // Подписчиков Meta за период не отдаёт — только число на сейчас, отдельным
-  // запросом без дат.
-  let followers = null;
+  let count = null;
   try {
-    const res = await safeCall('подписчики Threads', 'GET', `${USER_ID}/threads_insights`, {
-      metric: 'followers_count',
-    });
-    followers = metric(res.data, 'followers_count');
+    count = await followers();
   } catch (err) {
     console.log(`[threads] подписчиков не узнать (${err.message})`);
   }
@@ -262,7 +266,7 @@ async function accountInsights({ since, until }) {
     replies: metric(data, 'replies') || 0,
     reposts: metric(data, 'reposts') || 0,
     quotes: metric(data, 'quotes') || 0,
-    followers,
+    followers: count,
   };
 }
 
@@ -310,6 +314,7 @@ module.exports = {
   insights,
   permalink,
   accountInsights,
+  followers,
   recentPosts,
   replies,
   metric,

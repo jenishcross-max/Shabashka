@@ -79,6 +79,7 @@ const requireSrc = install({
 });
 
 const social = requireSrc('social/index.js');
+const video = requireSrc('social/video.js');
 
 const handled = [];
 social.onThreads(async (result) => handled.push(result));
@@ -249,4 +250,30 @@ test('продукт идёт в очередях как реклама: пер�
   );
   assert.equal(result.instagram.posted, true, result.instagram.reason);
   assert.ok(posted.some((p) => p.kind === 'ig-image' && p.text === 'Scroll Book'));
+});
+
+// Зов подписаться (см. src/social/follow.js): у каждого четвёртого обычного
+// поста, прямо перед ссылкой, и никогда — у рекламы.
+test('каждый четвёртый пост-объявление зовёт подписаться, реклама — никогда', async () => {
+  posted.length = 0;
+  for (const n of [21, 22, 23, 24]) social.shareListing(parsed, 'vacancy', `шабашка.com/vacancies/${n}`, { chatId: 1 }, {});
+  social.shareListing(parsed, 'vacancy', 'шабашка.com/vacancies/25', { chatId: 1 }, { priority: true });
+  // Пять постов через очередь: ждём по условию, а не по часам — таймеры Windows грубые.
+  for (let i = 0; i < 50 && posted.length < 5; i += 1) await settle();
+  const ad = posted.find((p) => /vacancies\/25/.test(p.text));
+  const ordinary = posted.filter((p) => p !== ad);
+  assert.equal(ordinary.length, 4);
+  const withFollow = ordinary.filter((p) => p.text.includes('🔔 Подпишись'));
+  assert.equal(withFollow.length, 1, 'ровно один из четырёх');
+  assert.match(withFollow[0].text, /🔔 Подпишись[^\n]*\nшабашка\.com\/vacancies\/\d+$/, 'строка — прямо перед ссылкой');
+  assert.ok(!ad.text.includes('🔔'), 'у рекламы строки нет');
+
+  const long = video.threadsText(
+    { ...parsed, description: 'Очень длинное описание. '.repeat(60) },
+    'vacancy',
+    'шабашка.com/vacancies/9',
+    { follow: '🔔 Подпишись — каждый день 60+ новых вакансий и подработок' }
+  );
+  assert.ok(video.weight(long) <= 500, `вес ${video.weight(long)}`);
+  assert.match(long, /…\n\n🔔 Подпишись — каждый день 60\+[^\n]*\nшабашка\.com\/vacancies\/9$/);
 });

@@ -348,6 +348,17 @@ async function countPublished(from = 'groups') {
   return rows[0].n;
 }
 
+// Сколько объявлений вышло за последние часы — для строки «подпишись»
+// (см. social/follow.js). Тот же частичный индекс, что у списка опубликованного.
+async function countPublishedSince(hours = 24) {
+  const { rows } = await db.query(
+    `SELECT COUNT(*)::int AS n FROM imported_listings
+      WHERE status = 'published' AND published_at > NOW() - make_interval(hours => $1)`,
+    [hours]
+  );
+  return rows[0].n;
+}
+
 // Платная реклама для меню бота: сначала новые. Только та, что дошла до сайта
 // (published_at), — отказы разбора, за которыми реклама вышла «как есть»
 // второй карточкой, список не засоряют. Снятая остаётся в списке: по ней
@@ -447,6 +458,7 @@ module.exports = {
   countThreadsPosts,
   listPublished,
   countPublished,
+  countPublishedSince,
   listAds,
   countAds,
   remove,

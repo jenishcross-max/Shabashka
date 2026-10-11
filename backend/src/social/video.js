@@ -272,6 +272,8 @@ function caption(items, credit, opts = {}) {
       ? `${opts.cta[0].toUpperCase()}${opts.cta.slice(1)} — Шабашка.com, ссылка в шапке профиля.`
       : oneOf(CTA_LINES)
   );
+  // Зов подписаться — следом за зовом на сайт (см. follow.js); у рекламы его нет.
+  if (opts.follow) lines.push(opts.follow);
   // Автора трека называем обязательно: музыка в фонотеке под Creative Commons,
   // и указание автора — условие, на котором её вообще можно использовать.
   if (credit) lines.push('', credit);
@@ -297,7 +299,7 @@ const THREADS_LIMIT = 500;
 // хештегов. Тег у Threads один на пост и уходит отдельным полем (см. cleanTag в
 // threads.js); решётки в тексте, кроме первой, оставались просто словами и
 // занимали место у описания.
-function threadsText(parsed, listingType, siteLink, { ad = false } = {}) {
+function threadsText(parsed, listingType, siteLink, { ad = false, follow = '' } = {}) {
   const isVacancy = listingType === 'vacancy';
   const head = [`${label(listingType, parsed)}: ${parsed.title || ''}`.trim()];
   if (ad && adLine()) head.unshift(adLine());
@@ -308,8 +310,9 @@ function threadsText(parsed, listingType, siteLink, { ad = false } = {}) {
   if (parsed.phone) head.push(`📞 ${parsed.phone}`);
 
   // Хвост собираем раньше описания: ссылка обязательна, а описание ужимается
-  // под остаток.
+  // под остаток. Зов подписаться — прямо перед ссылкой (см. follow.js).
   const tail = [];
+  if (follow) tail.push(follow);
   if (siteLink) tail.push(siteLink);
 
   const fixed = weight([...head, '', ...tail].join('\n'));
