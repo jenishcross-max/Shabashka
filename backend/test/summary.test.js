@@ -122,7 +122,7 @@ test('последняя сводка дня называется итогом',
 test('подписчики площадок — с приростом от вчерашнего снимка', async () => {
   settings.set('followers:2026-10-02', JSON.stringify({ threads: 1228, instagram: 831, channel: 405 }));
   const { text } = await summary.build({ now: at1310 });
-  assert.match(text, /👥 Подписчики: Threads 1\s240 \(\+12\) · Instagram 830 \(−1\) · канал 410 \(\+5\)/);
+  assert.match(text, /👥 Подписчики: Threads 1\s240 \(\+12\) · Instagram 830 \(−1\) · Telegram 410 \(\+5\)/);
   assert.deepEqual(JSON.parse(settings.get('followers:2026-10-03')), { threads: 1240, instagram: 830, channel: 410 });
 
   // Площадка не ответила — её просто нет в строке, сводка не падает.
@@ -132,6 +132,12 @@ test('подписчики площадок — с приростом от вч�
   };
   const { text: partial } = await summary.build({ now: at1310 });
   assert.match(partial, /👥 Подписчики: Threads 1\s240 \(\+12\) · Instagram 830 \(−1\)\n/);
+
+  // Telegram ответил позже — его число дописывается в сегодняшний снимок, иначе
+  // завтра у него не было бы прироста. Утренние числа остальных не трогаем.
+  tg.api.call = async (method) => (method === 'getChatMemberCount' ? 412 : { ok: true });
+  await summary.build({ now: at1310 + 4 * 3600 * 1000 });
+  assert.deepEqual(JSON.parse(settings.get('followers:2026-10-03')), { threads: 1240, instagram: 830, channel: 412 });
 });
 
 test('рубрики — сколько вышло и почему нет', async () => {

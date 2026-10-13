@@ -116,6 +116,7 @@ const requireSrc = install({
       GOAL: 1000,
       MAX_BOOSTS: 2,
       start: () => {},
+      recent: async () => [],
     },
     leads: { start: () => {} },
     adLine: () => '📣 Реклама',

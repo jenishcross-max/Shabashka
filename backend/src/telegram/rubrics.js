@@ -24,6 +24,10 @@ const TITLE_MAX = 40;
 const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
 
 const salaryText = ({ min, max }) => (max && max > min ? `${money(min)}–${money(max)} сом` : `от ${money(min)} сом`);
+// У студентов зарплата не обязательна (топ берёт только с ней): без неё — город,
+// а не «от null сом».
+const salaryAndCity = (item) =>
+  item.salary.min ? `${salaryText(item.salary)}, ${item.parsed.city}` : item.parsed.city;
 
 const numbered = (items, describe) =>
   items.map((item, i) => `${i + 1}. ${clamp(item.parsed.title, TITLE_MAX)} — ${describe(item)}`);
@@ -38,16 +42,19 @@ const RUBRICS = [
     hour: 9,
     days: EVERY_DAY,
     async make(deps) {
-      const items = await repo.topSalary();
+      // За сутки — чтобы вчерашний топ не повторялся сегодня; мало — за двое.
+      let items = await repo.topSalary({ days: 1 });
+      if (items.length < MIN_ITEMS) items = await repo.topSalary({ days: 2 });
       if (items.length < MIN_ITEMS) return null;
       return {
-        head: (n) => `💰 Топ-${n} вакансий дня по зарплате`,
-        lines: numbered(items, (item) => `${salaryText(item.salary)}, ${item.parsed.city}`),
+        head: (n) => `💰 Топ-${n} ${plural(n, ['вакансия', 'вакансии', 'вакансий'])} дня по зарплате`,
+        lines: numbered(items, salaryAndCity),
         more: { label: 'Все вакансии', url: deps.siteUrl('vacancy') },
-        tail: '🔔 Подпишись — новый топ каждый день в 9:00',
+        // Без «в 9:00»: проспал Render — топ выходит до полудня (LATE_HOURS).
+        tail: '🔔 Подпишись — топ по зарплате каждое утро',
         items,
         collection: (n) => `Топ-${n} по зарплате`,
-        cta: 'все вакансии — на сайте',
+        cta: 'все вакансии на сайте',
       };
     },
   },
@@ -64,10 +71,10 @@ const RUBRICS = [
           parsed.budget ? `${money(parsed.budget)} сом, ${parsed.city}` : parsed.city
         ),
         more: { label: 'Все заказы', url: deps.siteUrl('order') },
-        tail: '🔔 Подпишись — свежая подработка каждый день в 13:00',
+        tail: '🔔 Подпишись — свежая подработка каждый день',
         items,
         collection: () => 'Подработка на сегодня',
-        cta: 'все заказы — на сайте',
+        cta: 'все заказы на сайте',
       };
     },
   },
@@ -80,12 +87,12 @@ const RUBRICS = [
       if (items.length < MIN_ITEMS) return null;
       return {
         head: () => '🎓 Работа для студентов — свежие вакансии',
-        lines: numbered(items, (item) => `${salaryText(item.salary)}, ${item.parsed.city}`),
+        lines: numbered(items, salaryAndCity),
         more: { label: 'Все вакансии', url: deps.siteUrl('vacancy') },
         tail: '🔔 Подпишись — подборка для студентов по пн, ср и пт',
         items,
         collection: () => 'Работа для студентов',
-        cta: 'все вакансии — на сайте',
+        cta: 'все вакансии на сайте',
       };
     },
   },
@@ -100,9 +107,11 @@ const RUBRICS = [
       if (rows.length < MIN_ITEMS) return null;
       const total = rows.reduce((sum, row) => sum + row.n, 0);
       return {
-        head: () => '📊 Сколько платят в Бишкеке',
+        // «Предлагают», а не «платят»: это зарплата «от» из объявлений. И не
+        // «средняя»: медиана — середина, её и объясняем словами.
+        head: () => '📊 Сколько предлагают в Бишкеке',
         lines: [...rows].sort((a, b) => b.median - a.median).map((row) => `${row.category} — ${money(row.median)} сом`),
-        note: `Средняя зарплата «от» (медиана) по ${total} ${plural(total, ['вакансии', 'вакансиям', 'вакансиям'])} за месяц.`,
+        note: `Зарплата «от» — середина по ${total} ${plural(total, ['вакансии', 'вакансиям', 'вакансиям'])} за месяц: половина предлагает больше, половина — меньше.`,
         more: { label: 'Все вакансии', url: deps.siteUrl('vacancy') },
         tail: '🔔 Подпишись — новая сводка каждое воскресенье',
         items: [],
@@ -127,10 +136,10 @@ function parseList(value) {
 }
 const ENABLED = parseList(process.env.RUBRICS);
 
-// Текст для Threads и HTML для канала. Не влезает в 500 знаков Threads — убираем
-// строки с конца, но не меньше трёх. В канале вместо строки «подпишись» — кнопка
-// (её ставит бот), а ссылка — тегом: кириллический адрес Telegram сам не
-// подсвечивает.
+// Текст для Threads и HTML для Telegram. Не влезает в 500 знаков Threads —
+// убираем строки с конца, но не меньше трёх. В Telegram строки «подпишись» нет
+// (его читают уже вступившие), а ссылка — тегом: кириллический адрес Telegram
+// сам не подсвечивает.
 function render(post, pretty = (url) => url) {
   const url = post.more && post.more.url;
   const body = (n) => [post.head(n), '', ...post.lines.slice(0, n), ...(post.note ? [post.note] : [])];
@@ -183,8 +192,7 @@ async function tick(deps, now = Date.now()) {
       if (!ENABLED.includes(rubric.key) || !rubric.days.includes(local.getUTCDay())) continue;
       if (hour < rubric.hour || hour >= rubric.hour + LATE_HOURS) continue;
       const mark = `rubric:${rubric.key}`;
-      if ((await feedStats.getSetting(mark)) === day) continue;
-      await feedStats.setSetting(mark, day);
+      if (!(await feedStats.claimSetting(mark, day))) continue;
 
       let post;
       try {
@@ -199,7 +207,12 @@ async function tick(deps, now = Date.now()) {
         await feedStats.bump('rub.skip');
         return 'skip';
       }
-      const ok = await publish(post, deps);
+      // Отметка уже стоит: упади выход молча — рубрика пропала бы без следа в
+      // сводке. Повтора нет — часть площадок могла и выйти.
+      const ok = await publish(post, deps).catch((err) => {
+        console.error(`[рубрики] ${rubric.key}: выход не удался:`, err.message);
+        return false;
+      });
       await feedStats.bump(ok ? 'rub.ok' : 'rub.fail');
       return ok ? 'ok' : 'fail';
     }

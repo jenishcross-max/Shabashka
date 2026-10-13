@@ -75,6 +75,7 @@ const requireSrc = install({
     stillName: () => 'card.jpg',
     collectionTitle: () => 'Вакансия дня',
     dayLabel: () => '25 сентября',
+    isStudentBatch: () => false,
     COVER_AT: 3.6,
   },
   [at('social/video.js')]: {

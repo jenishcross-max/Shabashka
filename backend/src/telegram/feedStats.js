@@ -74,4 +74,18 @@ async function setSetting(key, value) {
   );
 }
 
-module.exports = { bump, day, today, reasonOf, fail, lastFailure, getSetting, setSetting };
+// Занять отметку одним запросом: true — записали мы, false — там уже это
+// значение. Прочитать и потом записать мало: при деплое Render пару минут
+// держит старый и новый экземпляры, оба читают пустое — и пост выходит дважды.
+async function claimSetting(key, value) {
+  const { rows } = await db.query(
+    `INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+       WHERE app_settings.value IS DISTINCT FROM EXCLUDED.value
+     RETURNING key`,
+    [key, String(value)]
+  );
+  return rows.length > 0;
+}
+
+module.exports = { bump, day, today, reasonOf, fail, lastFailure, getSetting, setSetting, claimSetting };

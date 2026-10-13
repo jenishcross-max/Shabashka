@@ -14,6 +14,12 @@ const stats = statsStub();
 const settings = new Map();
 stats.feedStats.getSetting = async (key) => settings.get(key) || null;
 stats.feedStats.setSetting = async (key, value) => settings.set(key, String(value));
+// Как в базе: занять удаётся, только если там ещё не это значение.
+stats.feedStats.claimSetting = async (key, value) => {
+  if (settings.get(key) === String(value)) return false;
+  settings.set(key, String(value));
+  return true;
+};
 stats.feedStats.today = (now = Date.now()) => new Date(now + 6 * HOUR).toISOString().slice(0, 10);
 
 const vacancy = (id, title, min, extra = {}) => ({
@@ -36,6 +42,7 @@ const data = {
     vacancy(6, 'Промоутер', 20000, { for_students: true }),
     vacancy(7, 'Официант, гибкий график', 25000, { for_students: true }),
     vacancy(8, 'Курьер', 30000, { for_students: true }),
+    vacancy(12, 'Аниматор на праздники', null, { for_students: true }),
   ],
   orders: [order(9, 'Покрасить забор', 3000), order(10, 'Грузчик на 2 часа', null), order(11, 'Собрать шкаф', 1500)],
   stats: [
@@ -88,12 +95,12 @@ test('утренний топ выходит с 9:00 и один раз в де�
 
   const [post] = shared;
   assert.match(post.text, /^💰 Топ-5 вакансий дня по зарплате\n\n1\. Водитель-экспедитор на грузовик — от 60 000 сом, Бишкек/);
-  assert.match(post.text, /Все вакансии — шабашка\.com\/vacancies\n🔔 Подпишись — новый топ каждый день в 9:00$/);
+  assert.match(post.text, /Все вакансии — шабашка\.com\/vacancies\n🔔 Подпишись — топ по зарплате каждое утро$/);
   assert.ok(weight(post.text) <= 500, `вес ${weight(post.text)}`);
   assert.equal(post.items.length, 5, 'в ролик — все пять');
   assert.equal(post.collection, 'Топ-5 по зарплате');
   assert.match(channel[0], /<a href="https:\/\/xn--80aaac0cyed\.com\/vacancies">шабашка\.com\/vacancies<\/a>$/);
-  assert.doesNotMatch(channel[0], /Подпишись/, 'в канале вместо строки — кнопка');
+  assert.doesNotMatch(channel[0], /Подпишись/, 'в Telegram строки «подпишись» нет — читают уже вступившие');
   assert.equal(stats.counters['rub.ok'], 1);
 });
 
@@ -114,6 +121,8 @@ test('подработка — с 13:00, студенты — по понеде�
 
   assert.equal(await rubrics.tick(deps, bishkek(7, 17, 5)), 'ok');
   assert.match(shared.at(-1).text, /^🎓 Работа для студентов/);
+  assert.match(shared.at(-1).text, /\n4\. Аниматор на праздники — Бишкек\n/, 'без зарплаты — только город');
+  assert.doesNotMatch(shared.at(-1).text, /null/);
   assert.equal(shared.at(-1).collection, 'Работа для студентов');
 });
 
@@ -121,13 +130,13 @@ test('в воскресенье — сколько платят в Бишкек�
   shared.length = 0;
   assert.equal(await rubrics.tick(deps, bishkek(11, 12, 5)), 'ok');
   const [post] = shared;
-  assert.match(post.text, /^📊 Сколько платят в Бишкеке/);
+  assert.match(post.text, /^📊 Сколько предлагают в Бишкеке/);
   assert.match(
     post.text,
     /Строительство — 45 000 сом\nОбщепит — 30 000 сом\nТорговля — 28 000 сом/,
     'сверху — где платят больше'
   );
-  assert.match(post.text, /по 101 вакансии/);
+  assert.match(post.text, /по 101 вакансии за месяц: половина предлагает больше, половина — меньше\./);
   assert.deepEqual(post.items, [], 'кадров для ролика нет');
 });
 
@@ -151,6 +160,36 @@ test('база не ответила — пробуем снова на след
   assert.equal(shared.length, 1);
 });
 
+test('два экземпляра бота при деплое — рубрику выпускает только успевший занять', async () => {
+  shared.length = 0;
+  // Второй экземпляр прочитал отметку до того, как первый её записал: чтение
+  // ещё пустое, а занять уже нельзя — выходить не должен.
+  const { getSetting, claimSetting } = stats.feedStats;
+  stats.feedStats.getSetting = async () => null;
+  stats.feedStats.claimSetting = async () => false;
+  try {
+    assert.equal(await rubrics.tick(deps, bishkek(14, 9, 5)), null);
+  } finally {
+    Object.assign(stats.feedStats, { getSetting, claimSetting });
+  }
+  assert.equal(shared.length, 0);
+});
+
+test('площадки упали с исключением — рубрика засчитана как «не вышло», а не потеряна молча', async () => {
+  shared.length = 0;
+  const before = stats.counters['rub.fail'] || 0;
+  const saved = deps.pretty;
+  deps.pretty = () => {
+    throw new Error('сборка поста упала');
+  };
+  try {
+    assert.equal(await rubrics.tick(deps, bishkek(15, 9, 5)), 'fail');
+  } finally {
+    deps.pretty = saved;
+  }
+  assert.equal(stats.counters['rub.fail'] - before, 1);
+});
+
 test('длинные названия — пост всё равно влезает в 500 знаков', async () => {
   shared.length = 0;
   data.top = data.top.map((v) => ({
@@ -161,7 +200,11 @@ test('длинные названия — пост всё равно влеза�
   const [post] = shared;
   assert.ok(weight(post.text) <= 500, `вес ${weight(post.text)}`);
   assert.ok(post.items.length >= 3);
-  assert.match(post.text, new RegExp(`^💰 Топ-${post.items.length} вакансий`), 'заголовок — по тому, что влезло');
+  const n = post.items.length;
+  assert.match(post.text, new RegExp(`^💰 Топ-${n} ${n === 5 ? 'вакансий' : 'вакансии'} дня`), 'заголовок — по тому, что влезло');
+  const top = await rubrics.RUBRICS.find((r) => r.key === 'top').make(deps);
+  assert.equal(top.head(4), '💰 Топ-4 вакансии дня по зарплате', '«Топ-4 вакансий» — не по-русски');
+  assert.equal(top.head(5), '💰 Топ-5 вакансий дня по зарплате');
 });
 
 test('RUBRICS: off выключает, неизвестное отбрасывается', () => {

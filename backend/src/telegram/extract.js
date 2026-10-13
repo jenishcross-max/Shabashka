@@ -150,7 +150,10 @@ function buildSystem(categories) {
 
 function normalize(raw) {
   const clean = (v) => String(v ?? '').trim();
-  const budgetDigits = clean(raw.budget).replace(/\D/g, '');
+  // Первое число с разрядами через пробел, точку или запятую («25.000»): у вилки
+  // «300 000 - 400 000» — нижняя граница. Все цифры подряд дали бы 300000400000
+  // — не влезает в INTEGER базы.
+  const budgetDigits = (clean(raw.budget).match(/\d+(?:[\s.,]\d{3})*/) || [''])[0].replace(/\D/g, '');
   const employmentType = clean(raw.employment_type);
   const experience = clean(raw.experience);
   const listingType = clean(raw.listing_type);

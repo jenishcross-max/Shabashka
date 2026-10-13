@@ -5,6 +5,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+// Журнал разбора («[источник] сообщение 1: …») — в тихий режим: на Windows
+// строки в stdout вклинивались в служебный поток раннера, и он падал с
+// «Unable to deserialize cloned data» на случайном тесте.
+test.mock.method(console, 'log', () => {});
+
 const { install, statsStub, at, chat, wait, adGroupsStub } = require('./helpers/stub');
 
 const tg = chat();

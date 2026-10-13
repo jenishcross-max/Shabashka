@@ -114,7 +114,9 @@ const FOLLOWERS = 'followers:';
 const PLACES = [
   ['threads', 'Threads'],
   ['instagram', 'Instagram'],
-  ['channel', 'канал'],
+  // В TELEGRAM_CHANNEL_ID может стоять и группа (у Шабашки так и есть) — пишем
+  // площадку, а не «канал».
+  ['channel', 'Telegram'],
 ];
 
 async function readJson(key) {
@@ -144,9 +146,13 @@ async function followerLines(now) {
     readJson(todayKey),
     readJson(`${FOLLOWERS}${feedStats.today(now - DAY_MS)}`),
   ]);
-  if (!stored) {
+  // Снимок дня — первые числа каждой площадки. Не ответившую утром дописываем,
+  // когда ответит: иначе завтра у неё не было бы прироста.
+  const gaps = known.filter(([key]) => !Number.isFinite(stored && stored[key]));
+  if (gaps.length) {
+    const snapshot = { ...(stored || {}), ...Object.fromEntries(gaps.map(([key]) => [key, current[key]])) };
     await feedStats
-      .setSetting(todayKey, JSON.stringify(current))
+      .setSetting(todayKey, JSON.stringify(snapshot))
       .catch((err) => console.error('[сводка] снимок подписчиков не записать:', err.message));
   }
   const delta = (key) => {

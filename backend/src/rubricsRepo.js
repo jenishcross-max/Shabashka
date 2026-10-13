@@ -43,18 +43,21 @@ const order = (row) => ({
 });
 
 // Одно объявление на номер: работодатель с пятью одинаковыми объявлениями занял
-// бы всю подборку. Внутри номера — лучшее по order, снаружи — по нему же.
+// бы всю подборку. Внутри номера — лучшее по order, снаружи — по нему же. Номера
+// нет — у рекламы «как есть» это пустая строка, не NULL: без NULLIF все такие
+// объявления слиплись бы в одно.
+const WHO = "COALESCE(NULLIF(whatsapp_phone, ''), id::text)";
 const VACANCY_FIELDS = `id, title, description, category, city, salary_min, salary_max,
        whatsapp_phone AS phone, for_students, created_at`;
 
 async function topSalary({ days = 2, limit = 5 } = {}) {
   const { rows } = await db.query(
     `SELECT * FROM (
-       SELECT DISTINCT ON (COALESCE(whatsapp_phone, id::text)) ${VACANCY_FIELDS}
+       SELECT DISTINCT ON (${WHO}) ${VACANCY_FIELDS}
          FROM vacancies
         WHERE status = 'open' AND NOT is_example AND salary_min BETWEEN 1 AND $3
           AND created_at > NOW() - make_interval(days => $1)
-        ORDER BY COALESCE(whatsapp_phone, id::text), salary_min DESC
+        ORDER BY ${WHO}, salary_min DESC
      ) v ORDER BY salary_min DESC LIMIT $2`,
     [days, limit, SALARY_MAX]
   );
@@ -64,11 +67,11 @@ async function topSalary({ days = 2, limit = 5 } = {}) {
 async function forStudents({ days = 2, limit = 5 } = {}) {
   const { rows } = await db.query(
     `SELECT * FROM (
-       SELECT DISTINCT ON (COALESCE(whatsapp_phone, id::text)) ${VACANCY_FIELDS}
+       SELECT DISTINCT ON (${WHO}) ${VACANCY_FIELDS}
          FROM vacancies
         WHERE status = 'open' AND NOT is_example AND for_students
           AND created_at > NOW() - make_interval(days => $1)
-        ORDER BY COALESCE(whatsapp_phone, id::text), created_at DESC
+        ORDER BY ${WHO}, created_at DESC
      ) v ORDER BY created_at DESC LIMIT $2`,
     [days, limit]
   );
@@ -78,12 +81,12 @@ async function forStudents({ days = 2, limit = 5 } = {}) {
 async function freshOrders({ hours = 24, limit = 5 } = {}) {
   const { rows } = await db.query(
     `SELECT * FROM (
-       SELECT DISTINCT ON (COALESCE(whatsapp_phone, id::text)) id, title, description, category, city, budget,
+       SELECT DISTINCT ON (${WHO}) id, title, description, category, city, budget,
               whatsapp_phone AS phone, for_students, created_at
          FROM orders
         WHERE status = 'open' AND NOT is_example
           AND created_at > NOW() - make_interval(hours => $1)
-        ORDER BY COALESCE(whatsapp_phone, id::text), created_at DESC
+        ORDER BY ${WHO}, created_at DESC
      ) o ORDER BY created_at DESC LIMIT $2`,
     [hours, limit]
   );
@@ -92,15 +95,20 @@ async function freshOrders({ hours = 24, limit = 5 } = {}) {
 
 // Середина зарплат «от» по категориям: медиана, а не среднее — одна вакансия
 // «от 200 000» не должна поднимать всю профессию. «Другое» не показываем: это
-// не профессия, и сказать про неё «столько платят» нечего.
+// не профессия, и сказать про неё «столько платят» нечего. Закрытые за месяц
+// вакансии считаем — платили и по ним; а перепост того же работодателя с той же
+// зарплатой — один раз: иначе один упорный работодатель и есть «медиана».
 async function salaryStats({ city = 'Бишкек', days = 30, minCount = 5, limit = 5 } = {}) {
   const { rows } = await db.query(
     `SELECT category, COUNT(*)::int AS n,
             (percentile_cont(0.5) WITHIN GROUP (ORDER BY salary_min))::int AS median
-       FROM vacancies
-      WHERE NOT is_example AND city = $1 AND category <> 'Другое'
-        AND salary_min BETWEEN $2 AND $3
-        AND created_at > NOW() - make_interval(days => $4)
+       FROM (
+         SELECT DISTINCT ${WHO} AS who, category, salary_min
+           FROM vacancies
+          WHERE NOT is_example AND city = $1 AND category <> 'Другое'
+            AND salary_min BETWEEN $2 AND $3
+            AND created_at > NOW() - make_interval(days => $4)
+       ) v
       GROUP BY category
      HAVING COUNT(*) >= $5
       ORDER BY n DESC

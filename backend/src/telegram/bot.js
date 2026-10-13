@@ -725,7 +725,6 @@ async function publishOne(chatId, id, parsed, priority = false, { quiet = false 
   let channelLine = '';
   if (CHANNEL_ID) {
     try {
-      // У рекламы кнопки нет: рекламодатель платит за свой пост (см. follow.js).
       const inChannel = await tg.sendMessage(CHANNEL_ID, `${tg.esc(body)}${linkTag}`);
       await imports.setPosts(id, { channelMessageId: inChannel.message_id });
       channelLine = '📢 Выложено в Telegram-канал';

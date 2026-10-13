@@ -348,12 +348,15 @@ async function countPublished(from = 'groups') {
   return rows[0].n;
 }
 
-// Сколько объявлений вышло за последние часы — для строки «подпишись»
-// (см. social/follow.js). Тот же частичный индекс, что у списка опубликованного.
+// Сколько вакансий и заказов вышло за последние часы — для строки «подпишись»
+// (см. social/follow.js): она обещает «N новых вакансий и подработок», и записки
+// доски (продают дом, сдают квартиру) число раздули бы. Тот же частичный
+// индекс, что у списка опубликованного.
 async function countPublishedSince(hours = 24) {
   const { rows } = await db.query(
     `SELECT COUNT(*)::int AS n FROM imported_listings
-      WHERE status = 'published' AND published_at > NOW() - make_interval(hours => $1)`,
+      WHERE status = 'published' AND published_at > NOW() - make_interval(hours => $1)
+        AND (vacancy_id IS NOT NULL OR order_id IS NOT NULL)`,
     [hours]
   );
   return rows[0].n;

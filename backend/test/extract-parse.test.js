@@ -76,6 +76,23 @@ test('поля приводятся к виду карточки, а мусор�
   assert.equal(listing.experience, 'no_experience');
 });
 
+test('вилка в сумме — нижняя граница, а не цифры обеих частей подряд', async () => {
+  const budgetOf = async (budget) => {
+    const [listing] = await parse([
+      { is_listing: true, listing_type: 'vacancy', title: 'Кассир', description: 'Магазин', category: 'Продажи', city: 'Бишкек', budget },
+    ]);
+    return listing.budget;
+  };
+  // Склейка «300000400000» не влезает в INTEGER — публикация падала с ошибкой базы.
+  assert.equal(await budgetOf('300 000 - 400 000 сом'), 300000);
+  assert.equal(await budgetOf('от 25000 до 40000'), 25000);
+  assert.equal(await budgetOf('2 000 сом'), 2000);
+  assert.equal(await budgetOf('15 000'), 15000, 'неразрывный пробел между разрядами');
+  assert.equal(await budgetOf('25.000'), 25000, 'разряды через точку');
+  assert.equal(await budgetOf('1,500,000'), 1500000, 'и через запятую');
+  assert.equal(await budgetOf('договорная'), null);
+});
+
 test('работа за границей отсеивается, даже когда модель её пропустила', async () => {
   const [listing] = await parse([
     {

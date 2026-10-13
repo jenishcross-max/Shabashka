@@ -57,6 +57,7 @@ const requireSrc = install({
       GOAL: 1000,
       MAX_BOOSTS: 2,
       start: () => {},
+      recent: async () => [],
       track: async () => 1,
       addPost: async () => 1,
     },
