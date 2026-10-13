@@ -243,6 +243,8 @@ function productStoreStub() {
       log.push({ ...row, post_id: row.postId, created_at: new Date().toISOString() });
     },
     posts: async (productId) => log.filter((p) => p.productId === productId).reverse(),
+    postsSince: async (since) =>
+      log.filter((p) => Date.parse(p.created_at) >= since.getTime()).map((p) => ({ ...p, product_id: p.productId })),
   };
 }
 

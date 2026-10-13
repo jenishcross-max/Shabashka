@@ -1,5 +1,5 @@
 const tg = require('./api');
-const { num, plural, viewsWord, clamp, whenText } = require('./format');
+const { num, plural, viewsWord, clamp, clock, whenText } = require('./format');
 const { keyboard, rowsOf, BACK: MENU } = require('./menu');
 
 // Экраны раздела «🛍 Мои продукты» (см. products.js). Как и menu.js — только
@@ -57,6 +57,27 @@ function listView(products) {
 }
 
 const PLATFORM = { threads: 'Threads', instagram: 'Instagram' };
+
+// Строка продукта в сводке (см. summaryLines в products.js). Вышел — куда, во
+// сколько и сколько набрал в Threads (у Instagram просмотров не спрашиваем:
+// ✅ — вышел); не вышел на площадку — её причина. Сегодня не выходил вовсе —
+// почему: пауза, нет текстов, нет расписания или срок ещё не подошёл.
+function summaryLine(product, posts, seen, now) {
+  if (!posts.length) {
+    const next = nextText(product, now);
+    let why = next;
+    if (!product.every_days) why = 'расписания нет, только по кнопке';
+    else if (next.startsWith('≈')) why = `следующий выход ${next}`;
+    else if (next === 'при ближайшей проверке') why = `срок подошёл — выйдет днём, с ${DAY_FROM}:00 до ${DAY_TO}:00`;
+    return `• ${name(product)} — сегодня не выходил: ${why}`;
+  }
+  const part = (p) => {
+    const where = `${PLATFORM[p.platform] || p.platform} ${clock(p.created_at)}`;
+    if (!p.post_id) return `${where} ⚠️ ${tg.esc(clamp(p.note || 'не вышло', 80))}`;
+    return `${where} ${Number.isFinite(seen[p.post_id]) ? `👁 ${num(seen[p.post_id])}` : '✅'}`;
+  };
+  return `• ${name(product)} — ${posts.map(part).join(' · ')}`;
+}
 
 // views — просмотры постов Threads по их id, если Threads их отдал.
 function postLine(post, views) {
@@ -253,6 +274,7 @@ module.exports = {
   savedView,
   tooLongText,
   publishedView,
+  summaryLine,
   everyText,
   TEXT_MAX,
   DAY_FROM,

@@ -44,7 +44,7 @@ const requireSrc = install({
     threadsQueued: () => 2,
     followers: async () => ({ threads: 1240, instagram: 830 }),
     collectionTitle: () => 'Заказы дня',
-    quota: { used: () => 3, dailyLimit: () => 8, hardLimit: () => 10 },
+    quota: { used: () => 3, dailyLimit: () => 8, hardLimit: () => 10, adLimit: () => 100 },
     adTracker: {
       GOAL: 1000,
       REPORT_AFTER_MS: 24 * HOUR,
@@ -55,6 +55,9 @@ const requireSrc = install({
       summary: async () => ({ reported: 6, met: 5 }),
       ageOf: (c) => Date.now() - new Date(c.created_at).getTime(),
     },
+  },
+  [at('telegram/products.js')]: {
+    summaryLines: async () => ['🛍 Мои продукты', '• Scroll Book — Threads 11:20 👁 340 · Instagram 11:21 ✅'],
   },
 });
 
@@ -88,13 +91,22 @@ test('сводка: из групп отдельно, реклама отдел�
   assert.match(text, /роликов 6, картинкой 2/);
   assert.match(text, /qwen3\.8-27b ⏳ до/);
   assert.match(text, /берегу под рекламу/, 'резерв в деле — сказано');
+  assert.match(
+    text,
+    /\n\n🛍 Мои продукты\n• Scroll Book — Threads 11:20 👁 340 · Instagram 11:21 ✅\n/,
+    'продукты — отдельным блоком: вышли ли и сколько набрали'
+  );
   assert.doesNotMatch(text, /Роликов в работе/, 'технические строки — только в /stats');
 });
 
 test('в /stats к сводке добавляются очереди и квота', async () => {
   const { text } = await summary.build({ tech: true });
   assert.match(text, /Ждут очереди в Threads: 2/);
-  assert.match(text, /Публикаций в Instagram за сутки: 3 из 8/);
+  assert.match(
+    text,
+    /Публикаций в Instagram за сутки: 3 — объявлениям до 8; рекламе, продуктам и рубрикам — до 100/,
+    'потолок 10 — только для объявлений, и это видно'
+  );
 });
 
 // 13:10 по Бишкеку = 07:10 UTC.

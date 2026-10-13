@@ -51,4 +51,8 @@ function next() {
   return posts % EVERY === 0 ? line() : '';
 }
 
-module.exports = { line, next, setDaily, parseEvery, EVERY };
+// Из ролика рубрики — ещё и в Threads: там вакансии выходят весь день по одной.
+// Ник в Threads тот же, что в Instagram.
+const THREADS_LINE = '🧵 Каждый день новые вакансии — и в нашем Threads: @shabashka.com_';
+
+module.exports = { line, next, setDaily, parseEvery, EVERY, THREADS_LINE };

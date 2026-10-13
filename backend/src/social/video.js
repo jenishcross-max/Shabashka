@@ -272,6 +272,9 @@ function caption(items, credit, opts = {}) {
       ? `${opts.cta[0].toUpperCase()}${opts.cta.slice(1)} — Шабашка.com, ссылка в шапке профиля.`
       : oneOf(CTA_LINES)
   );
+  // Рубрика зовёт ещё и в Threads (см. shareRubric в index.js): ссылки в
+  // подписи Instagram не кликаются, а ник там тот же.
+  if (opts.crosspost) lines.push(opts.crosspost);
   // Зов подписаться — следом за зовом на сайт (см. follow.js); у рекламы его нет.
   if (opts.follow) lines.push(opts.follow);
   // Автора трека называем обязательно: музыка в фонотеке под Creative Commons,

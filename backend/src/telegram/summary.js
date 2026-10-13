@@ -3,6 +3,7 @@ const extract = require('./extract');
 const queue = require('./queue');
 const feedStats = require('./feedStats');
 const social = require('../social');
+const products = require('./products');
 const { num, plural, viewsWord, clamp, clock } = require('./format');
 
 // Сводка в Telegram вместо потока «кто что опубликовал».
@@ -177,11 +178,14 @@ function techLines() {
     `🎬 Роликов в работе: ${social.pending()}`,
     `⏳ Ждут ролика: ${waitingLine} (до ${social.BATCH_SIZE} в ролике, выпуск раз в ${social.RELEASE_INTERVAL_MIN} мин)`,
     `🧵 Ждут очереди в Threads: ${social.threadsQueued()}`,
-    `📸 Публикаций в Instagram за сутки: ${social.quota.used()} из ${
+    // Свой потолок — только объявлениям; платное, продукты и рубрики идут до
+    // потолка площадки (см. adLimit в quota.js). Иначе «3 из 8» читалось как
+    // «реклама упрётся в восемь».
+    `📸 Публикаций в Instagram за сутки: ${social.quota.used()} — объявлениям до ${
       social.quota.used() >= social.quota.dailyLimit()
         ? `${social.quota.hardLimit()} (ролики закончились, идут картинки)`
         : social.quota.dailyLimit()
-    }`,
+    }; рекламе, продуктам и рубрикам — до ${social.quota.adLimit()}`,
   ];
 }
 
@@ -236,6 +240,13 @@ async function build({ now = Date.now(), previous = null, tech = false, title = 
       }`
     );
   }
+
+  // «Мои продукты» (см. products.js): вышли ли сегодня, куда и сколько набрали.
+  const productLines = await products.summaryLines(now).catch((err) => {
+    console.error('[сводка] продукты не прочитать:', err.message);
+    return [];
+  });
+  if (productLines.length) lines.push('', ...productLines);
 
   lines.push(
     '',

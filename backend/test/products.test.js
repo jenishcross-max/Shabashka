@@ -261,3 +261,39 @@ test('тексты и фото убираются по номеру, проду�
   assert.equal(await store.get(product.id), null);
   assert.match(lastView.text, /Мои продукты/);
 });
+
+test('сводка: что из продуктов вышло сегодня, куда и сколько набрало, а что не вышло — почему', async () => {
+  store.rows.clear();
+  store.log.length = 0;
+  const book = await store.create('Scroll Book');
+  await store.addText(book.id, 'Нужны тестировщики на Android');
+  await store.addPhoto(book.id, { file_id: 'cover', kind: 'photo' });
+  await store.setEvery(book.id, 1);
+  const invites = await store.create('Пригласительные');
+  await store.addText(invites.id, 'Свадебные пригласительные');
+  await store.setEvery(invites.id, 1);
+  await store.setPaused(invites.id, true);
+  const cards = await store.create('Визитки');
+  await store.addText(cards.id, 'Визитки за день');
+
+  const saved = shareResult;
+  shareResult = () => ({
+    threads: { posted: true, id: 't-summary' },
+    instagram: { posted: false, reason: 'норма площадки выбрана' },
+  });
+  try {
+    await products.publish(book.id, async () => {});
+  } finally {
+    shareResult = saved;
+  }
+
+  const lines = await products.summaryLines();
+  assert.equal(lines[0], '🛍 Мои продукты');
+  const text = lines.join('\n');
+  assert.match(text, /Scroll Book — Threads \d\d:\d\d 👁 1\s234 · Instagram \d\d:\d\d ⚠️ норма площадки выбрана/);
+  assert.match(text, /Пригласительные — сегодня не выходил: на паузе/);
+  assert.match(text, /Визитки — сегодня не выходил: расписания нет, только по кнопке/);
+
+  store.rows.clear();
+  assert.deepEqual(await products.summaryLines(), [], 'продуктов нет — блока нет');
+});

@@ -154,12 +154,12 @@ async function onMessage(message, { isMenuKey = () => false } = {}) {
   return true;
 }
 
-// Просмотры последних постов в Threads — для карточки продукта.
+// Просмотры последних постов в Threads — для карточки продукта и сводки.
 const viewsCache = new Map();
-async function threadsViews(posts) {
+async function threadsViews(posts, limit = VIEWS_POSTS) {
   const ids = posts
     .filter((p) => p.platform === 'threads' && p.post_id)
-    .slice(0, VIEWS_POSTS)
+    .slice(0, limit)
     .map((p) => p.post_id);
   const pairs = await Promise.all(
     ids.map(async (id) => {
@@ -180,6 +180,28 @@ async function threadsViews(posts) {
 
 async function listView() {
   return views.listView(await store.list());
+}
+
+// Блок сводки (см. summary.js): что из продуктов вышло сегодня, куда и сколько
+// набрало в Threads, а что не вышло — почему. На продуктах админ зарабатывает,
+// и «не выходят» должно быть видно в сводке, без захода в каждую карточку.
+async function summaryLines(now = Date.now()) {
+  const list = await store.list();
+  if (!list.length) return [];
+  const day = new Date(now + 6 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const posts = await store.postsSince(new Date(`${day}T00:00:00+06:00`));
+  const seen = await threadsViews(posts, posts.length);
+  return [
+    '🛍 Мои продукты',
+    ...list.map((product) =>
+      views.summaryLine(
+        product,
+        posts.filter((p) => p.product_id === product.id),
+        seen,
+        now
+      )
+    ),
+  ];
 }
 
 async function cardView(id) {
@@ -433,4 +455,4 @@ function start({ report }) {
   setTimeout(run, 60 * 1000).unref();
 }
 
-module.exports = { onMessage, onCallback, listView, publish, tick, start };
+module.exports = { onMessage, onCallback, listView, summaryLines, publish, tick, start };

@@ -31,6 +31,12 @@ test('в подписи есть всё, по чему на объявление
   assert.match(text, /\+996700111222/, 'телефон обязателен: ссылки в Instagram не кликаются');
   assert.match(text, /шабашка\.com\/orders\/12/);
   assert.match(text, /#шабашка/);
+  assert.doesNotMatch(text, /🧵/, 'в обычном ролике в Threads не зовём');
+});
+
+test('рубрика зовёт в Threads сразу после сайта', () => {
+  const text = video.caption([item], null, { cta: 'все заказы на сайте', crosspost: '🧵 В Threads: @ник' });
+  assert.match(text, /Все заказы на сайте — Шабашка\.com, ссылка в шапке профиля\.\n🧵 В Threads: @ник\n/);
 });
 
 test('хвост из тегов не повторяется слово в слово от поста к посту', () => {

@@ -100,6 +100,12 @@ const posts = (productId, limit = 6) =>
     ])
     .then(({ rows }) => rows);
 
+// Выходы всех продуктов с момента since — для сводки: что вышло сегодня.
+const postsSince = (since) =>
+  db
+    .query('SELECT * FROM product_posts WHERE created_at >= $1 ORDER BY created_at, id', [since])
+    .then(({ rows }) => rows);
+
 module.exports = {
   list,
   get,
@@ -116,5 +122,6 @@ module.exports = {
   unclaim,
   logPost,
   posts,
+  postsSince,
   MAX_PHOTOS,
 };

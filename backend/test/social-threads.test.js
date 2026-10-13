@@ -306,6 +306,7 @@ test('рубрика встаёт перед объявлениями, а рол
   assert.match(caption, /^📋 Топ-3 по зарплате/);
   assert.doesNotMatch(caption, /Реклама/, 'это наша подборка, не реклама');
   assert.match(caption, /🔔 Подпишись/);
+  assert.match(caption, /\n🧵 [^\n]*Threads: @shabashka\.com_\n/, 'из Instagram зовём и в Threads');
 
   const bare = await social.shareRubric({ text: '📊 Сколько платят в Бишкеке' });
   assert.equal(bare.instagram, null, 'без объявлений ролика нет');

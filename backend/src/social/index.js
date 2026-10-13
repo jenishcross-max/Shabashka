@@ -872,6 +872,7 @@ async function shareRubric({ text, items = [], collection, cta }) {
       priority: true,
       ad: false,
       follow: follow.line(),
+      crosspost: follow.THREADS_LINE,
     };
     return scheduleInstagram(job, true);
   };
