@@ -46,4 +46,30 @@ const boardLimiter = rateLimit({
   message: { error: 'Слишком много объявлений на доске за час. Попробуйте позже.' },
 });
 
-module.exports = { authLimiter, reportLimiter, apiLimiter, messageLimiter, boardLimiter };
+// Биржа: задача — то же объявление, и десяти в час на адрес хватит любому
+// честному заказчику. Откликов больше: исполнитель за вечер проходит всю ленту.
+const taskLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Слишком много задач за час. Попробуйте позже.' },
+});
+
+const offerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Слишком много откликов за час. Попробуйте позже.' },
+});
+
+module.exports = {
+  authLimiter,
+  reportLimiter,
+  apiLimiter,
+  messageLimiter,
+  boardLimiter,
+  taskLimiter,
+  offerLimiter,
+};

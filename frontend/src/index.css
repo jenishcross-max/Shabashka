@@ -1221,6 +1221,14 @@ a:hover {
   opacity: 0;
   pointer-events: none;
 }
+/* Без этого .field input (width: 100%) растягивает скрытую радиокнопку от
+   переключателя до правого края, и на телефоне вся форма уезжает вбок. */
+.field .format-option input {
+  width: 0;
+  height: 0;
+  padding: 0;
+  border: 0;
+}
 .format-option.active {
   border-color: var(--red);
   color: var(--red);
@@ -2812,4 +2820,281 @@ body.board-theme .navbar {
   font-size: 12.5px;
   line-height: 1.4;
   color: var(--muted-light);
+}
+
+/* ---------- биржа услуг: лента, задача, отклики ---------- */
+/* Всё на тех же переменных и радиусах, что заказы: биржа — раздел того же
+   сайта, а не отдельное приложение внутри него. */
+.tasks-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.tasks-head h1 {
+  font-weight: 800;
+  font-size: 30px;
+  margin: 0 0 6px;
+}
+.tasks-lead {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15.5px;
+  max-width: 560px;
+}
+.tasks-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.tasks-head-actions .admin-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none !important;
+}
+.tasks-filters {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+.tasks-filters input,
+.tasks-filters select {
+  width: 100%;
+  border: 1px solid #e3d6d4;
+  border-radius: 11px;
+  padding: 11px 14px;
+  font: inherit;
+  font-size: 15px;
+  background: #fff;
+  color: var(--text);
+}
+.tasks-filters button {
+  border: none;
+  background: var(--red);
+  color: #fff;
+  border-radius: 11px;
+  padding: 11px 22px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tasks-filters button:hover {
+  background: var(--red-dark);
+}
+@media (max-width: 720px) {
+  .tasks-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+  .tasks-filters input:first-child {
+    grid-column: 1 / -1;
+  }
+  .tasks-filters button {
+    grid-column: 1 / -1;
+  }
+}
+
+.exchange-promo {
+  background: #fff;
+  border: 1px solid var(--red-border);
+  border-radius: 16px;
+  padding: 24px;
+}
+.exchange-promo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.exchange-promo-head h2 {
+  font-weight: 700;
+  font-size: 24px;
+  margin: 0 0 6px;
+}
+.exchange-promo-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15.5px;
+}
+.exchange-promo-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.exchange-promo-all {
+  color: var(--red-dark);
+  font-weight: 600;
+  font-size: 15px;
+}
+.exchange-promo .order-grid {
+  margin-top: 20px;
+}
+
+.budget-box .value-soft {
+  font-size: 17px;
+  font-weight: 600;
+}
+.task-offers-count {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 14.5px;
+}
+
+.offer-form .field-row {
+  margin-bottom: 0;
+}
+.offer-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.offer-form-actions .submit-btn {
+  width: auto;
+  flex: 1;
+}
+
+.offer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.offer-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+.offer-card.chosen {
+  border-color: var(--green-text);
+  box-shadow: 0 0 0 1px var(--green-text);
+}
+.offer-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.offer-name {
+  font-family: 'Rubik', sans-serif;
+  font-weight: 600;
+  font-size: 16.5px;
+}
+.offer-new {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 9px;
+  border-radius: 100px;
+  background: var(--red);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  vertical-align: 2px;
+}
+.offer-trust {
+  margin-top: 3px;
+  font-size: 13px;
+  color: var(--muted-light);
+}
+.offer-price {
+  font-family: 'Rubik', sans-serif;
+  font-weight: 800;
+  font-size: 20px;
+  color: var(--red-dark);
+  white-space: nowrap;
+}
+.offer-term {
+  margin-top: 10px;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.offer-comment {
+  margin: 6px 0 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: #4a3f3d;
+  white-space: pre-wrap;
+}
+.offer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.offer-actions button.cta,
+.task-chosen button.cta {
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 15px;
+}
+.offer-actions .cta,
+.task-chosen .cta {
+  display: inline-block;
+  padding: 10px 18px;
+}
+.offer-actions button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.task-chosen {
+  margin-top: 18px;
+  background: var(--green-bg);
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+.task-chosen h3 {
+  font-family: 'Rubik', sans-serif;
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--green-text);
+  margin: 0 0 10px;
+}
+.task-chosen p {
+  margin: 0 0 14px;
+  color: var(--text);
+}
+.task-owner {
+  margin-top: 8px;
+}
+.task-cancel {
+  display: block;
+  margin: 8px 0 4px;
+  font-size: 14.5px;
+}
+
+.my-tasks-switch {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 16px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.my-tasks-switch button {
+  border: none;
+  background: none;
+  padding: 8px 16px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+.my-tasks-switch button.active {
+  background: var(--red-tint);
+  color: var(--red-dark);
 }

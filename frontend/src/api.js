@@ -108,6 +108,23 @@ export const api = {
   sendMessage: (id, body, token) =>
     request(`/conversations/${id}/messages`, { method: 'POST', body: { body }, token }),
 
+  // Биржа услуг (см. backend/src/routes/tasks.js)
+  tasks: (params = {}) => request(`/tasks${toQueryString(params)}`),
+  task: (id, token) => request(`/tasks/${id}`, { token }),
+  myTasks: (token) => request('/tasks/mine', { token }),
+  myOffers: (token) => request('/tasks/my-offers', { token }),
+  createTask: (payload, token) => request('/tasks', { method: 'POST', body: payload, token }),
+  updateTask: (id, payload, token) => request(`/tasks/${id}`, { method: 'PATCH', body: payload, token }),
+  taskStep: (id, step, token) => request(`/tasks/${id}/${step}`, { method: 'POST', token }),
+  taskOffers: (id, token) => request(`/tasks/${id}/offers`, { token }),
+  saveOffer: (id, payload, token) => request(`/tasks/${id}/offers`, { method: 'POST', body: payload, token }),
+  withdrawOffer: (id, token) => request(`/tasks/${id}/offers/withdraw`, { method: 'POST', token }),
+  acceptOffer: (id, offerId, token) =>
+    request(`/tasks/${id}/offers/${offerId}/accept`, { method: 'POST', token }),
+  reportTask: (id, reason) => request(`/tasks/${id}/report`, { method: 'POST', body: { reason } }),
+  reportOffer: (id, offerId, reason, token) =>
+    request(`/tasks/${id}/offers/${offerId}/report`, { method: 'POST', body: { reason }, token }),
+
   adminStats: (token) => request('/admin/stats', { token }),
   adminUsers: (params = {}, token) => request(`/admin/users${toQueryString(params)}`, { token }),
   adminUserDetail: (id, token) => request(`/admin/users/${id}`, { token }),

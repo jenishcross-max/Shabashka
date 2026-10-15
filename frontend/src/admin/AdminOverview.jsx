@@ -6,12 +6,18 @@ import { SkeletonBox, SkeletonStatCards, SkeletonTableRows, SkeletonComplaint } 
 
 // Жалоба может прийти на заказ, вакансию или записку с доски. Заголовок живого
 // объявления приходит из базы, от удалённого остаётся снимок из самой жалобы.
-const REPORT_TYPE_LABELS = { order: 'Заказ', vacancy: 'Вакансия', board: 'Доска' };
+const REPORT_TYPE_LABELS = {
+  order: 'Заказ',
+  vacancy: 'Вакансия',
+  board: 'Доска',
+  task: 'Задача биржи',
+  offer: 'Отклик на бирже',
+};
 
 function reportTitle(report) {
   if (report.listing_title) return report.listing_title;
   const snap = report.snapshot || {};
-  return snap.title || snap.text || 'без названия';
+  return snap.title || snap.text || snap.comment || 'без названия';
 }
 
 function StatusBadge({ blocked }) {

@@ -8,7 +8,8 @@ const { notifyAdmins } = require('./telegram/notify');
 const MAX_REASON = 1000;
 
 const SITE_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
-const PATHS = { order: 'orders', vacancy: 'vacancies' };
+// У отклика своей страницы нет — ведём на задачу, где его видит заказчик.
+const PATHS = { order: 'orders', vacancy: 'vacancies', task: 'tasks', offer: 'tasks' };
 
 function listingLink(listingType, listingId) {
   if (!SITE_URL) return '';
@@ -33,7 +34,7 @@ async function create({ listingType, listingId, reason }) {
     [listingType, listingId, text, snap]
   );
 
-  const link = listingLink(listingType, listingId);
+  const link = listingLink(listingType, listingType === 'offer' ? snap.task_id : listingId);
   const lines = [
     `⚑ Жалоба: ${moderation.labelFor(listingType)} №${listingId}`,
     '',

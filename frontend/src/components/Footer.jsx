@@ -19,6 +19,9 @@ export default function Footer() {
           <h4>Разделы</h4>
           <ul>
             <li>
+              <Link to="/tasks">Биржа услуг</Link>
+            </li>
+            <li>
               <Link to="/orders">Все заказы</Link>
             </li>
             <li>

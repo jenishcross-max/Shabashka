@@ -4,13 +4,22 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import { SkeletonComplaint } from '../components/Skeleton';
 
-const TYPE_LABELS = { order: 'Заказ', vacancy: 'Вакансия', board: 'Доска' };
-const TYPE_PATHS = { order: 'orders', vacancy: 'vacancies' };
+const TYPE_LABELS = { order: 'Заказ', vacancy: 'Вакансия', board: 'Доска', task: 'Задача биржи', offer: 'Отклик на бирже' };
+const TYPE_PATHS = { order: 'orders', vacancy: 'vacancies', task: 'tasks' };
 
-// Что именно делает «скрыть» — зависит от типа: заказ и вакансию закрываем,
-// записку на доске скрываем. Само объявление при этом не удаляется: на него есть
-// жалоба, и оно само себе доказательство.
-const HIDE_LABELS = { order: 'Закрыть заказ', vacancy: 'Закрыть вакансию', board: 'Скрыть с доски' };
+// Что именно делает «скрыть» — зависит от типа: заказ, вакансию и задачу биржи
+// закрываем, записку на доске скрываем, отклик снимаем. Само объявление при этом
+// не удаляется: на него есть жалоба, и оно само себе доказательство.
+const HIDE_LABELS = {
+  order: 'Закрыть заказ',
+  vacancy: 'Закрыть вакансию',
+  board: 'Скрыть с доски',
+  task: 'Отменить задачу',
+  offer: 'Снять отклик',
+};
+
+// Статусы, после которых объявления на сайте уже нет.
+const GONE_STATUSES = { closed: 'закрыто', cancelled: 'снято', removed: 'снято' };
 
 // Заголовок объявления. Живое читаем из базы, от удалённого остаётся только
 // снимок, снятый в момент жалобы, — иначе после «скрыть» в списке была бы пустая
@@ -18,7 +27,7 @@ const HIDE_LABELS = { order: 'Закрыть заказ', vacancy: 'Закрыт
 function titleOf(report) {
   if (report.listing_title) return report.listing_title;
   const snap = report.snapshot || {};
-  return snap.title || snap.text || 'без названия';
+  return snap.title || snap.text || snap.comment || 'без названия';
 }
 
 export default function AdminReports() {
@@ -66,9 +75,12 @@ export default function AdminReports() {
         {!loading &&
           reports.map((r) => {
             const title = titleOf(r);
+            // У отклика своей страницы нет — ведём на задачу, где его видит заказчик.
             const path =
               r.listing_type === 'board'
                 ? `/board#p${r.listing_id}`
+                : r.listing_type === 'offer'
+                ? `/tasks/${r.offer_task_id}`
                 : `/${TYPE_PATHS[r.listing_type]}/${r.listing_id}`;
 
             return (
@@ -81,7 +93,7 @@ export default function AdminReports() {
                   <div className="admin-subtitle">
                     {new Date(r.created_at).toLocaleString('ru-RU')}
                     {!r.listing_alive && ' · объявления уже нет — ниже копия из жалобы'}
-                    {r.listing_status === 'closed' && ' · закрыто'}
+                    {GONE_STATUSES[r.listing_status] && ` · ${GONE_STATUSES[r.listing_status]}`}
                     {!!r.board_hidden && ' · скрыто'}
                     {r.resolved && ' · решено'}
                   </div>

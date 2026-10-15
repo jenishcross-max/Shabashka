@@ -24,6 +24,10 @@ import MyOrders from './pages/MyOrders';
 import Favorites from './pages/Favorites';
 import Messages from './pages/Messages';
 import Conversation from './pages/Conversation';
+import Tasks from './pages/Tasks';
+import TaskDetail from './pages/TaskDetail';
+import NewTask from './pages/NewTask';
+import MyTasks from './pages/MyTasks';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
 import VerifyEmail from './pages/VerifyEmail';
@@ -52,6 +56,8 @@ function PublicSite() {
           <Route path="/" element={<Home />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/board" element={<Board />} />
+          <Route path="/tasks" element={<Tasks />} />
+          <Route path="/tasks/:id" element={<TaskDetail />} />
           <Route path="/orders" element={<AllOrders />} />
           <Route path="/orders/:id" element={<OrderDetail />} />
           <Route path="/vacancies" element={<Vacancies />} />
@@ -106,6 +112,30 @@ function PublicSite() {
             element={
               <ProtectedRoute>
                 <MyVacancies />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tasks/new"
+            element={
+              <ProtectedRoute>
+                <NewTask />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tasks/:id/edit"
+            element={
+              <ProtectedRoute>
+                <NewTask />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-tasks"
+            element={
+              <ProtectedRoute>
+                <MyTasks />
               </ProtectedRoute>
             }
           />

@@ -12,6 +12,8 @@ const SOURCES = {
   order: { table: 'orders', label: 'Заказ' },
   vacancy: { table: 'vacancies', label: 'Вакансия' },
   board: { table: 'board_posts', label: 'Доска' },
+  task: { table: 'tasks', label: 'Задача биржи' },
+  offer: { table: 'task_offers', label: 'Отклик на бирже' },
 };
 
 const LISTING_TYPES = Object.keys(SOURCES);
@@ -41,10 +43,11 @@ async function snapshot(listingType, listingId) {
 }
 
 // Короткая строка про объявление — для сообщения в Telegram и списка в админке.
-// У записки на доске заголовка нет, там весь смысл в тексте.
+// У записки на доске заголовка нет, там весь смысл в тексте; у отклика на
+// бирже — в комментарии исполнителя.
 function describe(listingType, snap) {
   if (!snap) return 'объявление уже удалено';
-  const text = listingType === 'board' ? snap.text : snap.title;
+  const text = listingType === 'board' ? snap.text : listingType === 'offer' ? snap.comment : snap.title;
   const one = String(text || 'без названия').replace(/\s+/g, ' ');
   return one.length > 120 ? `${one.slice(0, 120)}…` : one;
 }
