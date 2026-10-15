@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { relativeDate } from '../formatDate';
 import { SkeletonConversationRow } from '../components/Skeleton';
 
+const LISTING_LABELS = { order: 'Заказ: ', vacancy: 'Вакансия: ', task: 'Задача: ' };
+
 export default function Messages() {
   const { token } = useAuth();
   const [conversations, setConversations] = useState([]);
@@ -47,7 +49,7 @@ export default function Messages() {
                   <span className="conversation-date">{relativeDate(c.last_message_at)}</span>
                 </div>
                 <div className="conversation-vacancy">
-                  {c.listing_type === 'order' ? 'Заказ: ' : 'Вакансия: '}
+                  {LISTING_LABELS[c.listing_type]}
                   {c.listing_title}
                 </div>
                 <div className="conversation-preview">{c.last_message}</div>

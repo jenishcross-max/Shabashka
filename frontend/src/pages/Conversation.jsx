@@ -14,9 +14,11 @@ function messageTime(iso) {
   });
 }
 
+const LISTING_PATHS = { order: 'orders', vacancy: 'vacancies', task: 'tasks' };
+
 // Кем приходится собеседник — зависит от типа объявления и того, кто я в этой переписке
 function otherPersonLabel(listingType, myRole) {
-  if (listingType === 'order') return myRole === 'responder' ? 'Заказчик' : 'Исполнитель';
+  if (listingType === 'order' || listingType === 'task') return myRole === 'responder' ? 'Заказчик' : 'Исполнитель';
   return myRole === 'responder' ? 'Работодатель' : 'Соискатель';
 }
 
@@ -97,7 +99,7 @@ export default function Conversation() {
           <h1>{conversation.other_name}</h1>
           <p className="conversation-subtitle">
             {otherPersonLabel(conversation.listing_type, conversation.my_role)} ·{' '}
-            <Link to={`/${conversation.listing_type === 'order' ? 'orders' : 'vacancies'}/${conversation.listing_id}`}>
+            <Link to={`/${LISTING_PATHS[conversation.listing_type]}/${conversation.listing_id}`}>
               {conversation.listing_title}
             </Link>
           </p>
@@ -126,18 +128,26 @@ export default function Conversation() {
 
       {error && <p className="status-msg error">{error}</p>}
 
-      <form className="message-form" onSubmit={handleSend}>
-        <textarea
-          rows={2}
-          placeholder="Написать сообщение…"
-          maxLength={2000}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-        />
-        <button type="submit" disabled={sending || !draft.trim()}>
-          {sending ? 'Отправляем…' : 'Отправить'}
-        </button>
-      </form>
+      {/* Выбор исполнителя отменили — переписка остаётся историей, но писать
+          в неё и видеть телефоны больше нельзя (см. routes/conversations.js). */}
+      {conversation.chat_closed ? (
+        <p className="status-msg">
+          Заказчик отменил выбор исполнителя — переписка по этой задаче закрыта.
+        </p>
+      ) : (
+        <form className="message-form" onSubmit={handleSend}>
+          <textarea
+            rows={2}
+            placeholder="Написать сообщение…"
+            maxLength={2000}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <button type="submit" disabled={sending || !draft.trim()}>
+            {sending ? 'Отправляем…' : 'Отправить'}
+          </button>
+        </form>
+      )}
     </div>
   );
 }

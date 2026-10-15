@@ -29,5 +29,8 @@
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.22.0",
     "telegram": "^2.26.16"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8"
   }
 }

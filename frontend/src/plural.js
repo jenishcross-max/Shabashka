@@ -14,3 +14,5 @@ export const orderWord = (n) => plural(n, 'заказ', 'заказа', 'зак�
 export const vacancyWord = (n) => plural(n, 'вакансия', 'вакансии', 'вакансий');
 export const viewWord = (n) => plural(n, 'просмотр', 'просмотра', 'просмотров');
 export const followerWord = (n) => plural(n, 'подписчик', 'подписчика', 'подписчиков');
+export const offerWord = (n) => plural(n, 'отклик', 'отклика', 'откликов');
+export const taskWord = (n) => plural(n, 'задача', 'задачи', 'задач');

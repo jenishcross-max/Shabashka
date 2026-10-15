@@ -9,6 +9,9 @@ export default function MyListingsTabs({ active }) {
       <Link to="/my-vacancies" className={active === 'vacancies' ? 'active' : ''}>
         Вакансии
       </Link>
+      <Link to="/my-tasks" className={active === 'tasks' ? 'active' : ''}>
+        Биржа
+      </Link>
     </div>
   );
 }

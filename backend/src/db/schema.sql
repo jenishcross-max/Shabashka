@@ -421,3 +421,55 @@ CREATE TABLE IF NOT EXISTS ad_raises (
 
 CREATE INDEX IF NOT EXISTS idx_ad_raises_due ON ad_raises(due_at) WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS idx_ad_raises_import ON ad_raises(import_id);
+
+-- Биржа услуг: заказчик описывает задачу, исполнители предлагают цену и срок,
+-- заказчик выбирает одного (правила — в exchange.js, запросы — в tasksRepo.js).
+-- Отдельно от orders намеренно: заказы читают бот, автопостинг в Threads и
+-- Instagram, рубрики и sitemap, и задача биржи, попавшая туда по забытому
+-- фильтру, ушла бы в соцсети. Статусы: open → assigned → done; assigned → open
+-- (заказчик отменил выбор); open/assigned → cancelled. Исполнитель — это отклик
+-- со статусом accepted, отдельной колонки нет: выбор и задача не разойдутся.
+CREATE TABLE IF NOT EXISTS tasks (
+  id          SERIAL PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, -- заказчик
+  title       TEXT NOT NULL,
+  description TEXT NOT NULL,
+  category    TEXT NOT NULL,
+  city        TEXT NOT NULL,
+  address     TEXT,     -- район или ориентир, без точного адреса
+  work_format TEXT NOT NULL DEFAULT 'offline', -- online | offline
+  budget      INTEGER,  -- ориентир заказчика; NULL — «цену предложат исполнители»
+  when_text   TEXT,     -- когда нужно, своими словами: «в субботу утром»
+  status      TEXT NOT NULL DEFAULT 'open', -- open | assigned | done | cancelled
+  views       INTEGER NOT NULL DEFAULT 0,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks(user_id);
+
+-- Отклик исполнителя: цена за всю работу, срок и что именно сделает. Один на пару
+-- (задача, исполнитель) — правка обновляет его, а не плодит новые. Целиком отклики
+-- видит только заказчик: открытые цены превращают биржу в торги на понижение.
+-- seen_at — когда заказчик открыл список; по NULL считается значок «новые».
+-- Статусы: active | accepted (выбран) | withdrawn (отозвал сам) | dropped
+-- (заказчик отменил выбор) | removed (снят модератором).
+CREATE TABLE IF NOT EXISTS task_offers (
+  id         SERIAL PRIMARY KEY,
+  task_id    INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, -- исполнитель
+  price      INTEGER NOT NULL,
+  term       TEXT NOT NULL,
+  comment    TEXT NOT NULL,
+  status     TEXT NOT NULL DEFAULT 'active',
+  seen_at    TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (task_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_offers_user ON task_offers(user_id);
+-- Второго выбранного исполнителя не будет даже при двух одновременных «Выбрать».
+CREATE UNIQUE INDEX IF NOT EXISTS idx_task_offers_accepted
+  ON task_offers(task_id) WHERE status = 'accepted';

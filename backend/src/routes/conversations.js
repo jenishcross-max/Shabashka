@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { messageLimiter } = require('../rateLimit');
 const asyncHandler = require('../asyncHandler');
+const tasksRepo = require('../tasksRepo');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -24,18 +25,22 @@ function validateBody(raw) {
 
 // Ветка вместе с данными объявления и именем собеседника — с проверкой,
 // что текущий пользователь действительно её участник. listing_type определяет,
-// из какой таблицы (orders/vacancies) подтягивать заголовок и статус —
-// у обеих ровно одна из них совпадёт по listing_id, вторая даст NULL.
+// из какой таблицы (orders/vacancies/tasks) подтягивать заголовок и статус —
+// совпадёт ровно одна из них, остальные дадут NULL.
 async function loadParticipantConversation(id, userId) {
   const { rows } = await db.query(
     `SELECT c.id, c.listing_type, c.listing_id, c.seeker_id, c.employer_id, c.created_at,
-            COALESCE(o.title, v.title) AS listing_title,
-            COALESCE(o.status, v.status) AS listing_status,
+            COALESCE(o.title, v.title, t.title) AS listing_title,
+            COALESCE(o.status, v.status, t.status) AS listing_status,
+            ${CHAT_CLOSED} AS chat_closed,
             seeker.name AS seeker_name, seeker.phone AS seeker_phone,
             employer.name AS employer_name, employer.phone AS employer_phone
      FROM conversations c
      LEFT JOIN orders o ON c.listing_type = 'order' AND o.id = c.listing_id
      LEFT JOIN vacancies v ON c.listing_type = 'vacancy' AND v.id = c.listing_id
+     LEFT JOIN tasks t ON c.listing_type = 'task' AND t.id = c.listing_id
+     LEFT JOIN task_offers tof
+       ON c.listing_type = 'task' AND tof.task_id = c.listing_id AND tof.user_id = c.seeker_id
      JOIN users seeker ON seeker.id = c.seeker_id
      JOIN users employer ON employer.id = c.employer_id
      WHERE c.id = $1`,
@@ -46,6 +51,11 @@ async function loadParticipantConversation(id, userId) {
   if (conversation.seeker_id !== userId && conversation.employer_id !== userId) return 'forbidden';
   return conversation;
 }
+
+// Переписка по задаче биржи открывается выбором исполнителя и закрывается, когда
+// выбор отменили или отклик снял модератор: история остаётся, но телефоны
+// скрыты и писать нельзя — номер заказчик открывал только выбранному.
+const CHAT_CLOSED = "(c.listing_type = 'task' AND tof.status IS DISTINCT FROM 'accepted')";
 
 // Собеседник и роль — то, что нужно фронтенду для отображения ветки.
 // my_role: 'poster' — я разместил объявление, 'responder' — я откликнулся.
@@ -60,7 +70,8 @@ function shapeConversation(c, userId) {
     created_at: c.created_at,
     my_role: iAmSeeker ? 'responder' : 'poster',
     other_name: iAmSeeker ? c.employer_name : c.seeker_name,
-    other_phone: iAmSeeker ? c.employer_phone : c.seeker_phone,
+    other_phone: c.chat_closed ? null : iAmSeeker ? c.employer_phone : c.seeker_phone,
+    chat_closed: c.chat_closed,
   };
 }
 
@@ -118,20 +129,24 @@ router.post(
   })
 );
 
-// Счётчик непрочитанного для значка в шапке.
+// Счётчики для значков в шапке: непрочитанные сообщения и новые отклики на мои
+// задачи биржи. Один запрос на оба — он идёт при каждом переходе по сайту.
 // Определён до '/:id', иначе Express принял бы 'unread-count' за id.
 router.get(
   '/unread-count',
   asyncHandler(async (req, res) => {
-    const { rows } = await db.query(
-      `SELECT COUNT(*)::int AS n
-       FROM messages m
-       JOIN conversations c ON c.id = m.conversation_id
-       WHERE m.sender_id <> $1 AND m.read_at IS NULL
-         AND (c.seeker_id = $1 OR c.employer_id = $1)`,
-      [req.user.id]
-    );
-    res.json({ count: rows[0].n });
+    const [{ rows }, offers] = await Promise.all([
+      db.query(
+        `SELECT COUNT(*)::int AS n
+         FROM messages m
+         JOIN conversations c ON c.id = m.conversation_id
+         WHERE m.sender_id <> $1 AND m.read_at IS NULL
+           AND (c.seeker_id = $1 OR c.employer_id = $1)`,
+        [req.user.id]
+      ),
+      tasksRepo.unseenCount(req.user.id),
+    ]);
+    res.json({ count: rows[0].n, offers });
   })
 );
 
@@ -141,8 +156,9 @@ router.get(
   asyncHandler(async (req, res) => {
     const { rows } = await db.query(
       `SELECT c.id, c.listing_type, c.listing_id, c.seeker_id, c.employer_id, c.last_message_at,
-              COALESCE(o.title, v.title) AS listing_title,
-              COALESCE(o.status, v.status) AS listing_status,
+              COALESCE(o.title, v.title, t.title) AS listing_title,
+              COALESCE(o.status, v.status, t.status) AS listing_status,
+              ${CHAT_CLOSED} AS chat_closed,
               seeker.name AS seeker_name, employer.name AS employer_name,
               (SELECT m.body FROM messages m WHERE m.conversation_id = c.id
                 ORDER BY m.id DESC LIMIT 1) AS last_message,
@@ -151,6 +167,9 @@ router.get(
        FROM conversations c
        LEFT JOIN orders o ON c.listing_type = 'order' AND o.id = c.listing_id
        LEFT JOIN vacancies v ON c.listing_type = 'vacancy' AND v.id = c.listing_id
+       LEFT JOIN tasks t ON c.listing_type = 'task' AND t.id = c.listing_id
+       LEFT JOIN task_offers tof
+         ON c.listing_type = 'task' AND tof.task_id = c.listing_id AND tof.user_id = c.seeker_id
        JOIN users seeker ON seeker.id = c.seeker_id
        JOIN users employer ON employer.id = c.employer_id
        WHERE c.seeker_id = $1 OR c.employer_id = $1
@@ -169,6 +188,7 @@ router.get(
         last_message_at: c.last_message_at,
         last_message: c.last_message,
         unread: c.unread,
+        chat_closed: c.chat_closed,
         my_role: iAmSeeker ? 'responder' : 'poster',
         other_name: iAmSeeker ? c.employer_name : c.seeker_name,
       };
@@ -223,6 +243,9 @@ router.post(
     const conversation = await loadParticipantConversation(id, req.user.id);
     if (!conversation) return res.status(404).json({ error: 'Переписка не найдена' });
     if (conversation === 'forbidden') return res.status(403).json({ error: 'Это не ваша переписка' });
+    if (conversation.chat_closed) {
+      return res.status(403).json({ error: 'Заказчик отменил выбор — переписка по задаче закрыта' });
+    }
 
     const { rows } = await db.query(
       'INSERT INTO messages (conversation_id, sender_id, body) VALUES ($1, $2, $3) RETURNING id, sender_id, body, created_at',

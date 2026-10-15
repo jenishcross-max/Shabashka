@@ -71,7 +71,7 @@ export default function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { unread } = useUnread();
+  const { unread, newOffers } = useUnread();
   const [menuOpen, setMenuOpen] = useState(false);
 
   // На узких экранах пунктов слишком много, чтобы держать их развёрнутыми:
@@ -98,9 +98,17 @@ export default function Navbar() {
         onClick={() => setMenuOpen((v) => !v)}
       >
         {menuOpen ? '✕' : '☰'}
-        {!menuOpen && unread > 0 && <span className="nav-burger-dot" />}
+        {!menuOpen && (unread > 0 || newOffers > 0) && <span className="nav-burger-dot" />}
       </button>
       <nav className={`nav-links${menuOpen ? ' open' : ''}`}>
+        <NavLink to="/tasks" className={navClass}>
+          Биржа
+          {newOffers > 0 && (
+            <span className="nav-unread-badge" title="Новые отклики на ваши задачи">
+              {newOffers}
+            </span>
+          )}
+        </NavLink>
         <OrdersMenu />
         <NavLink to="/vacancies" className={navClass}>
           Вакансии

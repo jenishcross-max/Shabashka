@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { api } from '../api';
 import OrderCard from '../components/OrderCard';
 import VacancyCard from '../components/VacancyCard';
+import TaskCard from '../components/TaskCard';
 import FormatIcon from '../components/FormatIcon';
 import CityAutocomplete from '../components/CityAutocomplete';
 import { useFavorites } from '../context/FavoritesContext';
@@ -18,6 +19,7 @@ export default function Home() {
   const [cities, setCities] = useState([]);
   const [orders, setOrders] = useState([]);
   const [vacancies, setVacancies] = useState([]);
+  const [tasks, setTasks] = useState([]);
   const [cityCounts, setCityCounts] = useState([]);
   const [instagramFollowers, setInstagramFollowers] = useState(null);
   const [qInput, setQInput] = useState('');
@@ -35,6 +37,7 @@ export default function Home() {
         setInstagramFollowers(data.instagramFollowers);
         setOrders(data.orders);
         setVacancies(data.vacancies);
+        setTasks(data.tasks || []);
         setCities(data.cities);
       })
       .catch((e) => setError(e.message))
@@ -111,6 +114,32 @@ export default function Home() {
             ✈️ Telegram-канал
           </a>
         </div>
+      </section>
+
+      {/* Биржа — главное, что сайт теперь предлагает заказчику, поэтому сразу
+          под шапкой. Пустую сетку не рисуем: пока задач нет, хватает призыва. */}
+      <section className="section exchange-promo">
+        <div className="exchange-promo-head">
+          <div>
+            <h2>Биржа услуг</h2>
+            <p>Опишите задачу — исполнители сами предложат цену и срок, а вы выберете лучшего.</p>
+          </div>
+          <div className="exchange-promo-actions">
+            <Link to="/tasks/new" className="cta">
+              + Разместить задачу
+            </Link>
+            <Link to="/tasks" className="exchange-promo-all">
+              Все задачи →
+            </Link>
+          </div>
+        </div>
+        {tasks.length > 0 && (
+          <div className="order-grid">
+            {tasks.map((task) => (
+              <TaskCard key={task.id} task={task} />
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Ни плитки категорий, ни полосы со счётчиками: до объявлений человек
