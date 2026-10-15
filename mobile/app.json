@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Шабашка",
+    "slug": "shabashka",
+    "scheme": "shabashka",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.shabashka.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#f0433e",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-font",
+      "expo-asset"
+    ]
+  }
+}
