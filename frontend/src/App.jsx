@@ -28,6 +28,10 @@ import Tasks from './pages/Tasks';
 import TaskDetail from './pages/TaskDetail';
 import NewTask from './pages/NewTask';
 import MyTasks from './pages/MyTasks';
+import Ads from './pages/Ads';
+import AdDetail from './pages/AdDetail';
+import NewAd from './pages/NewAd';
+import MyAds from './pages/MyAds';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
 import VerifyEmail from './pages/VerifyEmail';
@@ -58,6 +62,8 @@ function PublicSite() {
           <Route path="/board" element={<Board />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/tasks/:id" element={<TaskDetail />} />
+          <Route path="/ads" element={<Ads />} />
+          <Route path="/ads/:id" element={<AdDetail />} />
           <Route path="/orders" element={<AllOrders />} />
           <Route path="/orders/:id" element={<OrderDetail />} />
           <Route path="/vacancies" element={<Vacancies />} />
@@ -136,6 +142,30 @@ function PublicSite() {
             element={
               <ProtectedRoute>
                 <MyTasks />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ads/new"
+            element={
+              <ProtectedRoute>
+                <NewAd />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ads/:id/edit"
+            element={
+              <ProtectedRoute>
+                <NewAd />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-ads"
+            element={
+              <ProtectedRoute>
+                <MyAds />
               </ProtectedRoute>
             }
           />

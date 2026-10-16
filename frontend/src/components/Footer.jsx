@@ -25,6 +25,9 @@ export default function Footer() {
               <Link to="/orders">Все заказы</Link>
             </li>
             <li>
+              <Link to="/ads">Объявления: сдам, продам</Link>
+            </li>
+            <li>
               <Link to="/register">Разместить заказ</Link>
             </li>
             <li>

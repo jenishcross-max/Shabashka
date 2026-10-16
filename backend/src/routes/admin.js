@@ -7,6 +7,7 @@ const categoriesRepo = require('../categoriesRepo');
 const asyncHandler = require('../asyncHandler');
 const moderation = require('../moderation');
 const tasksRepo = require('../tasksRepo');
+const adsRepo = require('../adsRepo');
 
 function generateTempPassword() {
   return crypto.randomBytes(9).toString('base64').replace(/[+/=]/g, '');
@@ -463,19 +464,20 @@ router.get(
     const { rows } = await db.query(
       `SELECT reports.id, reports.reason, reports.resolved, reports.created_at,
               reports.listing_type, reports.listing_id, reports.snapshot,
-              COALESCE(orders.title, vacancies.title, board_posts.text, tasks.title, task_offers.comment)
+              COALESCE(orders.title, vacancies.title, board_posts.text, tasks.title, task_offers.comment, ads.title)
                 AS listing_title,
-              COALESCE(orders.status, vacancies.status, tasks.status, task_offers.status) AS listing_status,
+              COALESCE(orders.status, vacancies.status, tasks.status, task_offers.status, ads.status) AS listing_status,
               board_posts.hidden AS board_hidden,
               task_offers.task_id AS offer_task_id,
               (orders.id IS NOT NULL OR vacancies.id IS NOT NULL OR board_posts.id IS NOT NULL
-                OR tasks.id IS NOT NULL OR task_offers.id IS NOT NULL) AS listing_alive
+                OR tasks.id IS NOT NULL OR task_offers.id IS NOT NULL OR ads.id IS NOT NULL) AS listing_alive
        FROM reports
        LEFT JOIN orders ON reports.listing_type = 'order' AND orders.id = reports.listing_id
        LEFT JOIN vacancies ON reports.listing_type = 'vacancy' AND vacancies.id = reports.listing_id
        LEFT JOIN board_posts ON reports.listing_type = 'board' AND board_posts.id = reports.listing_id
        LEFT JOIN tasks ON reports.listing_type = 'task' AND tasks.id = reports.listing_id
        LEFT JOIN task_offers ON reports.listing_type = 'offer' AND task_offers.id = reports.listing_id
+       LEFT JOIN ads ON reports.listing_type = 'ad' AND ads.id = reports.listing_id
        ${onlyOpen ? 'WHERE reports.resolved = 0' : ''}
        ORDER BY reports.created_at DESC`
     );
@@ -503,10 +505,13 @@ router.patch(
 
     if (action === 'hide') {
       // Заказ, вакансию и задачу биржи закрываем, записку на доске скрываем,
-      // отклик снимаем статусом: удалять нельзя — на объявление есть жалоба, и
-      // оно само себе доказательство.
+      // отклик и объявление снимаем статусом: удалять нельзя — на объявление
+      // есть жалоба, и оно само себе доказательство. Снятое объявление автор
+      // открыть снова не может, в отличие от закрытого им самим.
       if (type === 'board') {
         await db.query('UPDATE board_posts SET hidden = TRUE WHERE id = $1', [listingId]);
+      } else if (type === 'ad') {
+        await adsRepo.removeByModerator(listingId);
       } else if (type === 'task') {
         await tasksRepo.closeTask(listingId);
       } else if (type === 'offer') {

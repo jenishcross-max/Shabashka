@@ -64,6 +64,25 @@ const offerLimiter = rateLimit({
   message: { error: 'Слишком много откликов за час. Попробуйте позже.' },
 });
 
+// Объявления — как задачи биржи: десяти в час хватит любому честному автору.
+// Фото считаем отдельно и щедрее: на объявление их до шести, а неудачный
+// снимок перезаливают.
+const adLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Слишком много объявлений за час. Попробуйте позже.' },
+});
+
+const photoLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Слишком много фото за час. Попробуйте позже.' },
+});
+
 module.exports = {
   authLimiter,
   reportLimiter,
@@ -72,4 +91,6 @@ module.exports = {
   boardLimiter,
   taskLimiter,
   offerLimiter,
+  adLimiter,
+  photoLimiter,
 };

@@ -12,6 +12,7 @@ const REPORT_TYPE_LABELS = {
   board: 'Доска',
   task: 'Задача биржи',
   offer: 'Отклик на бирже',
+  ad: 'Объявление',
 };
 
 function reportTitle(report) {

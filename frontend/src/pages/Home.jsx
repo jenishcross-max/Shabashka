@@ -4,6 +4,7 @@ import { api } from '../api';
 import OrderCard from '../components/OrderCard';
 import VacancyCard from '../components/VacancyCard';
 import TaskCard from '../components/TaskCard';
+import AdCard from '../components/AdCard';
 import FormatIcon from '../components/FormatIcon';
 import CityAutocomplete from '../components/CityAutocomplete';
 import { useFavorites } from '../context/FavoritesContext';
@@ -20,6 +21,7 @@ export default function Home() {
   const [orders, setOrders] = useState([]);
   const [vacancies, setVacancies] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [ads, setAds] = useState([]);
   const [cityCounts, setCityCounts] = useState([]);
   const [instagramFollowers, setInstagramFollowers] = useState(null);
   const [qInput, setQInput] = useState('');
@@ -38,6 +40,7 @@ export default function Home() {
         setOrders(data.orders);
         setVacancies(data.vacancies);
         setTasks(data.tasks || []);
+        setAds(data.ads || []);
         setCities(data.cities);
       })
       .catch((e) => setError(e.message))
@@ -141,6 +144,22 @@ export default function Home() {
           </div>
         )}
       </section>
+
+      {/* Объявления «сдам/продам» — под биржей и только когда они есть: пустой
+          блок с одной кнопкой на главной выглядел бы заброшенным разделом. */}
+      {ads.length > 0 && (
+        <section className="section">
+          <div className="section-head">
+            <h2>Свежие объявления</h2>
+            <Link to="/ads">Все объявления →</Link>
+          </div>
+          <div className="ad-grid">
+            {ads.map((ad) => (
+              <AdCard key={ad.id} ad={ad} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Ни плитки категорий, ни полосы со счётчиками: до объявлений человек
           доходил через два экрана выбора, а пришёл он смотреть объявления.

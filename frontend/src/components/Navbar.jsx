@@ -45,7 +45,7 @@ function OrdersMenu() {
             className={isOrdersSection && !workFormat ? 'active' : ''}
             onClick={() => setOpen(false)}
           >
-            Все объявления
+            Все заказы
           </Link>
           <Link
             to="/orders?workFormat=offline"
@@ -113,6 +113,9 @@ export default function Navbar() {
         <NavLink to="/vacancies" className={navClass}>
           Вакансии
         </NavLink>
+        <NavLink to="/ads" className={navClass}>
+          Объявления
+        </NavLink>
         <NavLink to="/board" className={navClass}>
           Доска <span className="nav-board-badge">№24</span>
         </NavLink>
@@ -126,7 +129,7 @@ export default function Navbar() {
               {unread > 0 && <span className="nav-unread-badge">{unread}</span>}
             </NavLink>
             <NavLink to="/my-orders" className={navClass}>
-              Мои объявления
+              Мои публикации
             </NavLink>
             {user.role === 'admin' && (
               <NavLink to="/admin" className={navClass}>

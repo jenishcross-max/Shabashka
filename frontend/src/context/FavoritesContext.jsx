@@ -34,9 +34,10 @@ export function FavoritesProvider({ children }) {
 
   const orderIds = keys.filter((k) => k.startsWith('order:')).map((k) => Number(k.split(':')[1]));
   const vacancyIds = keys.filter((k) => k.startsWith('vacancy:')).map((k) => Number(k.split(':')[1]));
+  const adIds = keys.filter((k) => k.startsWith('ad:')).map((k) => Number(k.split(':')[1]));
 
   return (
-    <FavoritesContext.Provider value={{ keys, toggle, isFavorite, orderIds, vacancyIds }}>
+    <FavoritesContext.Provider value={{ keys, toggle, isFavorite, orderIds, vacancyIds, adIds }}>
       {children}
     </FavoritesContext.Provider>
   );

@@ -14,10 +14,11 @@ function messageTime(iso) {
   });
 }
 
-const LISTING_PATHS = { order: 'orders', vacancy: 'vacancies', task: 'tasks' };
+const LISTING_PATHS = { order: 'orders', vacancy: 'vacancies', task: 'tasks', ad: 'ads' };
 
 // Кем приходится собеседник — зависит от типа объявления и того, кто я в этой переписке
 function otherPersonLabel(listingType, myRole) {
+  if (listingType === 'ad') return myRole === 'responder' ? 'Автор объявления' : 'Собеседник';
   if (listingType === 'order' || listingType === 'task') return myRole === 'responder' ? 'Заказчик' : 'Исполнитель';
   return myRole === 'responder' ? 'Работодатель' : 'Соискатель';
 }
