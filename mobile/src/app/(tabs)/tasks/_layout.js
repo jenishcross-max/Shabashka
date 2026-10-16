@@ -11,7 +11,9 @@ export default function TasksLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: 'Биржа услуг' }} />
-      <Stack.Screen name="[id]" options={{ title: 'Задача' }} />
+      <Stack.Screen name="[id]/index" options={{ title: 'Задача' }} />
+      <Stack.Screen name="[id]/offer" options={{ title: 'Отклик' }} />
+      <Stack.Screen name="[id]/edit" options={{ title: 'Изменить задачу' }} />
       <Stack.Screen name="new" options={{ title: 'Новая задача' }} />
     </Stack>
   );

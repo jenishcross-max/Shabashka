@@ -10,6 +10,7 @@ export function plural(n, one, few, many) {
 }
 
 export const offerWord = (n) => plural(n, 'отклик', 'отклика', 'откликов');
+export const viewWord = (n) => plural(n, 'просмотр', 'просмотра', 'просмотров');
 
 // Как frontend/src/formatDate.js, но «5 дней назад», а не «5 дня назад».
 // now — параметром, чтобы тест не зависел от сегодняшней даты.

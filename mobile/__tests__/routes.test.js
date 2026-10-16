@@ -1,6 +1,7 @@
 import { renderRouter, screen, fireEvent, waitFor } from 'expo-router/testing-library';
 import * as SecureStore from 'expo-secure-store';
 import path from 'path';
+import { serve } from '../test-utils';
 
 // renderRouter считает путь от папки запуска Jest, а не от теста — даём абсолютный.
 const APP_DIR = path.join(__dirname, '../src/app');
@@ -16,7 +17,6 @@ async function open(url) {
 
 // Настоящие маршруты из src/app: проверяем, что экраны связаны с роутером так,
 // как задумано, — сами экраны проверяются в своих тестах.
-const reply = (body) => Promise.resolve({ ok: true, status: 200, json: async () => body });
 const task = {
   id: 1,
   title: 'Покрасить забор',
@@ -31,11 +31,15 @@ const task = {
 
 beforeEach(() => {
   SecureStore.__reset();
-  global.fetch = jest.fn((url) =>
-    url.includes('/orders/categories')
-      ? reply({ categories: ['Ремонт'] })
-      : reply({ tasks: [task], total: 1, page: 1, pages: 1 })
-  );
+  global.fetch = jest.fn();
+  serve({
+    'GET /orders/categories': { categories: ['Ремонт'] },
+    'GET /tasks': { tasks: [task], total: 1, page: 1, pages: 1 },
+    'GET /tasks/1': { task: { ...task, user_id: 3, owner_name: 'Айгуль', status: 'open', views: 0 }, my_offer: null },
+    'GET /tasks/1/offers': { offers: [] },
+    'GET /tasks/mine': { tasks: [{ ...task, id: 1, user_id: 3, status: 'open', new_offers: 0 }] },
+    'GET /tasks/my-offers': { offers: [] },
+  });
 });
 
 // renderRouter включает фейковые таймеры — возвращаем настоящие.
@@ -64,4 +68,38 @@ test('вошедший: «Разместить задачу» ведёт на ф
   const { app } = await open('/tasks');
   await fireEvent.press(await screen.findByRole('button', { name: '+ Разместить задачу' }));
   await waitFor(() => expect(app).toHavePathname('/tasks/new'));
+  expect(await screen.findByRole('button', { name: 'Опубликовать задачу' })).toBeTruthy();
+});
+
+test('страница задачи: гостя зовёт войти, чтобы откликнуться', async () => {
+  const { app } = await open('/tasks/1');
+  expect(await screen.findByText('Забор 20 метров')).toBeTruthy();
+  await fireEvent.press(screen.getByRole('button', { name: 'Войдите, чтобы откликнуться' }));
+  await waitFor(() => expect(app).toHavePathname('/login'));
+});
+
+test('исполнитель: «Откликнуться» открывает форму отклика', async () => {
+  await SecureStore.setItemAsync('auth', JSON.stringify({ token: 't', user: { id: 7, name: 'Айбек' } }));
+  const { app } = await open('/tasks/1');
+  await fireEvent.press(await screen.findByRole('button', { name: 'Откликнуться' }));
+  await waitFor(() => expect(app).toHavePathname('/tasks/1/offer'));
+  expect(await screen.findByRole('button', { name: 'Отправить отклик' })).toBeTruthy();
+});
+
+test('заказчик: «Изменить задачу» открывает форму с задачей', async () => {
+  await SecureStore.setItemAsync('auth', JSON.stringify({ token: 't', user: { id: 3, name: 'Айгуль' } }));
+  const { app } = await open('/tasks/1');
+  await fireEvent.press(await screen.findByRole('button', { name: 'Изменить задачу' }));
+  await waitFor(() => expect(app).toHavePathname('/tasks/1/edit'));
+  expect(await screen.findByDisplayValue('Покрасить забор')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Сохранить' })).toBeTruthy();
+});
+
+test('«Моё»: свои задачи открываются на своих страницах', async () => {
+  await SecureStore.setItemAsync('auth', JSON.stringify({ token: 't', user: { id: 3, name: 'Айгуль' } }));
+  const { app } = await open('/tasks');
+  await screen.findByText('Покрасить забор');
+  await fireEvent.press(screen.getByRole('tab', { name: 'Моё' }));
+  await fireEvent.press(await screen.findByText('Открыта'));
+  await waitFor(() => expect(app).toHavePathname('/tasks/1'));
 });

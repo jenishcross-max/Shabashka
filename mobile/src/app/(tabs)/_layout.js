@@ -21,7 +21,10 @@ export default function TabsLayout() {
       <Tabs.Screen name="tasks" options={{ title: 'Биржа', headerShown: false, tabBarIcon: icon('hammer-outline') }} />
       <Tabs.Screen name="orders" options={{ title: 'Заказы', tabBarIcon: icon('list-outline') }} />
       <Tabs.Screen name="vacancies" options={{ title: 'Вакансии', tabBarIcon: icon('briefcase-outline') }} />
-      <Tabs.Screen name="messages" options={{ title: 'Сообщения', tabBarIcon: icon('chatbubbles-outline') }} />
+      <Tabs.Screen
+        name="messages"
+        options={{ title: 'Сообщения', headerShown: false, tabBarIcon: icon('chatbubbles-outline') }}
+      />
       <Tabs.Screen name="profile" options={{ title: 'Профиль', tabBarIcon: icon('person-outline') }} />
     </Tabs>
   );

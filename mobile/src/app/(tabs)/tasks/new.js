@@ -1,6 +1,8 @@
-import ComingSoon from '../../../components/ComingSoon';
+import { useRouter } from 'expo-router';
+import TaskForm from '../../../screens/TaskForm';
 
-// Форма задачи — Task 12 плана.
 export default function NewTaskRoute() {
-  return <ComingSoon>Разместить задачу из приложения можно будет в следующей сборке. Пока — на сайте шабашка.com.</ComingSoon>;
+  const router = useRouter();
+  // replace: после публикации «назад» ведёт в ленту, а не в пустую форму.
+  return <TaskForm onDone={(id) => router.replace(`/tasks/${id}`)} onLogin={() => router.push('/login')} />;
 }

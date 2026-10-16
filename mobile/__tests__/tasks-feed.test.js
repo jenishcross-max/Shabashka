@@ -89,6 +89,9 @@ test('фильтр по категории', async () => {
   await fireEvent.press(await screen.findByText('Уборка'));
   await waitFor(() => expect(taskCalls().some((u) => u.searchParams.get('category') === 'Уборка')).toBe(true));
   expect(screen.getByRole('button', { name: 'Категория: Уборка' })).toBeTruthy();
+  // В фильтре — все категории, без формата.
+  const categoryCalls = fetch.mock.calls.map(([u]) => u).filter((u) => u.includes('/orders/categories'));
+  expect(categoryCalls.every((u) => u.endsWith('/orders/categories'))).toBe(true);
 });
 
 test('прокрутка до конца подгружает следующую страницу', async () => {

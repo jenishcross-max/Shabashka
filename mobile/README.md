@@ -27,12 +27,16 @@ npm test
 
 Jest (`jest-expo`) и React Native Testing Library 14 — у неё `render`, `fireEvent`, `act`
 асинхронные, их нужно `await`. Подменяются только сеть (`global.fetch`) и SecureStore
-(`jest.setup.js`).
+(`jest.setup.js`), а системный диалог `Alert` — шпионом. Общее для тестов экранов — в
+`test-utils.js`: `serve` (ответы сервера по маршрутам), `renderScreen` (экран с провайдерами
+приложения и, если нужно, вошедшим пользователем), `answerAlerts`.
 
 ## Устройство
 
 - `src/app/` — только маршруты Expo Router: связывают экраны с роутером.
 - `src/screens/` — экраны; переходы получают колбэками, поэтому тестируются без роутера.
+- `src/hooks/` — общие запросы экранов: `useTask` (задача биржи), `useTaskAction` (действие с
+  задачей и что после него перечитать).
 - `src/api/` — `client.js` (адрес, токен, ошибки) и функции по разделам API.
 - `src/auth/AuthContext.js` — вход, регистрация, выход; токен в SecureStore.
 - `src/exchange.js` — подписи биржи, копия `frontend/src/exchange.js` (держать в лад).
