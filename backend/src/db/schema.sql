@@ -473,3 +473,29 @@ CREATE INDEX IF NOT EXISTS idx_task_offers_user ON task_offers(user_id);
 -- Второго выбранного исполнителя не будет даже при двух одновременных «Выбрать».
 CREATE UNIQUE INDEX IF NOT EXISTS idx_task_offers_accepted
   ON task_offers(task_id) WHERE status = 'accepted';
+
+-- Объявления: сдам, сниму, продам, куплю, отдам даром. Отдельная таблица, а не
+-- orders и не board_posts: те читают бот, автопостинг и рубрики, а объявления
+-- пока живут только на сайте. photos — пути в хранилище Supabase, первый — обложка.
+CREATE TABLE IF NOT EXISTS ads (
+  id             SERIAL PRIMARY KEY,
+  user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind           TEXT NOT NULL,              -- rent_out | rent | sell | buy | free
+  category       TEXT NOT NULL,              -- housing | rest | transport | tech | home | things | animals | other
+  title          TEXT NOT NULL,
+  description    TEXT NOT NULL,
+  price          INTEGER,                    -- сомы; NULL — «договорная» или «даром»
+  price_unit     TEXT,                       -- total | day | month | hour; NULL, если цены нет
+  city           TEXT NOT NULL,
+  address        TEXT,
+  whatsapp_phone TEXT,
+  photos         JSONB NOT NULL DEFAULT '[]',
+  status         TEXT NOT NULL DEFAULT 'open', -- open | closed (автор) | removed (модератор)
+  views          INTEGER NOT NULL DEFAULT 0,
+  bumped_at      TIMESTAMPTZ,                -- «поднять» раз в сутки (см. bump.js)
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ads_feed ON ads(status, (COALESCE(bumped_at, created_at)) DESC);
+CREATE INDEX IF NOT EXISTS idx_ads_user ON ads(user_id);

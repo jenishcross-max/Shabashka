@@ -6,6 +6,8 @@ const { cached } = require('../cache');
 const { ORDER_FIELDS, VACANCY_FIELDS } = require('../sqlFields');
 const instagram = require('../social/instagram');
 const tasksRepo = require('../tasksRepo');
+const adsRepo = require('../adsRepo');
+const { withPhotoUrls } = require('../adsView');
 
 const router = express.Router();
 
@@ -25,7 +27,7 @@ router.get(
     // Ни счётчиков по категориям, ни общей статистики: главная больше их не
     // показывает, а это были два полных прохода по orders и users на каждое
     // истечение кэша.
-    const [cityCounts, orders, vacancies, cities, instagramFollowers, tasks] = await Promise.all([
+    const [cityCounts, orders, vacancies, cities, instagramFollowers, tasks, ads] = await Promise.all([
       cached('home:city-counts', REFERENCE_TTL, async () => {
         const { rows } = await db.query(
           "SELECT city, COUNT(*)::int AS count FROM orders WHERE status = 'open' GROUP BY city ORDER BY count DESC LIMIT 8"
@@ -71,9 +73,12 @@ router.get(
 
       // Четыре свежие задачи биржи — для блока наверху главной.
       cached('home:tasks', FEED_TTL, async () => (await tasksRepo.list({ limit: 4 })).tasks),
+
+      // Четыре свежих объявления «сдам/продам» — для блока под биржей.
+      cached('home:ads', FEED_TTL, async () => (await adsRepo.list({ limit: 4 })).ads.map(withPhotoUrls)),
     ]);
 
-    res.json({ cityCounts, orders, vacancies, cities, instagramFollowers, tasks });
+    res.json({ cityCounts, orders, vacancies, cities, instagramFollowers, tasks, ads });
   })
 );
 

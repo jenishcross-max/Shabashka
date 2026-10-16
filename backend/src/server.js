@@ -13,6 +13,7 @@ const boardRoutes = require('./routes/board');
 const homeRoutes = require('./routes/home');
 const conversationRoutes = require('./routes/conversations');
 const taskRoutes = require('./routes/tasks');
+const adRoutes = require('./routes/ads');
 const adminRoutes = require('./routes/admin');
 const dmRoutes = require('./routes/dm');
 const telegram = require('./telegram');
@@ -64,6 +65,7 @@ app.use('/api/vacancies', vacancyRoutes);
 app.use('/api/board', boardRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/tasks', taskRoutes);
+app.use('/api/ads', adRoutes);
 app.use('/api/admin', adminRoutes);
 app.use(metaRoutes);
 

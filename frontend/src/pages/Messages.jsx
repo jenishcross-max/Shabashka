@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { relativeDate } from '../formatDate';
 import { SkeletonConversationRow } from '../components/Skeleton';
 
-const LISTING_LABELS = { order: 'Заказ: ', vacancy: 'Вакансия: ', task: 'Задача: ' };
+const LISTING_LABELS = { order: 'Заказ: ', vacancy: 'Вакансия: ', task: 'Задача: ', ad: 'Объявление: ' };
 
 export default function Messages() {
   const { token } = useAuth();

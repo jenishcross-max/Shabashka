@@ -4,12 +4,14 @@ import { api } from '../api';
 import { useFavorites } from '../context/FavoritesContext';
 import OrderCard from '../components/OrderCard';
 import VacancyCard from '../components/VacancyCard';
+import AdCard from '../components/AdCard';
 import { SkeletonOrderCard } from '../components/Skeleton';
 
 export default function Favorites() {
-  const { orderIds, vacancyIds } = useFavorites();
+  const { orderIds, vacancyIds, adIds } = useFavorites();
   const [orders, setOrders] = useState([]);
   const [vacancies, setVacancies] = useState([]);
+  const [ads, setAds] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -17,16 +19,18 @@ export default function Favorites() {
     Promise.all([
       orderIds.length ? api.ordersBatch(orderIds) : Promise.resolve({ orders: [] }),
       vacancyIds.length ? api.vacanciesBatch(vacancyIds) : Promise.resolve({ vacancies: [] }),
+      adIds.length ? api.adsBatch(adIds) : Promise.resolve({ ads: [] }),
     ])
-      .then(([o, v]) => {
+      .then(([o, v, a]) => {
         setOrders(o.orders);
         setVacancies(v.vacancies);
+        setAds(a.ads);
       })
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderIds.length, vacancyIds.length]);
+  }, [orderIds.length, vacancyIds.length, adIds.length]);
 
-  const isEmpty = orderIds.length === 0 && vacancyIds.length === 0;
+  const isEmpty = orderIds.length === 0 && vacancyIds.length === 0 && adIds.length === 0;
 
   return (
     <div>
@@ -44,8 +48,9 @@ export default function Favorites() {
       )}
       {!loading && isEmpty && (
         <p className="status-msg">
-          Пока нет сохранённых заказов и вакансий. Нажмите ☆ на карточке, чтобы добавить сюда.{' '}
-          <Link to="/orders">Смотреть заказы</Link> · <Link to="/vacancies">Смотреть вакансии</Link>
+          Пока ничего не сохранено. Нажмите ☆ на карточке, чтобы добавить сюда.{' '}
+          <Link to="/orders">Смотреть заказы</Link> · <Link to="/vacancies">Смотреть вакансии</Link> ·{' '}
+          <Link to="/ads">Смотреть объявления</Link>
         </p>
       )}
 
@@ -70,6 +75,19 @@ export default function Favorites() {
           <div className="order-grid">
             {vacancies.map((v) => (
               <VacancyCard key={v.id} vacancy={v} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {ads.length > 0 && (
+        <section className="section">
+          <div className="section-head">
+            <h2>Объявления</h2>
+          </div>
+          <div className="ad-grid">
+            {ads.map((ad) => (
+              <AdCard key={ad.id} ad={ad} />
             ))}
           </div>
         </section>

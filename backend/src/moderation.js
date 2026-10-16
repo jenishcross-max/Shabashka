@@ -14,6 +14,7 @@ const SOURCES = {
   board: { table: 'board_posts', label: 'Доска' },
   task: { table: 'tasks', label: 'Задача биржи' },
   offer: { table: 'task_offers', label: 'Отклик на бирже' },
+  ad: { table: 'ads', label: 'Объявление' },
 };
 
 const LISTING_TYPES = Object.keys(SOURCES);

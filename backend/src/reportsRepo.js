@@ -9,7 +9,7 @@ const MAX_REASON = 1000;
 
 const SITE_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
 // У отклика своей страницы нет — ведём на задачу, где его видит заказчик.
-const PATHS = { order: 'orders', vacancy: 'vacancies', task: 'tasks', offer: 'tasks' };
+const PATHS = { order: 'orders', vacancy: 'vacancies', task: 'tasks', offer: 'tasks', ad: 'ads' };
 
 function listingLink(listingType, listingId) {
   if (!SITE_URL) return '';

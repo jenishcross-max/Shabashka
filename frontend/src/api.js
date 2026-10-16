@@ -42,6 +42,19 @@ async function request(path, { method = 'GET', body, token } = {}) {
   return data;
 }
 
+// Фото объявления: бэкенд выдаёт одноразовую ссылку, а сам файл идёт прямо в
+// Supabase Storage, мимо Render (см. backend/src/photoStorage.js). FormData с
+// пустым именем поля — так грузит и официальный клиент Supabase.
+export async function uploadAdPhoto(blob, token) {
+  const slot = await request('/ads/photos', { method: 'POST', token });
+  const form = new FormData();
+  form.append('cacheControl', '31536000');
+  form.append('', blob, 'photo.jpg');
+  const res = await fetch(slot.upload_url, { method: 'PUT', headers: { 'x-upsert': 'false' }, body: form });
+  if (!res.ok) throw new Error('Фото не загрузилось — проверьте связь и попробуйте ещё раз');
+  return { path: slot.path, url: slot.url };
+}
+
 function toQueryString(params) {
   const normalized = Object.entries(params)
     .map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : v])
@@ -105,6 +118,8 @@ export const api = {
     request('/conversations', { method: 'POST', body: { vacancyId, message }, token }),
   startOrderConversation: (orderId, message, token) =>
     request('/conversations', { method: 'POST', body: { orderId, message }, token }),
+  startAdConversation: (adId, message, token) =>
+    request('/conversations', { method: 'POST', body: { adId, message }, token }),
   sendMessage: (id, body, token) =>
     request(`/conversations/${id}/messages`, { method: 'POST', body: { body }, token }),
 
@@ -124,6 +139,17 @@ export const api = {
   reportTask: (id, reason) => request(`/tasks/${id}/report`, { method: 'POST', body: { reason } }),
   reportOffer: (id, offerId, reason, token) =>
     request(`/tasks/${id}/offers/${offerId}/report`, { method: 'POST', body: { reason }, token }),
+
+  // Объявления: сдам, сниму, продам, куплю, отдам даром (см. backend/src/routes/ads.js)
+  ads: (params = {}) => request(`/ads${toQueryString(params)}`),
+  ad: (id, token) => request(`/ads/${id}`, { token }),
+  adsBatch: (ids) => request(`/ads/batch?ids=${ids.join(',')}`),
+  myAds: (token) => request('/ads/mine', { token }),
+  createAd: (payload, token) => request('/ads', { method: 'POST', body: payload, token }),
+  updateAd: (id, payload, token) => request(`/ads/${id}`, { method: 'PATCH', body: payload, token }),
+  adStep: (id, step, token) => request(`/ads/${id}/${step}`, { method: 'POST', token }),
+  deleteAd: (id, token) => request(`/ads/${id}`, { method: 'DELETE', token }),
+  reportAd: (id, reason) => request(`/ads/${id}/report`, { method: 'POST', body: { reason } }),
 
   adminStats: (token) => request('/admin/stats', { token }),
   adminUsers: (params = {}, token) => request(`/admin/users${toQueryString(params)}`, { token }),

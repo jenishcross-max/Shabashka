@@ -9,7 +9,20 @@ const router = express.Router();
 router.use(requireAuth);
 
 const MAX_BODY = 2000;
-const LISTING_TABLES = { order: 'orders', vacancy: 'vacancies' };
+
+// С чего можно начать переписку: поле запроса, таблица и что ответить, если
+// объявления нет или оно закрыто. Задачи биржи сюда не входят — там переписку
+// открывает выбор исполнителя (см. tasksRepo.accept).
+const STARTERS = {
+  order: { field: 'orderId', table: 'orders', notFound: 'Заказ не найден', closed: 'Заказ закрыт, написать уже нельзя' },
+  vacancy: {
+    field: 'vacancyId',
+    table: 'vacancies',
+    notFound: 'Вакансия не найдена',
+    closed: 'Вакансия закрыта, откликнуться уже нельзя',
+  },
+  ad: { field: 'adId', table: 'ads', notFound: 'Объявление не найдено', closed: 'Объявление закрыто, написать уже нельзя' },
+};
 
 function toId(raw) {
   const n = parseInt(raw, 10);
@@ -25,13 +38,13 @@ function validateBody(raw) {
 
 // Ветка вместе с данными объявления и именем собеседника — с проверкой,
 // что текущий пользователь действительно её участник. listing_type определяет,
-// из какой таблицы (orders/vacancies/tasks) подтягивать заголовок и статус —
+// из какой таблицы (orders/vacancies/tasks/ads) подтягивать заголовок и статус —
 // совпадёт ровно одна из них, остальные дадут NULL.
 async function loadParticipantConversation(id, userId) {
   const { rows } = await db.query(
     `SELECT c.id, c.listing_type, c.listing_id, c.seeker_id, c.employer_id, c.created_at,
-            COALESCE(o.title, v.title, t.title) AS listing_title,
-            COALESCE(o.status, v.status, t.status) AS listing_status,
+            COALESCE(o.title, v.title, t.title, a.title) AS listing_title,
+            COALESCE(o.status, v.status, t.status, a.status) AS listing_status,
             ${CHAT_CLOSED} AS chat_closed,
             seeker.name AS seeker_name, seeker.phone AS seeker_phone,
             employer.name AS employer_name, employer.phone AS employer_phone
@@ -39,6 +52,7 @@ async function loadParticipantConversation(id, userId) {
      LEFT JOIN orders o ON c.listing_type = 'order' AND o.id = c.listing_id
      LEFT JOIN vacancies v ON c.listing_type = 'vacancy' AND v.id = c.listing_id
      LEFT JOIN tasks t ON c.listing_type = 'task' AND t.id = c.listing_id
+     LEFT JOIN ads a ON c.listing_type = 'ad' AND a.id = c.listing_id
      LEFT JOIN task_offers tof
        ON c.listing_type = 'task' AND tof.task_id = c.listing_id AND tof.user_id = c.seeker_id
      JOIN users seeker ON seeker.id = c.seeker_id
@@ -75,36 +89,33 @@ function shapeConversation(c, userId) {
   };
 }
 
-// Начать переписку по заказу или вакансии (или получить уже существующую) и сразу отправить сообщение
+// Начать переписку по заказу, вакансии или объявлению (или получить уже
+// существующую) и сразу отправить сообщение
 router.post(
   '/',
   messageLimiter,
   asyncHandler(async (req, res) => {
-    const orderId = toId(req.body?.orderId);
-    const vacancyId = toId(req.body?.vacancyId);
-    if ((orderId === null) === (vacancyId === null)) {
-      return res.status(400).json({ error: 'Укажите ровно одно объявление — заказ или вакансию' });
+    const given = Object.entries(STARTERS)
+      .map(([type, s]) => [type, toId(req.body?.[s.field])])
+      .filter(([, id]) => id !== null);
+    if (given.length !== 1) {
+      return res.status(400).json({ error: 'Укажите ровно одно: заказ, вакансию или объявление' });
     }
-    const listingType = orderId !== null ? 'order' : 'vacancy';
-    const listingId = orderId !== null ? orderId : vacancyId;
+    const [[listingType, listingId]] = given;
+    const starter = STARTERS[listingType];
 
     const { body, error } = validateBody(req.body?.message);
     if (error) return res.status(400).json({ error });
 
-    const { rows: listingRows } = await db.query(
-      `SELECT id, user_id, status FROM ${LISTING_TABLES[listingType]} WHERE id = $1`,
-      [listingId]
-    );
+    const { rows: listingRows } = await db.query(`SELECT id, user_id, status FROM ${starter.table} WHERE id = $1`, [
+      listingId,
+    ]);
     const listing = listingRows[0];
-    const notFoundMsg = listingType === 'order' ? 'Заказ не найден' : 'Вакансия не найдена';
-    if (!listing) return res.status(404).json({ error: notFoundMsg });
+    if (!listing) return res.status(404).json({ error: starter.notFound });
     if (listing.user_id === req.user.id) {
       return res.status(400).json({ error: 'Это ваше объявление — написать самому себе нельзя' });
     }
-    if (listing.status !== 'open') {
-      const closedMsg = listingType === 'order' ? 'Заказ закрыт, написать уже нельзя' : 'Вакансия закрыта, откликнуться уже нельзя';
-      return res.status(400).json({ error: closedMsg });
-    }
+    if (listing.status !== 'open') return res.status(400).json({ error: starter.closed });
 
     // ON CONFLICT DO UPDATE (а не DO NOTHING) — чтобы RETURNING отдал строку
     // и при повторном обращении, когда ветка уже существует.
@@ -156,8 +167,8 @@ router.get(
   asyncHandler(async (req, res) => {
     const { rows } = await db.query(
       `SELECT c.id, c.listing_type, c.listing_id, c.seeker_id, c.employer_id, c.last_message_at,
-              COALESCE(o.title, v.title, t.title) AS listing_title,
-              COALESCE(o.status, v.status, t.status) AS listing_status,
+              COALESCE(o.title, v.title, t.title, a.title) AS listing_title,
+              COALESCE(o.status, v.status, t.status, a.status) AS listing_status,
               ${CHAT_CLOSED} AS chat_closed,
               seeker.name AS seeker_name, employer.name AS employer_name,
               (SELECT m.body FROM messages m WHERE m.conversation_id = c.id
@@ -168,6 +179,7 @@ router.get(
        LEFT JOIN orders o ON c.listing_type = 'order' AND o.id = c.listing_id
        LEFT JOIN vacancies v ON c.listing_type = 'vacancy' AND v.id = c.listing_id
        LEFT JOIN tasks t ON c.listing_type = 'task' AND t.id = c.listing_id
+       LEFT JOIN ads a ON c.listing_type = 'ad' AND a.id = c.listing_id
        LEFT JOIN task_offers tof
          ON c.listing_type = 'task' AND tof.task_id = c.listing_id AND tof.user_id = c.seeker_id
        JOIN users seeker ON seeker.id = c.seeker_id

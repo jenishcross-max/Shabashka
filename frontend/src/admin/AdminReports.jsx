@@ -4,11 +4,11 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import { SkeletonComplaint } from '../components/Skeleton';
 
-const TYPE_LABELS = { order: 'Заказ', vacancy: 'Вакансия', board: 'Доска', task: 'Задача биржи', offer: 'Отклик на бирже' };
-const TYPE_PATHS = { order: 'orders', vacancy: 'vacancies', task: 'tasks' };
+const TYPE_LABELS = { order: 'Заказ', vacancy: 'Вакансия', board: 'Доска', task: 'Задача биржи', offer: 'Отклик на бирже', ad: 'Объявление' };
+const TYPE_PATHS = { order: 'orders', vacancy: 'vacancies', task: 'tasks', ad: 'ads' };
 
 // Что именно делает «скрыть» — зависит от типа: заказ, вакансию и задачу биржи
-// закрываем, записку на доске скрываем, отклик снимаем. Само объявление при этом
+// закрываем, записку на доске скрываем, отклик и объявление снимаем. Само объявление при этом
 // не удаляется: на него есть жалоба, и оно само себе доказательство.
 const HIDE_LABELS = {
   order: 'Закрыть заказ',
@@ -16,6 +16,7 @@ const HIDE_LABELS = {
   board: 'Скрыть с доски',
   task: 'Отменить задачу',
   offer: 'Снять отклик',
+  ad: 'Снять объявление',
 };
 
 // Статусы, после которых объявления на сайте уже нет.

@@ -3098,3 +3098,379 @@ body.board-theme .navbar {
   background: var(--red-tint);
   color: var(--red-dark);
 }
+
+/* ---------- объявления: сдам, сниму, продам, куплю, отдам даром ---------- */
+.ad-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+@media (max-width: 1000px) {
+  .ad-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+@media (max-width: 720px) {
+  .ad-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+}
+.ad-card {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  color: var(--text);
+  text-decoration: none;
+  min-width: 0;
+}
+.ad-card:hover {
+  border-color: var(--red);
+  text-decoration: none;
+}
+.ad-card.skeleton-ad {
+  aspect-ratio: 3 / 4;
+  background: linear-gradient(90deg, #f6efee 25%, #fbf6f5 50%, #f6efee 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+.ad-card-cover {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: #f6efee;
+}
+.ad-card-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ad-card-cover.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+.ad-card-kind,
+.ad-card-count {
+  position: absolute;
+  left: 10px;
+  padding: 3px 9px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.ad-card-kind {
+  top: 10px;
+  background: var(--red);
+  color: #fff;
+}
+.ad-card-count {
+  bottom: 10px;
+  background: rgba(36, 26, 25, 0.65);
+  color: #fff;
+}
+.ad-card .ad-card-fav {
+  top: 8px;
+  right: 8px;
+}
+.ad-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px 14px;
+}
+.ad-card-price {
+  font-weight: 700;
+  font-size: 17px;
+}
+.ad-card-body h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ad-card-meta {
+  color: var(--muted);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Вид — кнопками: «сдам» и «сниму» ищут совсем разные люди, и это первое,
+   что они выбирают. */
+.ads-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.ads-kinds button {
+  border: 1px solid #e3d6d4;
+  background: #fff;
+  color: var(--text);
+  border-radius: 999px;
+  padding: 7px 15px;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ads-kinds button.active {
+  background: var(--red-tint);
+  border-color: var(--red-border);
+  color: var(--red-dark);
+}
+.ads-kinds-form {
+  margin-bottom: 0;
+}
+.ads-filters {
+  grid-template-columns: 2fr 1fr 1fr 1.2fr auto;
+}
+.ads-price-range {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.ads-sort {
+  border: 1px solid #e3d6d4;
+  border-radius: 9px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 14px;
+  background: #fff;
+  color: var(--text);
+}
+@media (max-width: 720px) {
+  .ads-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+  .ads-price-range {
+    grid-column: 1 / -1;
+  }
+  /* Правило ленты биржи растягивает первое поле формы на всю строку — цене
+     «от» это не нужно, она делит строку с «до». */
+  .tasks-filters .ads-price-range input {
+    grid-column: auto;
+  }
+}
+
+.ad-gallery {
+  margin-bottom: 18px;
+}
+.ad-gallery-main {
+  position: relative;
+  background: #f6efee;
+  border-radius: 12px;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  max-height: 520px;
+  width: 100%;
+}
+.ad-gallery-main img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.ad-gallery-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text);
+}
+.ad-gallery-arrow.prev {
+  left: 10px;
+}
+.ad-gallery-arrow.next {
+  right: 10px;
+}
+.ad-gallery-counter {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 3px 9px;
+  border-radius: 8px;
+  background: rgba(36, 26, 25, 0.65);
+  color: #fff;
+  font-size: 13px;
+}
+.ad-gallery-thumbs {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  overflow-x: auto;
+}
+.ad-gallery-thumbs button {
+  flex: none;
+  width: 72px;
+  height: 54px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  background: none;
+}
+.ad-gallery-thumbs button.active {
+  border-color: var(--red);
+}
+.ad-gallery-thumbs img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.ad-owner-panel {
+  margin: 18px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fffaf9;
+}
+.ad-owner-title {
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+.ad-owner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ad-owner-actions .danger {
+  color: #c0392b;
+}
+
+.photo-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+.photo-picker-item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f6efee;
+}
+.photo-picker-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.photo-picker-cover {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--red);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.photo-picker-tools {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  margin: 0;
+  padding: 4px;
+  border: none;
+  background: linear-gradient(transparent, rgba(36, 26, 25, 0.55));
+}
+.photo-picker-tools button {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+.photo-picker-tools button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.photo-picker-add {
+  aspect-ratio: 1;
+  border: 1.5px dashed #e3d6d4;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--red-dark);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 8px;
+}
+.photo-picker-add:disabled {
+  color: var(--muted);
+  cursor: wait;
+}
+
+.my-ad-row {
+  align-items: center;
+  gap: 14px;
+}
+.my-ad-thumb {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #f6efee;
+}
+.my-ad-row .my-order-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.my-ad-main {
+  flex: 1;
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  .my-ad-row {
+    flex-wrap: wrap;
+  }
+  .my-ad-row .my-order-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}
+
+/* Во «Моих публикациях» теперь четыре вкладки: на телефоне прежние отступы
+   выталкивали последнюю за край экрана. */
+@media (max-width: 640px) {
+  .my-listings-tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .my-listings-tabs a {
+    flex: none;
+    margin-right: 10px;
+    white-space: nowrap;
+  }
+}
