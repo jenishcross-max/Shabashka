@@ -8,6 +8,7 @@ const asyncHandler = require('../asyncHandler');
 const moderation = require('../moderation');
 const tasksRepo = require('../tasksRepo');
 const adsRepo = require('../adsRepo');
+const spamSweep = require('../spamSweep');
 
 function generateTempPassword() {
   return crypto.randomBytes(9).toString('base64').replace(/[+/=]/g, '');
@@ -547,6 +548,23 @@ router.get(
        FROM moderation_log ORDER BY created_at DESC LIMIT 200`
     );
     res.json({ entries: rows });
+  })
+);
+
+// Проверка опубликованного фильтром мошенников (см. spamSweep.js): что сейчас
+// висит на сайте и было бы отсеяно, — и снять отмеченное разом.
+router.get(
+  '/spam-sweep',
+  asyncHandler(async (_req, res) => {
+    res.json({ items: await spamSweep.find() });
+  })
+);
+
+router.post(
+  '/spam-sweep',
+  asyncHandler(async (req, res) => {
+    const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 1000) : [];
+    res.json(await spamSweep.remove(items, `admin:${req.user.id}`));
   })
 );
 

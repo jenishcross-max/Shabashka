@@ -48,6 +48,7 @@ const AdminVacancies = lazy(() => import('./admin/AdminVacancies'));
 const AdminBoard = lazy(() => import('./admin/AdminBoard'));
 const AdminReports = lazy(() => import('./admin/AdminReports'));
 const AdminCategories = lazy(() => import('./admin/AdminCategories'));
+const AdminSpam = lazy(() => import('./admin/AdminSpam'));
 
 function PublicSite() {
   return (
@@ -239,6 +240,7 @@ export default function App() {
           <Route path="board" element={<AdminBoard />} />
           <Route path="reports" element={<AdminReports />} />
           <Route path="categories" element={<AdminCategories />} />
+          <Route path="spam" element={<AdminSpam />} />
         </Route>
         <Route path="/*" element={<PublicSite />} />
       </Routes>

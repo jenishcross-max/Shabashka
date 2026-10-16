@@ -37,6 +37,9 @@ export default function AdminLayout() {
           <span>⚑ Жалобы</span>
           {openReports > 0 && <span className="admin-nav-badge">{openReports}</span>}
         </NavLink>
+        <NavLink to="/admin/spam" className={({ isActive }) => `admin-nav-link${isActive ? ' active' : ''}`}>
+          🛡 Проверка фильтром
+        </NavLink>
         <NavLink
           to="/admin/categories"
           className={({ isActive }) => `admin-nav-link${isActive ? ' active' : ''}`}

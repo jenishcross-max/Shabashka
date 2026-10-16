@@ -172,6 +172,9 @@ export const api = {
   adminResolveReport: (id, action, token) =>
     request(`/admin/reports/${id}`, { method: 'PATCH', body: { action }, token }),
   adminModerationLog: (token) => request('/admin/moderation-log', { token }),
+  adminSpamSweep: (token) => request('/admin/spam-sweep', { token }),
+  adminSpamSweepRemove: (items, token) =>
+    request('/admin/spam-sweep', { method: 'POST', body: { items }, token }),
   adminBoardPosts: (params = {}, token) => request(`/admin/board${toQueryString(params)}`, { token }),
   adminSetBoardPinned: (id, pinned, token) =>
     request(`/admin/board/${id}`, { method: 'PATCH', body: { pinned }, token }),
