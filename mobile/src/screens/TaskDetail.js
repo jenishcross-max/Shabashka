@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { reportTask, withdrawOffer } from '../api/tasks';
 import { useAuth } from '../auth/AuthContext';
@@ -12,6 +12,7 @@ import Button from '../components/Button';
 import { FormError } from '../components/FormScreen';
 import OfferCard from '../components/OfferCard';
 import ReportModal from '../components/ReportModal';
+import TextLink from '../components/TextLink';
 import TaskOffers from './TaskOffers';
 import { OFFER_STATE_LABELS, TASK_STATUS_LABELS, isActiveStatus, taskBudget } from '../exchange';
 import { offerWord, relativeDate, viewWord } from '../format';
@@ -96,10 +97,10 @@ function WorkerPanel({ task, myOffer, chatId, guest, onLogin, onOffer, onChat })
         {state === 'waiting' ? <OffersCount n={task.offers_count} /> : null}
         <OfferCard offer={myOffer} mine label={OFFER_STATE_LABELS[state]}>
           {state === 'waiting' ? (
-            <>
-              <Button title="Изменить" kind="secondary" disabled={action.busy} onPress={onOffer} />
-              <Button title="Отозвать" kind="secondary" busy={action.busy} onPress={withdraw} />
-            </>
+            <View style={styles.row}>
+              <Button title="Изменить" kind="secondary" disabled={action.busy} onPress={onOffer} style={styles.half} />
+              <Button title="Отозвать" kind="secondary" busy={action.busy} onPress={withdraw} style={styles.half} />
+            </View>
           ) : null}
         </OfferCard>
         <FormError>{action.error}</FormError>
@@ -128,9 +129,7 @@ function ReportTask({ task }) {
   if (sent) return <Text style={styles.sent}>Жалоба отправлена — разберём в ближайшее время</Text>;
   return (
     <>
-      <Pressable accessibilityRole="button" onPress={() => setOpen(true)} style={styles.reportLink}>
-        <Text style={styles.reportText}>Пожаловаться на задачу</Text>
-      </Pressable>
+      <TextLink title="Пожаловаться на задачу" onPress={() => setOpen(true)} />
       {open ? (
         <ReportModal
           title="Что не так с этой задачей?"
@@ -253,7 +252,7 @@ const styles = StyleSheet.create({
   note: { fontSize: 15, color: colors.muted, marginTop: 6, lineHeight: 21 },
   gap: { marginTop: 12 },
   safety: { fontSize: 13, color: colors.muted, lineHeight: 19, paddingHorizontal: 4 },
-  reportLink: { alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 12 },
-  reportText: { fontSize: 14, color: colors.muted, textDecorationLine: 'underline' },
+  row: { flexDirection: 'row', gap: 8 },
+  half: { flex: 1 },
   sent: { fontSize: 14, color: colors.greenText, textAlign: 'center' },
 });

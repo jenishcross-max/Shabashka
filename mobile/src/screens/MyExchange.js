@@ -120,6 +120,7 @@ function MyLists({ onOpen, onNew, onBrowse }) {
           ]}
           value={tab}
           onChange={setTab}
+          kind="tabs"
           style={styles.switch}
         />
       }

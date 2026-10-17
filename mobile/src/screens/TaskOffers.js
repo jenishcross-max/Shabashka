@@ -9,6 +9,7 @@ import ErrorView from '../components/ErrorView';
 import Button from '../components/Button';
 import OfferCard from '../components/OfferCard';
 import ReportModal from '../components/ReportModal';
+import TextLink from '../components/TextLink';
 import { FormError } from '../components/FormScreen';
 import { som } from '../exchange';
 import { colors } from '../theme';
@@ -133,7 +134,7 @@ export default function TaskOffers({ task, chatId, onChat, onEdit }) {
       {list.map((offer) => (
         <OfferCard key={offer.id} offer={offer}>
           <Button title="Выбрать исполнителем" busy={action.busy} onPress={() => accept(offer)} />
-          <Button title="Пожаловаться" kind="secondary" onPress={() => setReporting(offer)} />
+          <TextLink title="Пожаловаться" disabled={action.busy} onPress={() => setReporting(offer)} />
         </OfferCard>
       ))}
       <Button title="Изменить задачу" kind="secondary" disabled={action.busy} onPress={onEdit} style={styles.gap} />
