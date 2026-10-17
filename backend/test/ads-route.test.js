@@ -281,3 +281,14 @@ test('главная отдаёт свежие объявления со ссы�
   assert.equal(ads[0].id, ad.id);
   assert.equal(ads[0].photos[0].url, `https://cdn.test/${photoOf(owner, 4)}`);
 });
+
+// Плитки «Что ищете?» на главной показывают, сколько всего открыто в каждом
+// разделе. Тот же один запрос /home, отдельного эндпоинта нет.
+test('главная отдаёт счётчики открытого по разделам', async () => {
+  const { counts } = (await call('/home')).body;
+  for (const key of ['orders', 'vacancies', 'tasks', 'ads']) {
+    assert.ok(Number.isInteger(counts[key]), `${key}: ${JSON.stringify(counts)}`);
+  }
+  const open = (await db.query("SELECT COUNT(*)::int AS n FROM ads WHERE status = 'open'")).rows[0].n;
+  assert.equal(counts.ads, open);
+});

@@ -8,6 +8,7 @@ import { useMeta } from '../useMeta';
 import { pageList } from '../pagination';
 import { taskWord } from '../plural';
 import TaskCard from '../components/TaskCard';
+import WorkSwitcher from '../components/WorkSwitcher';
 import CityAutocomplete from '../components/CityAutocomplete';
 import { SkeletonBox, SkeletonOrderCard } from '../components/Skeleton';
 
@@ -86,6 +87,7 @@ export default function Tasks() {
 
   return (
     <div>
+      <WorkSwitcher />
       <div className="tasks-head">
         <div>
           <h1>Биржа услуг</h1>

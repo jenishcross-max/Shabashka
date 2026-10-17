@@ -1,4 +1,5 @@
 const db = require('./db');
+const { LIMITS } = require('./adsRules');
 
 // Раздел «Объявления»: все запросы к ads. Правила «можно или нельзя» — в
 // adsRules.js. Условия на статус и автора стоят в самих UPDATE и DELETE, а не
@@ -8,7 +9,7 @@ const db = require('./db');
 const AD_FIELDS = `
   ads.id, ads.user_id, ads.kind, ads.category, ads.title, ads.description, ads.price,
   ads.price_unit, ads.city, ads.address, ads.whatsapp_phone, ads.photos, ads.status, ads.views,
-  ads.bumped_at, ads.created_at, ads.updated_at, users.name AS owner_name
+  ads.bumped_at, ads.created_at, ads.updated_at, ads.is_imported, users.name AS owner_name
 `;
 
 const EDITABLE = ['kind', 'category', 'title', 'description', 'price', 'price_unit', 'city', 'address', 'whatsapp_phone', 'photos'];
@@ -120,7 +121,11 @@ async function remove(id, ownerId) {
 // Мои — все, включая закрытые и снятые: автор должен видеть, что случилось с
 // его объявлением, а не гадать, куда оно пропало.
 async function mine(userId) {
-  const { rows } = await db.query(`${SELECT} WHERE ads.user_id = $1 ORDER BY ads.created_at DESC`, [userId]);
+  // Из групп бот публикует от имени админа — это не его объявления.
+  const { rows } = await db.query(
+    `${SELECT} WHERE ads.user_id = $1 AND NOT ads.is_imported ORDER BY ads.created_at DESC`,
+    [userId]
+  );
   return rows;
 }
 
@@ -143,4 +148,26 @@ async function removeByModerator(id) {
   return rows.length > 0;
 }
 
-module.exports = { list, get, addView, create, update, setStatus, bump, remove, mine, batch, removeByModerator };
+// Объявление из группы: бот публикует от имени владельца, фото нет, цена — за
+// всё. Пределы те же, что у формы (см. adsRules.LIMITS): модель иногда отдаёт
+// описание длиннее.
+async function createImported({ userId, kind, category, title, description, price, city, whatsappPhone }) {
+  const { rows } = await db.query(
+    `INSERT INTO ads (user_id, kind, category, title, description, price, price_unit, city, whatsapp_phone, is_imported)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true) RETURNING id`,
+    [
+      userId,
+      kind,
+      category,
+      String(title).slice(0, LIMITS.title),
+      String(description).slice(0, LIMITS.description),
+      price || null,
+      price ? 'total' : null,
+      String(city).slice(0, LIMITS.city),
+      whatsappPhone || null,
+    ]
+  );
+  return get(rows[0].id);
+}
+
+module.exports = { list, get, addView, create, createImported, update, setStatus, bump, remove, mine, batch, removeByModerator };

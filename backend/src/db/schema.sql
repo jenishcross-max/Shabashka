@@ -499,3 +499,9 @@ CREATE TABLE IF NOT EXISTS ads (
 
 CREATE INDEX IF NOT EXISTS idx_ads_feed ON ads(status, (COALESCE(bumped_at, created_at)) DESC);
 CREATE INDEX IF NOT EXISTS idx_ads_user ON ads(user_id);
+
+-- Объявления из открытых групп (бот, см. telegram/imports.js) — бывшие записки
+-- «Доски». Автор не проверен, на сайте у них плашка «из открытых чатов».
+-- Колонки добавляются здесь, а не в CREATE TABLE: на проде таблицы уже есть.
+ALTER TABLE ads ADD COLUMN IF NOT EXISTS is_imported BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS ad_id INTEGER;

@@ -1,15 +1,15 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { trackPageview } from './analytics';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import BottomNav from './components/BottomNav';
 import EmailVerifyBanner from './components/EmailVerifyBanner';
 import WakingBanner from './components/WakingBanner';
 import ProtectedRoute from './components/ProtectedRoute';
 import ProtectedAdminRoute from './components/ProtectedAdminRoute';
 import Home from './pages/Home';
 import AllOrders from './pages/AllOrders';
-import Board from './pages/Board';
 import OrderDetail from './pages/OrderDetail';
 import Vacancies from './pages/Vacancies';
 import VacancyDetail from './pages/VacancyDetail';
@@ -60,7 +60,9 @@ function PublicSite() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
-          <Route path="/board" element={<Board />} />
+          {/* «Доска» стала «Объявлениями» (октябрь 2026): ссылки из старых постов
+              в соцсетях — /board#p123 — ведут в раздел, а не в пустоту. */}
+          <Route path="/board" element={<Navigate to="/ads" replace />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/tasks/:id" element={<TaskDetail />} />
           <Route path="/ads" element={<Ads />} />
@@ -190,6 +192,7 @@ function PublicSite() {
         </Routes>
       </main>
       <Footer />
+      <BottomNav />
     </>
   );
 }

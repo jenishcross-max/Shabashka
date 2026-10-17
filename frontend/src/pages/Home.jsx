@@ -5,14 +5,29 @@ import OrderCard from '../components/OrderCard';
 import VacancyCard from '../components/VacancyCard';
 import TaskCard from '../components/TaskCard';
 import AdCard from '../components/AdCard';
-import FormatIcon from '../components/FormatIcon';
 import CityAutocomplete from '../components/CityAutocomplete';
 import { useFavorites } from '../context/FavoritesContext';
-import { followerWord } from '../plural';
+import { adWord, followerWord, orderWord, taskWord, vacancyWord } from '../plural';
 import { SkeletonOrderCard, SkeletonCityPills } from '../components/Skeleton';
 
 const INSTAGRAM_URL = 'https://www.instagram.com/shabashka.com_/';
 const TELEGRAM_URL = 'https://t.me/Shabashkacom';
+
+// «Что ищете?» — четыре раздела сайта сразу под поиском. Раньше с первого
+// экрана вела только строка «Смотреть подработку: Всю / Офлайн / Онлайн», а
+// вакансии, биржа и объявления оттуда не были видны вовсе.
+const TILES = [
+  { to: '/orders', icon: '🧰', label: 'Подработка', count: 'orders', word: orderWord, hint: 'разовая работа' },
+  { to: '/vacancies', icon: '💼', label: 'Вакансии', count: 'vacancies', word: vacancyWord, hint: 'работа в штат' },
+  { to: '/tasks', icon: '⚡', label: 'Биржа', count: 'tasks', word: taskWord, hint: 'исполнители предложат цену' },
+  { to: '/ads', icon: '🏷', label: 'Объявления', count: 'ads', word: adWord, hint: 'сдам, продам, услуги' },
+];
+
+// Пока счётчики не пришли или раздел пуст — подсказка вместо числа, а не «0 задач».
+function tileNote(tile, counts) {
+  const n = counts && counts[tile.count];
+  return Number.isInteger(n) && n > 0 ? `${n.toLocaleString('ru-RU')} ${tile.word(n)}` : tile.hint;
+}
 
 export default function Home() {
   const navigate = useNavigate();
@@ -22,6 +37,7 @@ export default function Home() {
   const [vacancies, setVacancies] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [ads, setAds] = useState([]);
+  const [counts, setCounts] = useState(null);
   const [cityCounts, setCityCounts] = useState([]);
   const [instagramFollowers, setInstagramFollowers] = useState(null);
   const [qInput, setQInput] = useState('');
@@ -41,6 +57,7 @@ export default function Home() {
         setVacancies(data.vacancies);
         setTasks(data.tasks || []);
         setAds(data.ads || []);
+        setCounts(data.counts || null);
         setCities(data.cities);
       })
       .catch((e) => setError(e.message))
@@ -58,13 +75,8 @@ export default function Home() {
   return (
     <div>
       <section className="hero">
-        <span className="hero-pill">Работает по всему Кыргызстану</span>
         <h1>Шабашка в Кыргызстане</h1>
-        <p>
-          Найдите подработку или мастера рядом с вами. Заказчики размещают задачи, исполнители
-          пишут в WhatsApp или в сообщениях на сайте. Регистрация не нужна, чтобы откликнуться в
-          WhatsApp.
-        </p>
+        <p>Подработка, вакансии, мастера и объявления рядом с вами — без посредников и комиссии.</p>
         <form className="search-bar" onSubmit={submitSearch}>
           <input
             className="search-q"
@@ -82,45 +94,52 @@ export default function Home() {
           />
           <button type="submit">Найти</button>
         </form>
-        <div className="hero-format-links">
-          <span className="hero-format-label">Смотреть подработку:</span>
-          <Link to="/orders">Всю</Link>
-          <Link to="/orders?workFormat=offline" className="hero-format-link">
-            <FormatIcon name="offline" size={15} /> Только офлайн
-          </Link>
-          <Link to="/orders?workFormat=online" className="hero-format-link">
-            <FormatIcon name="online" size={15} /> Только онлайн
-          </Link>
-        </div>
+        <nav className="home-tiles" aria-label="Разделы сайта">
+          {TILES.map((tile) => (
+            <Link key={tile.to} to={tile.to} className="home-tile">
+              <span className="home-tile-icon" aria-hidden="true">
+                {tile.icon}
+              </span>
+              <span className="home-tile-text">
+                <span className="home-tile-label">{tile.label}</span>
+                <span className="home-tile-note">{tileNote(tile, counts)}</span>
+              </span>
+            </Link>
+          ))}
+        </nav>
         {/* Студенты ищут не категорию, а работу, которую потянут вместе с учёбой, —
-            поэтому отдельной синей кнопкой, как их выпуски в Instagram. */}
-        <div>
+            поэтому отдельной синей плашкой, как их выпуски в Instagram. */}
+        <div className="hero-extra">
           <Link to="/vacancies?students=1" className="hero-students-link">
             🎓 Работа для студентов
           </Link>
-        </div>
-        {favoriteKeys.length > 0 && (
-          <Link to="/favorites" className="hero-fav-link">
-            ★ Избранное ({favoriteKeys.length})
-          </Link>
-        )}
-        <div className="hero-social">
-          <a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer me" className="hero-social-link">
-            📸 Instagram
-            {instagramFollowers != null && (
-              <span className="hero-social-count">
-                {instagramFollowers.toLocaleString('ru')} {followerWord(instagramFollowers)}
-              </span>
-            )}
-          </a>
-          <a href={TELEGRAM_URL} target="_blank" rel="noopener noreferrer me" className="hero-social-link">
-            ✈️ Telegram-канал
-          </a>
+          {favoriteKeys.length > 0 && (
+            <Link to="/favorites" className="hero-fav-link">
+              ★ Избранное ({favoriteKeys.length})
+            </Link>
+          )}
         </div>
       </section>
 
-      {/* Биржа — главное, что сайт теперь предлагает заказчику, поэтому сразу
-          под шапкой. Пустую сетку не рисуем: пока задач нет, хватает призыва. */}
+      <section className="section">
+        <div className="section-head">
+          <h2>Свежие заказы</h2>
+          <Link to="/orders">Все заказы</Link>
+        </div>
+
+        {error && <p className="status-msg error">{error}</p>}
+        {!loading && !error && orders.length === 0 && <p className="status-msg">Пока нет заказов.</p>}
+
+        <div className="order-grid">
+          {loading && Array.from({ length: 8 }).map((_, i) => <SkeletonOrderCard key={i} />)}
+          {orders.map((order) => (
+            <OrderCard key={order.id} order={order} />
+          ))}
+        </div>
+      </section>
+
+      {/* Биржа — компактной полосой: заказчику она нужна как действие («разместить
+          задачу»), а не как ещё одна лента. Пустую сетку не рисуем. */}
       <section className="section exchange-promo">
         <div className="exchange-promo-head">
           <div>
@@ -132,7 +151,7 @@ export default function Home() {
               + Разместить задачу
             </Link>
             <Link to="/tasks" className="exchange-promo-all">
-              Все задачи →
+              Все задачи
             </Link>
           </div>
         </div>
@@ -145,13 +164,13 @@ export default function Home() {
         )}
       </section>
 
-      {/* Объявления «сдам/продам» — под биржей и только когда они есть: пустой
-          блок с одной кнопкой на главной выглядел бы заброшенным разделом. */}
+      {/* Объявления — только когда они есть: пустой блок с одной кнопкой на
+          главной выглядел бы заброшенным разделом. */}
       {ads.length > 0 && (
         <section className="section">
           <div className="section-head">
             <h2>Свежие объявления</h2>
-            <Link to="/ads">Все объявления →</Link>
+            <Link to="/ads">Все объявления</Link>
           </div>
           <div className="ad-grid">
             {ads.map((ad) => (
@@ -160,29 +179,6 @@ export default function Home() {
           </div>
         </section>
       )}
-
-      {/* Ни плитки категорий, ни полосы со счётчиками: до объявлений человек
-          доходил через два экрана выбора, а пришёл он смотреть объявления.
-          Категории остались фильтром на /orders — там их ищут осознанно. */}
-
-      <section className="section">
-        <div className="section-head">
-          <h2>Свежие заказы</h2>
-          <Link to="/orders">Смотреть все →</Link>
-        </div>
-
-        {error && <p className="status-msg error">{error}</p>}
-        {!loading && !error && orders.length === 0 && (
-          <p className="status-msg">Пока нет заказов.</p>
-        )}
-
-        <div className="order-grid">
-          {loading && Array.from({ length: 12 }).map((_, i) => <SkeletonOrderCard key={i} />)}
-          {orders.map((order) => (
-            <OrderCard key={order.id} order={order} />
-          ))}
-        </div>
-      </section>
 
       {loading && (
         <section className="section">
@@ -201,7 +197,7 @@ export default function Home() {
         <section className="section">
           <div className="section-head">
             <h2>Свежие вакансии</h2>
-            <Link to="/vacancies">Смотреть все →</Link>
+            <Link to="/vacancies">Все вакансии</Link>
           </div>
           <div className="order-grid">
             {vacancies.map((v) => (
@@ -235,10 +231,29 @@ export default function Home() {
         </section>
       )}
 
+      {/* Соцсети — внизу, а не на первом экране: на сайт приходят искать работу,
+          а не подписываться. Ссылки нужны и поисковику (см. Footer.jsx). */}
+      <section className="section home-social">
+        <h2>Свежие объявления каждый день в наших соцсетях</h2>
+        <div className="hero-social">
+          <a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer me" className="hero-social-link">
+            📸 Instagram
+            {instagramFollowers != null && (
+              <span className="hero-social-count">
+                {instagramFollowers.toLocaleString('ru')} {followerWord(instagramFollowers)}
+              </span>
+            )}
+          </a>
+          <a href={TELEGRAM_URL} target="_blank" rel="noopener noreferrer me" className="hero-social-link">
+            ✈️ Telegram-канал
+          </a>
+        </div>
+      </section>
+
       <section className="cta-banner">
         <h2>Хотите найти ещё?</h2>
         <p>Новые заказы и вакансии появляются каждый день — заходите почаще.</p>
-        <Link to="/orders">Смотреть все заказы →</Link>
+        <Link to="/orders">Смотреть все заказы</Link>
       </section>
     </div>
   );

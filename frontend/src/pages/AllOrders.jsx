@@ -10,6 +10,7 @@ import { SkeletonBox, SkeletonOrderCard, SkeletonFilterList } from '../component
 import { useMeta } from '../useMeta';
 import { orderWord } from '../plural';
 import { StudentFilter } from '../components/StudentField';
+import WorkSwitcher from '../components/WorkSwitcher';
 
 const SORTS = [
   { value: 'new', label: 'Сначала новые' },
@@ -119,6 +120,7 @@ export default function AllOrders() {
 
   return (
     <div>
+      <WorkSwitcher />
       <section className="orders-search-strip">
         <input
           placeholder="Поиск по заказам…"

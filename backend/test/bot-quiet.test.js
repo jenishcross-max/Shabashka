@@ -182,8 +182,10 @@ test('присланное админом — по-прежнему с карт�
   byChat.length = 0;
   await bot.ingestFromSource(1, [listing('Продаю шкаф', '+996700333444')], { source: 'telegram', rawText: 'шкаф' });
   await settle();
-  const card = toAdmin().find((m) => /Повесил на доску/.test(m.text));
+  const card = toAdmin().find((m) => /Опубликовал в «Объявления»/.test(m.text));
   assert.ok(card, 'карточка пришла');
+  // У объявления своя страница — ссылка на неё, а не на доску с якорем.
+  assert.ok(!/board#p/.test(card.text), card.text);
   const buttons = card.extra.reply_markup.inline_keyboard.flat().map((b) => b.callback_data);
   assert.ok(buttons.some((d) => d.startsWith('del:')));
   assert.ok(buttons.some((d) => d.startsWith('spm:')), 'кнопка «Спам» есть');

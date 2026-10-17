@@ -30,6 +30,14 @@ const SOURCES = {
                  EXISTS (SELECT 1 FROM imported_listings il WHERE il.vacancy_id = x.id AND il.is_ad) AS is_ad
             FROM vacancies x WHERE x.status = 'open'`,
   },
+  // Объявления: и поданные на сайте, и пришедшие из групп (бывшая «Доска»).
+  ad: {
+    link: 'ad_id',
+    sql: `SELECT x.id, x.title, concat_ws(E'\\n', x.title, x.description) AS text,
+                 x.whatsapp_phone AS phone, x.is_imported, x.created_at,
+                 EXISTS (SELECT 1 FROM imported_listings il WHERE il.ad_id = x.id AND il.is_ad) AS is_ad
+            FROM ads x WHERE x.status = 'open'`,
+  },
   // Доска: только то, что видно, — скрытое модератором и истёкшее не в счёт.
   board: {
     link: 'board_post_id',

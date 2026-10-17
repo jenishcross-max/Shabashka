@@ -34,18 +34,6 @@ function plural(n, forms) {
 
 const word = (listingType, n) => plural(n, WORDS[listingType] || WORDS.order);
 
-// У записки на доске нет ни заголовка, ни описания — она одна сплошная строка.
-// Первую фразу берём заголовком, остальное описанием: на кадре заголовок
-// набран крупным, и без разделения вся записка ушла бы в один огромный блок.
-function fromBoardText(text) {
-  const parts = String(text || '').split('\n').map((s) => s.trim()).filter(Boolean);
-  const head = parts[0] || 'Объявление';
-  return {
-    title: head.length > 70 ? `${head.slice(0, 70).replace(/\s+\S*$/, '')}…` : head,
-    description: parts.slice(1).join(' ') || null,
-  };
-}
-
 // SQL под каждый тип. ORDER BY random() честно перемешивает всю выборку — на
 // сотнях строк за двое суток это доли миллисекунды, а держать своё окно
 // смещений ради этого незачем.
@@ -56,19 +44,14 @@ const PICKS = {
   vacancy: `SELECT id, title, description, category, city, salary_min AS budget, whatsapp_phone AS phone
               FROM vacancies
              WHERE status = 'open' AND created_at > NOW() - INTERVAL '${DAYS} days'`,
-  // Записка на доске живёт сутки, так что окно в двое суток её не
-  // ограничивает — ограничивает expires_at. Оставляем условие всё равно: оно
-  // описывает выпуск («за два дня»), а не срок хранения.
-  board: `SELECT id, text, city, whatsapp_phone AS phone
-            FROM board_posts
-           WHERE hidden = false AND expires_at > NOW()
-             AND created_at > NOW() - INTERVAL '${DAYS} days'`,
+  // board — объявления раздела «Объявления» (с октября 2026 туда же уходят
+  // посты бывшей «Доски»). Рубрика у них своя, на кадр её не выводим.
+  board: `SELECT id, title, description, NULL AS category, city, price AS budget, whatsapp_phone AS phone
+            FROM ads
+           WHERE status = 'open' AND created_at > NOW() - INTERVAL '${DAYS} days'`,
 };
 
-function toParsed(listingType, row) {
-  if (listingType === 'board') {
-    return { ...fromBoardText(row.text), city: row.city, phone: row.phone, budget: null };
-  }
+function toParsed(row) {
   return {
     title: row.title,
     description: row.description,
@@ -96,7 +79,7 @@ async function pick(listingType, limit = SIZE) {
   ]);
 
   return {
-    items: rows.map((row) => ({ id: row.id, listingType, parsed: toParsed(listingType, row) })),
+    items: rows.map((row) => ({ id: row.id, listingType, parsed: toParsed(row) })),
     total: counted[0].n,
   };
 }

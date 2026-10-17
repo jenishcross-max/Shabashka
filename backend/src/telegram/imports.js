@@ -3,7 +3,7 @@ const db = require('../db');
 const categoriesRepo = require('../categoriesRepo');
 const { invalidate } = require('../cache');
 const moderation = require('../moderation');
-const { money } = require('../money');
+const adsRepo = require('../adsRepo');
 
 // Одно объявление автор рассылает сразу в несколько чатов, и скриншоты приходят
 // пачкой. Ключ повтора — телефон плюс сжатый заголовок: у одного и того же
@@ -186,23 +186,6 @@ async function validate(parsed) {
   return errors;
 }
 
-// Доска — это одна записка текстом: ни заголовка, ни категории, ни поля с ценой
-// там нет, поэтому собираем всё в один абзац. Лимит тот же, что у формы на сайте
-// (500 символов): записка на доске должна читаться целиком, не разворачиваясь.
-const BOARD_MAX_TEXT = 500;
-
-function boardText(parsed) {
-  const parts = [];
-  if (parsed.title) parts.push(parsed.title);
-  // Описание модель часто дублирует заголовком — второй раз то же самое не нужно
-  if (parsed.description && parsed.description !== parsed.title) parts.push(parsed.description);
-  if (parsed.budget) parts.push(`💰 ${money(parsed.budget)} сом`);
-
-  const text = parts.join('\n');
-  if (text.length <= BOARD_MAX_TEXT) return text;
-  return `${text.slice(0, BOARD_MAX_TEXT - 1).replace(/\s+\S*$/, '')}…`;
-}
-
 // Сумма для колонки INTEGER. Разбор отдаёт число, но в базу уходят и поля,
 // собранные без модели (реклама «как есть»), и пустая строка там валила
 // публикацию: «invalid input syntax for type integer».
@@ -222,23 +205,30 @@ async function publish(id) {
 
   const userId = await resolveOwnerId();
 
-  // Не заказ и не вакансия (продают дом, сдают квартиру, предлагают свои услуги) —
-  // такому на сайте карточки нет, но и терять его незачем: место такому объявлению
-  // на доске, где оно живёт сутки рядом с остальной срочной мелочью.
+  // Не заказ и не вакансия (сдают квартиру, продают машину, предлагают свои
+  // услуги) — это объявление раздела «Объявления». До октября 2026 такие жили
+  // сутки на «Доске»; теперь у них вид и рубрика, а срока нет, как у заказов:
+  // висит, пока не снимут через бота или админку. Тип остаётся board — на нём
+  // держатся SOURCE_LISTING_TYPE, счётчики сводки и ролики «Объявления дня».
   if (parsed.listing_type === 'board') {
-    const inserted = await db.query(
-      `INSERT INTO board_posts (user_id, text, city, whatsapp_phone, is_imported)
-       VALUES ($1, $2, $3, $4, true) RETURNING id`,
-      [userId, boardText(parsed), parsed.city, parsed.phone]
-    );
-    const postId = inserted.rows[0].id;
+    const ad = await adsRepo.createImported({
+      userId,
+      kind: parsed.ad_kind || 'service',
+      category: parsed.ad_category || 'other',
+      title: parsed.title,
+      description: parsed.description,
+      price: amount(parsed.budget),
+      city: parsed.city,
+      whatsappPhone: parsed.phone,
+    });
 
     await db.query(
-      "UPDATE imported_listings SET status = 'published', published_at = NOW(), board_post_id = $1 WHERE id = $2",
-      [postId, id]
+      "UPDATE imported_listings SET status = 'published', published_at = NOW(), ad_id = $1 WHERE id = $2",
+      [ad.id, id]
     );
+    invalidate('home:');
 
-    return { type: 'board', id: postId };
+    return { type: 'board', id: ad.id };
   }
 
   if (parsed.listing_type === 'vacancy') {
@@ -325,15 +315,17 @@ const publishedWhere = (from) => `i.status = 'published' AND ${PUBLISHED_FROM[fr
 
 async function listPublished({ from = 'groups', limit = 10, offset = 0 } = {}) {
   const { rows } = await db.query(
-    `SELECT i.id, i.parsed, i.source, i.is_ad, i.published_at, i.vacancy_id, i.order_id, i.board_post_id,
+    `SELECT i.id, i.parsed, i.source, i.is_ad, i.published_at, i.vacancy_id, i.order_id, i.board_post_id, i.ad_id,
             CASE
               WHEN i.vacancy_id IS NOT NULL THEN v.status = 'open'
               WHEN i.order_id IS NOT NULL THEN o.status = 'open'
+              WHEN i.ad_id IS NOT NULL THEN a.status = 'open'
               ELSE b.id IS NOT NULL AND NOT b.hidden AND b.expires_at > NOW()
             END AS live
        FROM imported_listings i
        LEFT JOIN vacancies v ON v.id = i.vacancy_id
        LEFT JOIN orders o ON o.id = i.order_id
+       LEFT JOIN ads a ON a.id = i.ad_id
        LEFT JOIN board_posts b ON b.id = i.board_post_id
       WHERE ${publishedWhere(from)}
       ORDER BY i.published_at DESC NULLS LAST, i.id DESC
@@ -399,8 +391,8 @@ async function countAds() {
   return rows[0].n;
 }
 
-// Поднятие рекламы на сайте (см. adRaises.js): вакансия и заказ — наверх
-// ленты, записка на доске — ещё на сутки. Доска живёт сутки, а поднятия идут
+// Поднятие рекламы на сайте (см. adRaises.js): вакансия, заказ и объявление —
+// наверх ленты, старая записка на доске — ещё на сутки. Доска живёт сутки, а поднятия идут
 // три дня: без продления на второй день группы и Threads вели бы на пропавшую
 // карточку. row — уже прочитанная строка опубликованной рекламы. Возвращает,
 // получилось ли.
@@ -410,6 +402,8 @@ async function bump(row) {
     result = await db.query('UPDATE vacancies SET bumped_at = NOW() WHERE id = $1', [row.vacancy_id]);
   } else if (row.order_id) {
     result = await db.query('UPDATE orders SET bumped_at = NOW() WHERE id = $1', [row.order_id]);
+  } else if (row.ad_id) {
+    result = await db.query('UPDATE ads SET bumped_at = NOW() WHERE id = $1', [row.ad_id]);
   } else if (row.board_post_id) {
     result = await db.query(
       "UPDATE board_posts SET expires_at = GREATEST(expires_at, NOW() + INTERVAL '24 hours') WHERE id = $1",
@@ -434,9 +428,11 @@ async function remove(id) {
     ? { listingType: 'vacancy', listingId: row.vacancy_id }
     : row.order_id
       ? { listingType: 'order', listingId: row.order_id }
-      : row.board_post_id
-        ? { listingType: 'board', listingId: row.board_post_id }
-        : null;
+      : row.ad_id
+        ? { listingType: 'ad', listingId: row.ad_id }
+        : row.board_post_id
+          ? { listingType: 'board', listingId: row.board_post_id }
+          : null;
   if (!target) throw new Error('Это объявление на сайт не уходило');
 
   // Записка на доске могла пропасть сама — тогда удалять уже нечего, но пометить
