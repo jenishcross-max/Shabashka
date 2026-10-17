@@ -3474,3 +3474,31 @@ body.board-theme .navbar {
     white-space: nowrap;
   }
 }
+
+/* ---------- админка: проверка опубликованного фильтром ---------- */
+.admin-table-spam {
+  grid-template-columns: 32px 1fr 3fr 1.6fr;
+}
+/* Колонки ужимаются под ширину, а не уезжают вбок: «почему» читают
+   так же часто, как сам текст. */
+.admin-table-spam-wrap {
+  min-width: 0;
+}
+.admin-table-spam .badge {
+  white-space: normal;
+}
+label.admin-table-spam {
+  cursor: pointer;
+}
+.admin-spam-excerpt {
+  font-size: 13.5px;
+  margin-top: 4px;
+}
+.admin-spam-empty {
+  padding: 18px 6px;
+}
+@media (max-width: 900px) {
+  .admin-table-spam {
+    grid-template-columns: 1fr;
+  }
+}

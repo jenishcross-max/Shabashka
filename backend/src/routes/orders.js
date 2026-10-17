@@ -12,6 +12,7 @@ const { canCreateListing } = require('../emailGate');
 const { abroadWork } = require('../abroad');
 const { forStudents } = require('../students');
 const bump = require('../bump');
+const spam = require('../spam');
 
 const router = express.Router();
 
@@ -286,6 +287,11 @@ async function validateOrderFields(body, { partial }) {
     job: true,
   });
   if (abroad) errors.push(`Шабашка публикует только работу в Кыргызстане, а здесь указано «${abroad}»`);
+
+  // Тот же фильтр, что у постов из групп (см. spam.js): через форму в августе
+  // 2026 вышел заказ «съездить в Алматы и открыть Kaspi на загранпаспорт».
+  const banned = spam.forbidden([result.title, result.description].filter(Boolean).join('\n'));
+  if (banned) errors.push(banned);
 
   return { errors, result };
 }

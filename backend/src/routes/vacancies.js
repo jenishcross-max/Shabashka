@@ -14,6 +14,7 @@ const { canCreateListing } = require('../emailGate');
 const { abroadWork } = require('../abroad');
 const { forStudents } = require('../students');
 const bump = require('../bump');
+const spam = require('../spam');
 
 const router = express.Router();
 const EMPLOYMENT_VALUES = EMPLOYMENT_TYPES.map((t) => t.value);
@@ -261,6 +262,11 @@ async function validateVacancyFields(body, { partial }) {
   const where = [result.title, result.description, result.city, result.requirements, result.conditions, result.schedule];
   const abroad = abroadWork(where.filter(Boolean).join('\n'), { job: true });
   if (abroad) errors.push(`Шабашка публикует только работу в Кыргызстане, а здесь указано «${abroad}»`);
+
+  // Тот же фильтр, что у постов из групп (см. spam.js). Схема может сидеть и в
+  // требованиях: «без ЗАГСа, 18+, ID-карта».
+  const banned = spam.forbidden(where.filter(Boolean).join('\n'));
+  if (banned) errors.push(banned);
 
   return { errors, result };
 }

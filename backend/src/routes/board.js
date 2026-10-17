@@ -5,6 +5,7 @@ const asyncHandler = require('../asyncHandler');
 const { boardLimiter, reportLimiter } = require('../rateLimit');
 const reportsRepo = require('../reportsRepo');
 const { abroadWork } = require('../abroad');
+const spam = require('../spam');
 
 const router = express.Router();
 
@@ -84,6 +85,10 @@ router.post(
         .status(400)
         .json({ error: `Шабашка публикует только работу в Кыргызстане, а здесь указано «${abroad}»` });
     }
+
+    // Тот же фильтр, что у постов из групп (см. spam.js).
+    const banned = spam.forbidden(text);
+    if (banned) return res.status(400).json({ error: banned });
 
     // Гостю номер обязателен: аккаунта у него нет, и написать ему на сайте нельзя —
     // объявление без номера осталось бы просто текстом, на который не откликнуться.
