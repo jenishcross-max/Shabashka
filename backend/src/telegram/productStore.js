@@ -8,6 +8,9 @@ const db = require('../db');
 const MAX_TEXTS = 20;
 // Больше десяти фото Instagram в карусель не берёт.
 const MAX_PHOTOS = 10;
+// Каждое видео — отдельный выход, а не часть карусели: пяти роликов на
+// чередование хватает, а больше — это уже склад, а не реклама.
+const MAX_VIDEOS = 5;
 
 const one = ({ rows }) => rows[0] || null;
 
@@ -39,12 +42,26 @@ const addPhoto = (id, photo) =>
     )
     .then(one);
 
+// video — { file_id, kind }: kind «video» — присланное роликом, «document» —
+// файлом. Как и с фото, показать их обратно в чате можно только порознь.
+const addVideo = (id, video) =>
+  db
+    .query(
+      `UPDATE products SET videos = videos || jsonb_build_array(jsonb_build_object('file_id', $2::text, 'kind', $3::text))
+       WHERE id = $1 AND jsonb_array_length(videos) < $4 RETURNING *`,
+      [id, video.file_id, video.kind, MAX_VIDEOS]
+    )
+    .then(one);
+
 // jsonb - число убирает элемент массива по номеру.
 const removeText = (id, index) =>
   db.query('UPDATE products SET texts = texts - $2::int WHERE id = $1 RETURNING *', [id, index]).then(one);
 
 const removePhoto = (id, index) =>
   db.query('UPDATE products SET photos = photos - $2::int WHERE id = $1 RETURNING *', [id, index]).then(one);
+
+const removeVideo = (id, index) =>
+  db.query('UPDATE products SET videos = videos - $2::int WHERE id = $1 RETURNING *', [id, index]).then(one);
 
 const setEvery = (id, days) =>
   db.query('UPDATE products SET every_days = $2 WHERE id = $1 RETURNING *', [id, days || null]).then(one);
@@ -112,8 +129,10 @@ module.exports = {
   create,
   addText,
   addPhoto,
+  addVideo,
   removeText,
   removePhoto,
+  removeVideo,
   setEvery,
   setPaused,
   remove,
@@ -124,4 +143,5 @@ module.exports = {
   posts,
   postsSince,
   MAX_PHOTOS,
+  MAX_VIDEOS,
 };

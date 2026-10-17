@@ -56,6 +56,7 @@ const message = (fields) => ({ message_id: (msgSeq += 1), chat: { id: CHAT }, fr
 const say = (text) => products.onMessage(message({ text }), { isMenuKey: (t) => t === '📣 Реклама' });
 const sendPhoto = (fileId, caption) =>
   products.onMessage(message({ photo: [{ file_id: `${fileId}-small` }, { file_id: fileId }], caption }));
+const sendVideo = (fields, caption) => products.onMessage(message({ ...fields, caption }));
 const press = (data) =>
   products.onCallback(
     { id: 'q', from: { id: 1 }, data, message: { chat: { id: CHAT }, message_id: 7 } },
@@ -76,7 +77,7 @@ test('новый продукт: название, тексты и фото ал
 
   assert.equal(await say('Пригласительные'), true);
   assert.equal(store.rows.size, 1);
-  assert.ok(tg.has(/Присылайте тексты и фото для «Пригласительные»/));
+  assert.ok(tg.has(/Присылайте тексты, фото и видео для «Пригласительные»/));
 
   tg.clear();
   await say('Свадебные пригласительные на заказ, от 50 сом за штуку. WhatsApp 0700 123 456');
@@ -260,6 +261,87 @@ test('тексты и фото убираются по номеру, проду�
   await press(`pr:delok:${product.id}`);
   assert.equal(await store.get(product.id), null);
   assert.match(lastView.text, /Мои продукты/);
+});
+
+// Видео: промо-ролик продукта — Reels в Instagram и роликом в Threads.
+test('видео: принимается файлом и роликом, тяжёлое и слишком длинное — с объяснением', async () => {
+  const product = await store.create('Шабашка');
+  await press(`pr:add:${product.id}`);
+  assert.ok(tg.has(/видео/i), 'в подсказке сказано, что видео можно');
+
+  tg.clear();
+  await sendVideo({ video: { file_id: 'v1', file_size: 3_000_000, duration: 24 } }, 'Биржа на шабашка.com');
+  await sendVideo({ document: { file_id: 'v2', mime_type: 'video/mp4', file_size: 2_500_000 } });
+  await wait(1700);
+  assert.ok(tg.has(/Сохранил 1 текст и 2 видео/), tg.dump());
+  assert.deepEqual(
+    (await store.get(product.id)).videos.map((v) => [v.file_id, v.kind]),
+    [
+      ['v1', 'video'],
+      ['v2', 'document'],
+    ]
+  );
+
+  tg.clear();
+  await sendVideo({ video: { file_id: 'big', file_size: 25 * 1024 * 1024, duration: 30 } });
+  assert.ok(tg.has(/тяжелее 20 МБ/), tg.dump());
+  await sendVideo({ video: { file_id: 'long', file_size: 1_000_000, duration: 400 } });
+  assert.ok(tg.has(/5 минут/), tg.dump());
+  await sendVideo({ video: { file_id: 'short', file_size: 100_000, duration: 2 } });
+  assert.ok(tg.has(/3 секунд/), tg.dump());
+  assert.equal((await store.get(product.id)).videos.length, 2, 'неподходящие не сохранены');
+  await press(`pr:done:${product.id}`);
+});
+
+test('видео и фото чередуются: каждый ролик — своим выходом, фото — каруселью', async () => {
+  const product = await store.create('С видео');
+  await store.addText(product.id, 'Текст');
+  for (const id of ['a', 'b']) await store.addPhoto(product.id, { file_id: id, kind: 'photo' });
+  for (const id of ['v1', 'v2']) await store.addVideo(product.id, { file_id: id, kind: 'video' });
+  tg.api.downloadFile = async (fileId) => Buffer.from(fileId);
+
+  const reports = [];
+  const report = async (view) => {
+    reports.push(view.text);
+  };
+  shared.length = 0;
+  for (let i = 0; i < 4; i += 1) await products.publish(product.id, report);
+
+  assert.deepEqual(
+    shared.map((s) => (s.video ? `video:${s.video}` : `photos:${s.threadsImages.length}`)),
+    ['video:v1', 'video:v2', 'photos:2', 'video:v1']
+  );
+  assert.equal(shared[0].threadsImages.length, 0, 'с видео фото не готовим');
+  assert.ok(reports.some((r) => /видео №1 из 2/.test(r)), reports.join('\n'));
+
+  await press(`pr:open:${product.id}`);
+  assert.match(lastView.text, /2 фото, 2 видео/);
+  assert.match(lastView.text, /Следующим пойдёт видео №2/);
+  assert.ok(buttons().includes(`pr:vid:${product.id}`));
+
+  await press(`pr:vid:${product.id}`);
+  assert.ok(buttons().includes(`pr:delv:${product.id}:1`));
+  await press(`pr:delv:${product.id}:0`);
+  assert.deepEqual((await store.get(product.id)).videos.map((v) => v.file_id), ['v2']);
+});
+
+test('видео не скачалось из Telegram — выход идёт с фото, а в отчёте сказано почему', async () => {
+  const product = await store.create('Сломанное видео');
+  await store.addText(product.id, 'Текст');
+  await store.addPhoto(product.id, { file_id: 'p', kind: 'photo' });
+  await store.addVideo(product.id, { file_id: 'gone', kind: 'video' });
+  tg.api.downloadFile = async (fileId) => {
+    if (fileId === 'gone') throw new Error('file is too big');
+    return Buffer.from(fileId);
+  };
+  const reports = [];
+  shared.length = 0;
+  await products.publish(product.id, async (view) => {
+    reports.push(view.text);
+  });
+  assert.equal(shared[0].video, undefined);
+  assert.equal(shared[0].threadsImages.length, 1);
+  assert.match(reports.at(-1), /видео не скачалось/);
 });
 
 test('сводка: что из продуктов вышло сегодня, куда и сколько набрало, а что не вышло — почему', async () => {

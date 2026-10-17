@@ -203,6 +203,18 @@ test('продукт: карусель на обе площадки, без фо
   assert.match(bare.instagram.reason, /без фото/);
 });
 
+test('продукт с видео: ролик в Threads и Reels в Instagram, фото не нужны', async () => {
+  posted.length = 0;
+  reels.length = 0;
+  const result = await social.shareProduct({ text: 'Биржа на шабашка.com', video: Buffer.from('mp4') });
+  assert.equal(result.threads.posted, true);
+  assert.equal(result.instagram.posted, true, result.instagram.reason);
+  const clip = posted.find((p) => p.kind === 'video');
+  assert.equal(clip.text, 'Биржа на шабашка.com');
+  assert.match(clip.url, /^https:\/\/shabashka\.test\/api\/social\/video\/.+\.mp4$/);
+  assert.deepEqual(reels, ['Биржа на шабашка.com']);
+});
+
 // Поднятие рекламы по расписанию (см. telegram/adRaises.js): тот же пост ещё
 // раз. Файл рекламодателя — файлом, без файла — карточкой, и Instagram тоже
 // получает картинку, а не отказ «нечего показать».

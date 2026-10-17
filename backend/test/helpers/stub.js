@@ -180,6 +180,7 @@ function adGroupsStub(extra = {}) {
 function productStoreStub() {
   const MAX_TEXTS = 20;
   const MAX_PHOTOS = 10;
+  const MAX_VIDEOS = 5;
   const DAY_MS = 24 * 60 * 60 * 1000;
   const rows = new Map();
   const log = [];
@@ -196,11 +197,12 @@ function productStoreStub() {
     log,
     MAX_TEXTS,
     MAX_PHOTOS,
+    MAX_VIDEOS,
     list: async () => [...rows.values()].map(copy),
     get: async (id) => copy(rows.get(Number(id))),
     create: async (name) => {
       seq += 1;
-      const p = { id: seq, name, texts: [], photos: [], every_days: null, paused: false, turn: 0, posted_at: null };
+      const p = { id: seq, name, texts: [], photos: [], videos: [], every_days: null, paused: false, turn: 0, posted_at: null };
       rows.set(seq, p);
       return copy(p);
     },
@@ -216,8 +218,15 @@ function productStoreStub() {
         p.photos.push({ file_id: photo.file_id, kind: photo.kind });
         return true;
       }),
+    addVideo: (id, video) =>
+      update(id, (p) => {
+        if (p.videos.length >= MAX_VIDEOS) return false;
+        p.videos.push({ file_id: video.file_id, kind: video.kind });
+        return true;
+      }),
     removeText: (id, i) => update(id, (p) => void p.texts.splice(i, 1)),
     removePhoto: (id, i) => update(id, (p) => void p.photos.splice(i, 1)),
+    removeVideo: (id, i) => update(id, (p) => void p.videos.splice(i, 1)),
     setEvery: (id, days) => update(id, (p) => void (p.every_days = days || null)),
     setPaused: (id, paused) => update(id, (p) => void (p.paused = paused)),
     remove: async (id) => rows.delete(Number(id)),

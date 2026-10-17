@@ -798,9 +798,10 @@ async function raiseAd({
   return { threads: threadsResult, instagram: instagramResult };
 }
 
-// Свой продукт (см. telegram/products.js): текст и фото — в Threads и в
-// Instagram. Одно фото — пост картинкой, несколько — каруселью, без фото —
-// в Threads текстом, а в Instagram никак: без картинки он поста не примет.
+// Свой продукт (см. telegram/products.js): текст и фото или видео — в Threads
+// и в Instagram. Видео — роликом в Threads и Reels в Instagram. Одно фото —
+// пост картинкой, несколько — каруселью, без фото и видео — в Threads текстом,
+// а в Instagram никак: без картинки он поста не примет.
 //
 // Место в очередях — как у платной рекламы: на продуктах админ зарабатывает.
 // В конце общей очереди Threads продукт стоял за всеми объявлениями из групп:
@@ -811,35 +812,43 @@ async function raiseAd({
 // quota.js).
 // Промежутки между постами те же: они держат антиспам площадок, и обгонять их
 // нельзя никому. Фото выкладываем наружу в самом задании, вплотную к
-// публикации, — ссылка живёт двадцать минут.
+// публикации, — ссылка живёт двадцать минут. Ролик присылают готовым, как
+// рекламу, и площадки берут его как есть — перекодировать незачем.
 //
 // Возвращает обещание { threads, instagram } — оба в форме post().
-async function shareProduct({ text, threadsImages = [], instagramImages = [] }) {
+async function shareProduct({ text, threadsImages = [], instagramImages = [], video: clip = null }) {
   const base = backendUrl();
   // Одно фото — пост картинкой, несколько — каруселью.
   const publishPhotos = (api, buffers) => {
     const urls = buffers.map((buffer) => `${base}/api/social/image/${hosting.put(card.stillName(), buffer)}`);
     return urls.length > 1 ? api.publishCarousel(urls, text) : api.publishImage(urls[0], text);
   };
+  const clipUrl = () => `${base}/api/social/video/${hosting.put(video.fileName(), clip)}`;
+  const what = clip ? 'видео' : 'фото';
 
   const toThreads = async () => {
     if (!threads.isConfigured()) return { posted: false, reason: 'Threads не подключён' };
-    if (threadsImages.length && !base) return { posted: false, reason: 'не задан адрес бэкенда — фото Threads не забрать' };
-    return paceThreads(
-      () => post('threads', () => (threadsImages.length ? publishPhotos(threads, threadsImages) : threads.publishText(text))),
-      { priority: true }
-    );
+    if ((clip || threadsImages.length) && !base) {
+      return { posted: false, reason: `не задан адрес бэкенда — ${what} Threads не забрать` };
+    }
+    const publish = () => {
+      if (clip) return threads.publishVideo(clipUrl(), text);
+      return threadsImages.length ? publishPhotos(threads, threadsImages) : threads.publishText(text);
+    };
+    return paceThreads(() => post('threads', publish), { priority: true });
   };
 
   const toInstagram = async () => {
     if (!instagram.isConfigured()) return { posted: false, reason: 'Instagram не подключён' };
-    if (!instagramImages.length) return { posted: false, reason: 'без фото Instagram пост не принимает' };
-    if (!base) return { posted: false, reason: 'не задан адрес бэкенда — фото Instagram не забрать' };
+    if (!clip && !instagramImages.length) return { posted: false, reason: 'без фото и видео Instagram пост не принимает' };
+    if (!base) return { posted: false, reason: `не задан адрес бэкенда — ${what} Instagram не забрать` };
     return schedule(
       async () => {
         await quota.sync(instagram.publishingLimit);
         if (!quota.take(quota.adLimit())) return quotaFailure(quota.adLimit());
-        return post('insta', () => publishPhotos(instagram, instagramImages));
+        return post('insta', () =>
+          clip ? instagram.publishReel(clipUrl(), text, video.COVER_MS) : publishPhotos(instagram, instagramImages)
+        );
       },
       { priority: true }
     );

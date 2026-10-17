@@ -3,14 +3,15 @@
 // других, а своя реклама, и выходит она своим путём: в Threads и Instagram, по
 // кнопке и по расписанию.
 //
-// У продукта несколько вариантов текста и несколько фото. Каждый выход берёт
-// следующий текст и начинает карусель со следующего фото: одинаковый пост раз
-// в два дня лента быстро перестаёт показывать, а люди — читать.
+// У продукта несколько вариантов текста, несколько фото и видео. Каждый выход
+// берёт следующий текст и начинает карусель со следующего фото: одинаковый
+// пост раз в два дня лента быстро перестаёт показывать, а люди — читать. Видео
+// выходят каждое своим постом, по очереди с фото (см. mediaOf в productViews.js).
 //
-// Ввод — пошаговый, прямо в чате: «➕ Добавить продукт» → название → тексты и
-// фото в любом порядке → «Готово» → расписание. Пока бот ждёт тексты, обычные
-// объявления в этот чат не разбираются: всё присланное — продукту. Команда или
-// кнопка меню ввод прерывает.
+// Ввод — пошаговый, прямо в чате: «➕ Добавить продукт» → название → тексты,
+// фото и видео в любом порядке → «Готово» → расписание. Пока бот ждёт тексты,
+// обычные объявления в этот чат не разбираются: всё присланное — продукту.
+// Команда или кнопка меню ввод прерывает.
 const tg = require('./api');
 const store = require('./productStore');
 const views = require('./productViews');
@@ -29,7 +30,7 @@ const TICK_MS = 10 * 60 * 1000;
 const VIEWS_TTL_MS = 10 * 60 * 1000;
 const VIEWS_POSTS = 3;
 
-// chatId → { kind: 'name' | 'content', id, fresh, until, texts, photos, full, timer }
+// chatId → { kind: 'name' | 'content', id, fresh, until, texts, photos, videos, full, timer }
 const inputs = new Map();
 
 function stopInput(chatId) {
@@ -40,7 +41,7 @@ function stopInput(chatId) {
 
 function startInput(chatId, state) {
   stopInput(chatId);
-  inputs.set(chatId, { ...state, until: Date.now() + INPUT_TTL_MS, texts: 0, photos: 0, full: [] });
+  inputs.set(chatId, { ...state, until: Date.now() + INPUT_TTL_MS, texts: 0, photos: 0, videos: 0, full: [] });
 }
 
 function inputOf(chatId) {
@@ -64,6 +65,21 @@ function photoOf(message) {
   return null;
 }
 
+// Видео, присланное роликом или файлом. size и duration — чтобы сразу
+// отказать в том, что площадки потом всё равно не примут (см. videoProblem).
+// Гифки (animation) не берём: Telegram отдаёт их без звука, и как Reels они
+// выглядят случайно попавшими.
+function videoOf(message) {
+  if (message.video) {
+    const v = message.video;
+    return { file_id: v.file_id, kind: 'video', size: v.file_size || 0, duration: v.duration || 0 };
+  }
+  if (message.document && String(message.document.mime_type || '').startsWith('video/')) {
+    return { file_id: message.document.file_id, kind: 'document', size: message.document.file_size || 0, duration: 0 };
+  }
+  return null;
+}
+
 // Каждый выход начинается со следующего фото.
 function rotate(list, turn) {
   if (!list.length) return list;
@@ -79,9 +95,10 @@ function scheduleAck(chatId, state) {
   if (state.timer) clearTimeout(state.timer);
   state.timer = setTimeout(async () => {
     state.timer = null;
-    const { texts, photos: added, full } = state;
+    const { texts, photos: added, videos, full } = state;
     state.texts = 0;
     state.photos = 0;
+    state.videos = 0;
     state.full = [];
     try {
       const product = await store.get(state.id);
@@ -90,7 +107,7 @@ function scheduleAck(chatId, state) {
         await tg.sendMessage(chatId, 'Этого продукта уже нет — сохранять некуда.');
         return;
       }
-      await sendView(chatId, views.savedView({ product, texts, photos: added, full }));
+      await sendView(chatId, views.savedView({ product, texts, photos: added, videos, full }));
     } catch (err) {
       console.error('[продукты] ответ на присланное:', err.message);
     }
@@ -131,11 +148,19 @@ async function onMessage(message, { isMenuKey = () => false } = {}) {
   }
 
   const photo = photoOf(message);
-  if (!photo && !text) {
-    await tg.sendMessage(chatId, 'Сюда — только тексты и фото. Видео и файлы продукту пока не прикрепить.');
+  const clip = videoOf(message);
+  if (!photo && !clip && !text) {
+    await tg.sendMessage(chatId, 'Сюда — только тексты, фото и видео. Гифки и другие файлы продукту не прикрепить.');
     return true;
   }
   state.until = Date.now() + INPUT_TTL_MS;
+
+  // Неподходящее видео не сохраняем, а с ним и подпись: она была к этому ролику.
+  const problem = clip ? views.videoProblem(clip) : '';
+  if (problem) {
+    await tg.sendMessage(chatId, problem);
+    return true;
+  }
 
   if (text) {
     if (text.length > views.TEXT_MAX) {
@@ -150,7 +175,11 @@ async function onMessage(message, { isMenuKey = () => false } = {}) {
     if (await store.addPhoto(state.id, photo)) state.photos += 1;
     else if (!state.full.includes('photos')) state.full.push('photos');
   }
-  if (state.texts || state.photos || state.full.length) scheduleAck(chatId, state);
+  if (clip) {
+    if (await store.addVideo(state.id, clip)) state.videos += 1;
+    else if (!state.full.includes('videos')) state.full.push('videos');
+  }
+  if (state.texts || state.photos || state.videos || state.full.length) scheduleAck(chatId, state);
   return true;
 }
 
@@ -211,11 +240,14 @@ async function cardView(id) {
   return views.cardView({ product, posts, views: await threadsViews(posts) });
 }
 
-async function sendAlbum(chatId, items) {
-  for (const kind of ['photo', 'document']) {
+// mainKind — «photo» для фото, «video» для видео; «document» — то же,
+// присланное файлом: в одном альбоме Telegram их не мешает.
+async function sendAlbum(chatId, items, mainKind = 'photo') {
+  const method = { photo: 'sendPhoto', video: 'sendVideo', document: 'sendDocument' };
+  for (const kind of [mainKind, 'document']) {
     const group = items.filter((p) => p.kind === kind);
     if (group.length === 1) {
-      await tg.call(kind === 'photo' ? 'sendPhoto' : 'sendDocument', { chat_id: chatId, [kind]: group[0].file_id });
+      await tg.call(method[kind], { chat_id: chatId, [kind]: group[0].file_id });
     } else if (group.length > 1) {
       await tg.call('sendMediaGroup', { chat_id: chatId, media: group.map((p) => ({ type: kind, media: p.file_id })) });
     }
@@ -285,13 +317,28 @@ async function publishOnce(id, report) {
   const text = product.texts[textNo];
   const notes = [];
 
-  const prepared = await preparePhotos(rotate(product.photos, product.turn), notes);
+  // Видео скачиваем целиком (до 20 МБ) и фото тогда не готовим: в пост идёт
+  // что-то одно. Не скачалось — выход не пропадает, идёт с фото.
+  let media = views.mediaOf(product, product.turn);
+  let clip = null;
+  if (media.kind === 'video') {
+    try {
+      clip = await tg.downloadFile(product.videos[media.index].file_id);
+    } catch (err) {
+      notes.push(`видео не скачалось из Telegram (${err.message}) — пост ушёл с фото`);
+      media = { kind: 'photos' };
+    }
+  }
+  const prepared = clip
+    ? { threads: [], instagram: [] }
+    : await preparePhotos(rotate(product.photos, product.turn), notes);
+  const attached = clip ? `видео №${media.index + 1} из ${media.total}` : `фото: ${prepared.threads.length}`;
 
   // Встаёт перед обычными объявлениями — впереди только срочные.
   const ahead = social.threadsQueued({ priority: true });
   await report({
     text: [
-      `🚀 «${tg.esc(product.name)}» — в очередь: текст №${textNo + 1} из ${product.texts.length}, фото: ${prepared.threads.length}.`,
+      `🚀 «${tg.esc(product.name)}» — в очередь: текст №${textNo + 1} из ${product.texts.length}, ${attached}.`,
       ahead
         ? `В Threads перед ним ${ahead} — посты выходят раз в ${social.THREADS_INTERVAL_MIN} мин. Отчёт пришлю, когда выйдет.`
         : 'Отчёт пришлю, когда выйдет.',
@@ -302,6 +349,7 @@ async function publishOnce(id, report) {
     text,
     threadsImages: prepared.threads,
     instagramImages: prepared.instagram,
+    ...(clip ? { video: clip } : {}),
   });
 
   const outcome = {};
@@ -315,7 +363,9 @@ async function publishOnce(id, report) {
   }
   if (!result.threads.posted && !result.instagram.posted) await store.unclaim(product.id);
 
-  return report(views.publishedView({ product, textNo, threads: outcome.threads, instagram: outcome.instagram, notes }));
+  return report(
+    views.publishedView({ product, textNo, media, threads: outcome.threads, instagram: outcome.instagram, notes })
+  );
 }
 
 function publishInBackground(id, report) {
@@ -373,6 +423,7 @@ async function onCallback(query, [sub, rawId, arg], { show }) {
 
     case 'txt':
     case 'pho':
+    case 'vid':
     case 'sch':
     case 'del': {
       const product = await store.get(id);
@@ -381,6 +432,7 @@ async function onCallback(query, [sub, rawId, arg], { show }) {
       const view = {
         txt: () => views.textsView(product),
         pho: () => views.photosView(product, store.MAX_PHOTOS),
+        vid: () => views.videosView(product, store.MAX_VIDEOS),
         sch: () => views.scheduleView(product),
         del: () => views.confirmDeleteView(product),
       }[sub]();
@@ -388,12 +440,17 @@ async function onCallback(query, [sub, rawId, arg], { show }) {
     }
 
     case 'delt':
-    case 'delp': {
-      const remove = sub === 'delt' ? store.removeText : store.removePhoto;
-      const product = await remove(id, Number(arg));
+    case 'delp':
+    case 'delv': {
+      const how = {
+        delt: [store.removeText, 'Текст убран', (p) => views.textsView(p)],
+        delp: [store.removePhoto, 'Фото убрано', (p) => views.photosView(p, store.MAX_PHOTOS)],
+        delv: [store.removeVideo, 'Видео убрано', (p) => views.videosView(p, store.MAX_VIDEOS)],
+      }[sub];
+      const product = await how[0](id, Number(arg));
       if (!product) return answer('Этого продукта уже нет');
-      await answer(sub === 'delt' ? 'Текст убран' : 'Фото убрано');
-      return show(chatId, sub === 'delt' ? views.textsView(product) : views.photosView(product, store.MAX_PHOTOS), messageId);
+      await answer(how[1]);
+      return show(chatId, how[2](product), messageId);
     }
 
     case 'show': {
@@ -401,6 +458,13 @@ async function onCallback(query, [sub, rawId, arg], { show }) {
       if (!product || !product.photos.length) return answer('Фото нет');
       await answer();
       return sendAlbum(chatId, product.photos);
+    }
+
+    case 'showv': {
+      const product = await store.get(id);
+      if (!product || !(product.videos || []).length) return answer('Видео нет');
+      await answer();
+      return sendAlbum(chatId, product.videos, 'video');
     }
 
     case 'every': {
