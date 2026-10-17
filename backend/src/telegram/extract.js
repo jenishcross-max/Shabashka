@@ -6,6 +6,7 @@ const { forStudents, refused } = require('../students');
 const { normalizePhone, hasPhone, phoneFrom, phonesIn } = require('../phone');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
 const EXPERIENCE_LEVELS = require('../experienceLevels');
+const adsRules = require('../adsRules');
 const tg = require('./api');
 const { notifyAdmins } = require('./notify');
 
@@ -112,7 +113,7 @@ function buildSystem(categories) {
     'В сообщении может быть несколько объявлений подряд — верни каждое отдельным элементом массива и не объединяй разные сообщения в одно.',
     '',
     'Верни только JSON, без markdown и пояснений:',
-    '{"listings":[{"is_listing":boolean,"listing_type":"order"|"vacancy"|"board"|"other","title":string,"description":string,"category":string,"city":string,"address":string,"budget":string,"phone":string,"work_format":"online"|"offline","employment_type":string,"experience":string,"note":string}]}',
+    '{"listings":[{"is_listing":boolean,"listing_type":"order"|"vacancy"|"board"|"other","title":string,"description":string,"category":string,"city":string,"address":string,"budget":string,"phone":string,"work_format":"online"|"offline","employment_type":string,"experience":string,"ad_kind":string,"ad_category":string,"note":string}]}',
     '',
     'Отбор:',
     '- Язык не меняй: кыргызский текст — кыргызские title и description, русский — русские. Правь только опечатки и пунктуацию.',
@@ -140,6 +141,7 @@ function buildSystem(categories) {
     '- phone — в формате +996XXXXXXXXX: «0700 123 456» → «+996700123456».',
     '- work_format — "online" только для удалённой работы (дизайн, тексты, программирование), всё физическое — "offline".',
     `- employment_type (${EMPLOYMENT_VALUES.join(', ')}) и experience (${EXPERIENCE_VALUES.join(', ')}) — только для вакансий и только если сказано явно, иначе пусто.`,
+    '- ad_kind и ad_category — только для board, у остальных пусто. ad_kind: rent_out (сдаю), rent (сниму), sell (продаю), buy (куплю), free (отдам даром), service (свои услуги, ремонт, такси, грузоперевозки, курсы, салон), job_search (ищу работу для себя). ad_category: housing (квартиры, комнаты, дома), rest (пансионаты, гостевые дома, юрты), transport (машины, запчасти, такси, перевозки), tech (телефоны, компьютеры, бытовая техника), home (мебель, стройматериалы, ремонт), things (одежда, обувь, вещи), animals (животные), other (всё остальное).',
     '- Ничего не выдумывай: нет поля в тексте — пустая строка. Описание бери из сообщения, а не сочиняй по заголовку.',
     '',
     'Перед ответом по каждому элементу с is_listing = true проверь: понятно, что предлагают или ищут? если заказ или вакансия — названа профессия, а не только график и возраст? если зовут девушек на уборку — назван объект? нет ли здесь запрещённого, сетевого найма или оформления на чужие документы? работать предлагают в Кыргызстане? Хоть один ответ «нет» — ставь is_listing = false.',
@@ -171,6 +173,10 @@ function normalize(raw) {
     work_format: raw.work_format === 'online' ? 'online' : 'offline',
     employment_type: EMPLOYMENT_VALUES.includes(employmentType) ? employmentType : 'gig',
     experience: EXPERIENCE_VALUES.includes(experience) ? experience : 'no_experience',
+    // Вид и рубрика раздела «Объявления» (см. adsRules.js) — для board. Не
+    // угадала модель — «Услуги» и «Другое»: объявление публикуем, а не теряем.
+    ad_kind: adsRules.KINDS.includes(clean(raw.ad_kind)) ? clean(raw.ad_kind) : 'service',
+    ad_category: adsRules.CATEGORIES.includes(clean(raw.ad_category)) ? clean(raw.ad_category) : 'other',
     note: clean(raw.note),
   };
 

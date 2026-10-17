@@ -9,6 +9,7 @@ import { SkeletonBox, SkeletonOrderCard, SkeletonFilterList } from '../component
 import { useMeta } from '../useMeta';
 import { vacancyWord } from '../plural';
 import { StudentFilter } from '../components/StudentField';
+import WorkSwitcher from '../components/WorkSwitcher';
 
 const SORTS = [
   { value: 'new', label: 'Сначала новые' },
@@ -108,6 +109,7 @@ export default function Vacancies() {
 
   return (
     <div>
+      <WorkSwitcher />
       <section className="orders-search-strip">
         <input
           placeholder="Поиск по вакансиям…"

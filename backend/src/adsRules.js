@@ -6,7 +6,9 @@ const { normalizePhone } = require('./phone');
 
 // Коды, а не подписи: подписи живут на клиенте (frontend/src/ads.js), а коды
 // попадают в адрес страницы с фильтрами и не должны меняться от правки текста.
-const KINDS = ['rent_out', 'rent', 'sell', 'buy', 'free'];
+// service и job_search пришли вместе с постами бывшей «Доски»: в группах
+// предлагают свои услуги и ищут работу не реже, чем сдают и продают.
+const KINDS = ['rent_out', 'rent', 'sell', 'buy', 'free', 'service', 'job_search'];
 const CATEGORIES = ['housing', 'rest', 'transport', 'tech', 'home', 'things', 'animals', 'other'];
 const PRICE_UNITS = ['total', 'day', 'month', 'hour'];
 const STATUSES = ['open', 'closed', 'removed'];

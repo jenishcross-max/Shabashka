@@ -90,6 +90,16 @@ async function boardPost(text, { hidden = false } = {}) {
   return rows[0].id;
 }
 
+// Объявление из группы — бывшая записка «Доски».
+async function ad(description) {
+  const { rows } = await db.query(
+    `INSERT INTO ads (user_id, kind, category, title, description, city, whatsapp_phone, is_imported)
+     VALUES ($1, 'service', 'other', 'Подработка', $2, 'Бишкек', '+996700123456', true) RETURNING id`,
+    [owner.id, description]
+  );
+  return rows[0].id;
+}
+
 async function imported(column, id, { isAd = false } = {}) {
   const { rows } = await db.query(
     `INSERT INTO imported_listings (source, raw_text, status, ${column}, is_ad)
@@ -111,6 +121,7 @@ test('находит мусор среди опубликованного и н�
   await imported('vacancy_id', paidMlm, { isAd: true });
   const freeMlm = await vacancy({ title: 'Помощник администратора', description: MLM });
   const scamBoard = await boardPost(SCAM);
+  const scamAd = await ad(SCAM);
   await boardPost(SCAM, { hidden: true });
 
   assert.equal((await call('/admin/spam-sweep', { as: owner })).status, 403);
@@ -120,7 +131,7 @@ test('находит мусор среди опубликованного и н�
   const found = body.items.map((i) => `${i.type}:${i.id}`).sort();
   assert.deepEqual(
     found,
-    [`order:${scamOrder}`, `vacancy:${scamVacancy}`, `vacancy:${freeMlm}`, `board:${scamBoard}`].sort()
+    [`order:${scamOrder}`, `vacancy:${scamVacancy}`, `vacancy:${freeMlm}`, `board:${scamBoard}`, `ad:${scamAd}`].sort()
   );
   const item = body.items.find((i) => i.type === 'order');
   assert.equal(item.kind, 'drop');
@@ -135,17 +146,19 @@ test('находит мусор среди опубликованного и н�
       items: [
         { type: 'order', id: scamOrder },
         { type: 'vacancy', id: scamVacancy },
+        { type: 'ad', id: scamAd },
         { type: 'order', id: okOrder },
         { type: 'users', id: admin.id },
       ],
     },
   });
   assert.equal(res.status, 200);
-  assert.deepEqual(res.body, { removed: 2, blocked: 1 });
+  assert.deepEqual(res.body, { removed: 3, blocked: 1 });
 
   const left = async (table, id) => (await db.query(`SELECT id FROM ${table} WHERE id = $1`, [id])).rows.length;
   assert.equal(await left('orders', scamOrder), 0);
   assert.equal(await left('vacancies', scamVacancy), 0);
+  assert.equal(await left('ads', scamAd), 0);
   assert.equal(await left('orders', okOrder), 1);
   assert.equal(await left('orders', closedScam), 1);
   assert.equal(await left('users', admin.id), 1);

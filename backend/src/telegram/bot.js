@@ -37,7 +37,9 @@ const SITE_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
 // просто пропускаем этот шаг, остальная публикация работает как раньше.
 const CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID || '';
 
-const LISTING_PATHS = { vacancy: 'vacancies', order: 'orders' };
+// board — объявление не про работу. С октября 2026 это раздел «Объявления»
+// на сайте, и у каждого своя страница (раньше — записка на доске с якорем).
+const LISTING_PATHS = { vacancy: 'vacancies', order: 'orders', board: 'ads' };
 
 // Посты из чужих групп бот публикует молча: карточку, очередь площадок и
 // отчёты по ним не присылает, а считает для сводки (см. summary.js). Из групп
@@ -537,12 +539,10 @@ function digestMenu() {
   };
 }
 
-// Адрес объявления на сайте — тот же, что и в карточке после публикации:
-// у записки на доске своей страницы нет, ведём на доску с якорем.
+// Адрес объявления на сайте — тот же, что и в карточке после публикации.
 function listingUrl(listingType, id) {
   if (!SITE_URL) return '';
-  const path = listingType === 'board' ? `board#p${id}` : `${LISTING_PATHS[listingType]}/${id}`;
-  return `${SITE_URL}/${path}`;
+  return `${SITE_URL}/${LISTING_PATHS[listingType]}/${id}`;
 }
 
 const listingLink = (listingType, id) => prettyLink(listingUrl(listingType, id));
@@ -706,10 +706,7 @@ async function publishOne(chatId, id, parsed, priority = false, { quiet = false 
   if (filled.length) await imports.setParsed(id, ready);
 
   const result = await imports.publish(id);
-  // У записки на доске отдельной страницы нет — ведём на доску с якорем: страница
-  // подсветит нужное объявление, пока оно живо.
-  const path = result.type === 'board' ? `board#p${result.id}` : `${LISTING_PATHS[result.type]}/${result.id}`;
-  const siteLink = SITE_URL ? `${SITE_URL}/${path}` : '';
+  const siteLink = listingUrl(result.type, result.id);
   const shown = prettyLink(siteLink);
   // Текст без ссылки: в сообщения Telegram она добавляется тегом отдельно, а в
   // WhatsApp уходит обычной строкой — разметку там показывать нечем.
@@ -750,7 +747,7 @@ async function publishOne(chatId, id, parsed, priority = false, { quiet = false 
   // рядом с кнопкой удаления.
   const isBoard = result.type === 'board';
   const lines = [
-    isBoard ? '✅ Повесил на доску — сутки, потом пропадёт само' : '✅ Опубликовано',
+    isBoard ? '✅ Опубликовал в «Объявления»' : '✅ Опубликовано',
     '',
     `${tg.esc(clamp(body, 3000))}${linkTag}`,
     '',
@@ -902,13 +899,11 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
       feedStats.bump('ad.ok');
       if (parsed.for_students) feedStats.bump('students');
       listingType = published.type;
-      const path =
-        published.type === 'board' ? `board#p${published.id}` : `${LISTING_PATHS[published.type]}/${published.id}`;
-      siteLink = SITE_URL ? `${SITE_URL}/${path}` : '';
+      siteLink = listingUrl(published.type, published.id);
       lines.push(
-        published.type === 'board'
-          ? '✅ Повесил на доску — сутки, потом пропадёт само'
-          : `✅ Опубликовал: ${published.type === 'vacancy' ? 'вакансия' : 'заказ'}`
+        `✅ Опубликовал: ${
+          published.type === 'vacancy' ? 'вакансия' : published.type === 'board' ? 'объявление' : 'заказ'
+        }`
       );
       // Номер тут не обязателен, в отличие от обычного объявления: в рекламе
       // контакт часто нарисован прямо на макете. Но сказать об этом надо —
@@ -1454,7 +1449,7 @@ async function sendHelp(chatId) {
       '',
       'Заказ и вакансия становятся карточкой на сайте. Всё остальное — продажа дома',
       'или машины, аренда, «делаем ремонт под ключ», поиск работы для себя —',
-      'уходит на 📌 доску: там объявление живёт сутки, ролик и пост в канале',
+      'уходит в 🏷 Объявления: с видом и рубрикой, без срока. Ролик и пост в канале',
       'при этом делаются точно так же.',
       '',
       'Чего не хватает — дописываю сам (город → Бишкек, категория → Другое)',
@@ -1488,8 +1483,8 @@ async function sendHelp(chatId) {
       'Рекламой можно прислать что угодно: готовый ролик, гифку, макет картинкой.',
       'Файл уйдёт в канал и в Instagram своим видом, без нашего макета, а подпись',
       'разберу как обычное объявление — вакансия попадёт в вакансии, разовая',
-      'работа в заказы, остальное на доску. Не разберу подпись — повешу запиской',
-      'на доску (заголовок — первая строка, телефон — первый номер из текста).',
+      'работа в заказы, остальное в объявления. Не разберу подпись — опубликую',
+      'объявлением (заголовок — первая строка, телефон — первый номер из текста).',
       'Номер в тексте не обязателен, но без него на сайте не будет кнопки WhatsApp.',
       'Файл тяжелее 20 МБ Telegram боту не отдаёт — такой ролик сожмите заранее.',
       '',
@@ -1497,7 +1492,7 @@ async function sendHelp(chatId) {
       'выбран: «вне очереди» тогда не помогает — дорожки общие, и реклама ждёт',
       'освобождения вместе со всеми. По этой команде объявление уходит на сайт,',
       'в канал и на площадки сразу. Тип определю по словам («требуются» плюс',
-      'разговор про оплату — вакансия, иначе доска), заголовок соберу из первых',
+      'разговор про оплату — вакансия, иначе объявление), заголовок соберу из первых',
       'строк. Города, категории и зарплаты в карточке не будет — их называет',
       'модель, а к ней мы не идём. Промежутки между постами остаются: они держат',
       `антиспам Threads (${social.THREADS_INTERVAL_MIN} минут) и часовой лимит Instagram, и снимать их нельзя —`,
@@ -2214,7 +2209,7 @@ async function publishedView(from = 'groups', page = 0) {
   return menu.publishedView({
     rows: rows.map((row) => ({
       ...row,
-      type: row.vacancy_id ? 'vacancy' : row.order_id ? 'order' : row.board_post_id ? 'board' : null,
+      type: row.vacancy_id ? 'vacancy' : row.order_id ? 'order' : row.ad_id || row.board_post_id ? 'board' : null,
       url: row.live ? adSiteUrl(row) : '',
     })),
     from: tab,
@@ -2880,8 +2875,11 @@ async function adInfoView(importId, page = 0, { force = false, noBoost = false }
 
 // Адрес карточки рекламы на сайте — по тому, чем она стала.
 function adSiteUrl(ad) {
-  const type = ad.vacancy_id ? 'vacancy' : ad.order_id ? 'order' : ad.board_post_id ? 'board' : null;
-  return type ? listingUrl(type, ad.vacancy_id || ad.order_id || ad.board_post_id) : '';
+  if (ad.vacancy_id) return listingUrl('vacancy', ad.vacancy_id);
+  if (ad.order_id) return listingUrl('order', ad.order_id);
+  if (ad.ad_id) return listingUrl('board', ad.ad_id);
+  // Старая записка на доске: страницы у неё нет, «Объявления» — ближе всего.
+  return ad.board_post_id && SITE_URL ? `${SITE_URL}/ads` : '';
 }
 
 async function raiseSettingsView() {

@@ -8,6 +8,8 @@ export const KINDS = [
   ['sell', 'Продам'],
   ['buy', 'Куплю'],
   ['free', 'Отдам даром'],
+  ['service', 'Услуги'],
+  ['job_search', 'Ищу работу'],
 ];
 
 export const CATEGORIES = [
@@ -61,7 +63,10 @@ export function priceLabel(ad) {
   if (ad.price === null || ad.price === undefined) return 'Договорная';
   const sum = `${Number(ad.price).toLocaleString('ru-RU')} сом`;
   const unit = ad.price_unit && ad.price_unit !== 'total' ? ` ${UNIT_LABELS[ad.price_unit]}` : '';
-  const prefix = ad.kind === 'buy' || ad.kind === 'rent' ? 'до ' : '';
+  // Кто ищет, называет потолок; кто предлагает себя — нижнюю границу: у услуги
+  // цена «от», у «ищу работу» — оплата, ниже которой не согласен.
+  const prefix =
+    ad.kind === 'buy' || ad.kind === 'rent' ? 'до ' : ad.kind === 'service' || ad.kind === 'job_search' ? 'от ' : '';
   return `${prefix}${sum}${unit}`;
 }
 

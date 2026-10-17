@@ -197,3 +197,33 @@ test('оборванный ответ модели не теряет готов�
   answer = '{"listings":[{"is_listing":true,"title":"Сдаю кварт';
   await assert.rejects(extract.fromText('текст объявления подлиннее пятнадцати знаков'), /Модель вернула не JSON/);
 });
+
+// Бывшая «Доска»: такие посты бот публикует в раздел «Объявления», и там у
+// каждого вид и рубрика (см. adsRules.js).
+test('у объявления — вид и рубрика раздела «Объявления»', async () => {
+  const [ok, odd] = await parse([
+    {
+      is_listing: true,
+      listing_type: 'board',
+      title: 'Сдаю квартиру',
+      city: 'Бишкек',
+      phone: '0700111222',
+      ad_kind: 'rent_out',
+      ad_category: 'housing',
+    },
+    {
+      is_listing: true,
+      listing_type: 'board',
+      title: 'Сантехник, все виды работ',
+      city: 'Бишкек',
+      phone: '0700111222',
+      ad_kind: 'что-то',
+      ad_category: '',
+    },
+  ]);
+  assert.equal(ok.ad_kind, 'rent_out');
+  assert.equal(ok.ad_category, 'housing');
+  // Непонятный вид — «Услуги», рубрика — «Другое»: публикуем, а не теряем.
+  assert.equal(odd.ad_kind, 'service');
+  assert.equal(odd.ad_category, 'other');
+});

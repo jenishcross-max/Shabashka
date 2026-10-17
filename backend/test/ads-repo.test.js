@@ -137,3 +137,27 @@ test('просмотры считаются', async () => {
   await repo.addView(ad.id);
   assert.equal((await repo.get(ad.id)).views, 2);
 });
+
+test('объявление из группы: от имени владельца бота, без фото, не в «Моих»', async () => {
+  const owner = await user('Бот');
+  const ad = await repo.createImported({
+    userId: owner.id,
+    kind: 'rent_out',
+    category: 'housing',
+    title: 'Сдаю квартиру',
+    description: '2 комнаты, Джал',
+    price: 25000,
+    city: 'Бишкек',
+    whatsappPhone: '+996700111222',
+  });
+  assert.equal(ad.is_imported, true);
+  assert.deepEqual(ad.photos, []);
+  assert.equal(ad.price_unit, 'total');
+  assert.equal(ad.owner_name, 'Бот');
+  // Иначе у админа в «Моих публикациях» оказалась бы вся лента из групп.
+  assert.equal((await repo.mine(owner.id)).length, 0);
+  // Без цены — «договорная»: ни суммы, ни единицы.
+  const free = await repo.createImported({ ...ad, userId: owner.id, whatsappPhone: null, price: null });
+  assert.equal(free.price, null);
+  assert.equal(free.price_unit, null);
+});

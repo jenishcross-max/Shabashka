@@ -96,3 +96,13 @@ test('ownerBlocker: закрыть открытое, открыть закрыт
   assert.equal(rules.ownerBlocker(closed, 7, 'bump').status, 409);
   assert.equal(rules.ownerBlocker(closed, 7, 'edit'), null, 'закрытое можно поправить');
 });
+
+test('услуги и «ищу работу» — обычные виды с ценой', () => {
+  for (const kind of ['service', 'job_search']) {
+    const { errors, result } = rules.validateAd({ ...OK, kind, price: '1500', price_unit: 'hour' }, { userId: 7 });
+    assert.deepEqual(errors, [], kind);
+    assert.equal(result.kind, kind);
+    assert.equal(result.price, 1500);
+    assert.equal(result.price_unit, 'hour');
+  }
+});

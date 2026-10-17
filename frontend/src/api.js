@@ -105,11 +105,6 @@ export const api = {
   reportVacancy: (id, reason) => request(`/vacancies/${id}/report`, { method: 'POST', body: { reason } }),
   bumpVacancy: (id, token) => request(`/vacancies/${id}/bump`, { method: 'POST', token }),
 
-  boardPosts: (params = {}, token) => request(`/board${toQueryString(params)}`, { token }),
-  createBoardPost: (payload, token) => request('/board', { method: 'POST', body: payload, token }),
-  deleteBoardPost: (id, params = {}, token) =>
-    request(`/board/${id}${toQueryString(params)}`, { method: 'DELETE', token }),
-  reportBoardPost: (id, reason) => request(`/board/${id}/report`, { method: 'POST', body: { reason } }),
 
   conversations: (token) => request('/conversations', { token }),
   conversation: (id, token) => request(`/conversations/${id}`, { token }),

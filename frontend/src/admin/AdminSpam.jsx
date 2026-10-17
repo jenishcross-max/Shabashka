@@ -5,8 +5,8 @@ import { api } from '../api';
 import { relativeDate } from '../formatDate';
 import { SkeletonTableRows } from '../components/Skeleton';
 
-const TYPE_LABELS = { order: 'Заказ', vacancy: 'Вакансия', board: 'Доска' };
-const PATHS = { order: '/orders/', vacancy: '/vacancies/' };
+const TYPE_LABELS = { order: 'Заказ', vacancy: 'Вакансия', ad: 'Объявление', board: 'Доска' };
+const PATHS = { order: '/orders/', vacancy: '/vacancies/', ad: '/ads/' };
 const key = (item) => `${item.type}:${item.id}`;
 
 // Проверка опубликованного фильтром мошенников. Фильтр смотрит пост только

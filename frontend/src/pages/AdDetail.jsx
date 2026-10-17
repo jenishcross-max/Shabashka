@@ -217,6 +217,9 @@ export default function AdDetail() {
   if (!ad) return <SkeletonOrderDetail />;
 
   const isOwner = user?.id === ad.user_id;
+  // Из групп бот публикует от имени админа: имя и «Сообщения» привели бы к
+  // админу, а не к автору. Остаётся WhatsApp — номер из самого поста.
+  const imported = !!ad.is_imported;
 
   return (
     <div className="order-detail-wrap">
@@ -242,7 +245,7 @@ export default function AdDetail() {
             {ad.address ? `, ${ad.address}` : ''}
           </span>
           <span>🗓 {relativeDate(ad.bumped_at || ad.created_at)}</span>
-          <span>👤 {ad.owner_name}</span>
+          <span>👤 {imported ? 'Из открытых чатов' : ad.owner_name}</span>
           <span>
             👁 {ad.views} {viewWord(ad.views)}
           </span>
@@ -262,36 +265,42 @@ export default function AdDetail() {
                 💬 Написать в WhatsApp
               </a>
             )}
-            <div className="apply-box">
-              <h3>{ad.whatsapp_phone ? 'Или напишите прямо здесь' : 'Написать автору'}</h3>
-              {user ? (
-                <form onSubmit={handleSend}>
-                  <textarea
-                    rows={3}
-                    maxLength={2000}
-                    placeholder="Например: здравствуйте, ещё актуально? Можно посмотреть в субботу?"
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                  />
-                  {sendError && <p className="status-msg error">{sendError}</p>}
-                  <button className="submit-btn" type="submit" disabled={sending || !draft.trim()}>
-                    {sending ? 'Отправляем…' : 'Отправить сообщение'}
-                  </button>
-                </form>
-              ) : (
-                <p className="apply-login-hint">
-                  <Link to="/login" state={{ from: { pathname: `/ads/${ad.id}` } }}>
-                    Войдите
-                  </Link>{' '}
-                  или <Link to="/register">зарегистрируйтесь</Link>, чтобы переписываться с автором на сайте.
-                  {ad.whatsapp_phone ? ' Написать в WhatsApp можно и без аккаунта.' : ''}
-                </p>
-              )}
-            </div>
+            {imported ? (
+              !ad.whatsapp_phone && (
+                <p className="status-msg">Автор не оставил номера — связаться с ним не получится.</p>
+              )
+            ) : (
+              <div className="apply-box">
+                <h3>{ad.whatsapp_phone ? 'Или напишите прямо здесь' : 'Написать автору'}</h3>
+                {user ? (
+                  <form onSubmit={handleSend}>
+                    <textarea
+                      rows={3}
+                      maxLength={2000}
+                      placeholder="Например: здравствуйте, ещё актуально? Можно посмотреть в субботу?"
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                    />
+                    {sendError && <p className="status-msg error">{sendError}</p>}
+                    <button className="submit-btn" type="submit" disabled={sending || !draft.trim()}>
+                      {sending ? 'Отправляем…' : 'Отправить сообщение'}
+                    </button>
+                  </form>
+                ) : (
+                  <p className="apply-login-hint">
+                    <Link to="/login" state={{ from: { pathname: `/ads/${ad.id}` } }}>
+                      Войдите
+                    </Link>{' '}
+                    или <Link to="/register">зарегистрируйтесь</Link>, чтобы переписываться с автором на сайте.
+                    {ad.whatsapp_phone ? ' Написать в WhatsApp можно и без аккаунта.' : ''}
+                  </p>
+                )}
+              </div>
+            )}
           </>
         )}
 
-        <SafetyNote />
+        <SafetyNote isImported={imported} />
 
         <div className="secondary-actions">
           <button type="button" onClick={handleShare}>

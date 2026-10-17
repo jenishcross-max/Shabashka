@@ -1,10 +1,7 @@
-import { Link } from 'react-router-dom';
 import { relativeDate } from '../formatDate';
 import { employmentLabel } from '../employmentTypes';
 import { experienceLabel } from '../experienceLevels';
-import FavoriteButton from './FavoriteButton';
-import FormatIcon from './FormatIcon';
-import { StudentBadge } from './StudentField';
+import ListingCard from './ListingCard';
 
 export function formatSalary(min, max) {
   if (!min && !max) return 'По договорённости';
@@ -13,34 +10,34 @@ export function formatSalary(min, max) {
   return `до ${max.toLocaleString('ru-RU')} сом`;
 }
 
+// «Полная занятость, без опыта» — одна строка подробностей под заголовком.
+function terms(vacancy) {
+  const experience = experienceLabel(vacancy.experience);
+  return [employmentLabel(vacancy.employment_type), experience && experience.charAt(0).toLowerCase() + experience.slice(1)]
+    .filter(Boolean)
+    .join(', ');
+}
+
 export default function VacancyCard({ vacancy }) {
   return (
-    <Link to={`/vacancies/${vacancy.id}`} className="order-card">
-      <div className="order-card-top">
-        <div className="order-card-badges">
-          <span className="badge">{vacancy.category}</span>
-          <span className="badge badge-format">
-            <FormatIcon name={vacancy.work_format === 'online' ? 'online' : 'offline'} size={14} />
-            {vacancy.work_format === 'online' ? 'Онлайн' : 'Офлайн'}
-          </span>
-          {!!vacancy.for_students && <StudentBadge />}
-          {!!vacancy.pinned && <span className="badge pinned">🔥 Топ</span>}
-          {!!vacancy.is_example && <span className="badge badge-example">Пример</span>}
-        </div>
-        <div className="order-card-top-right">
-          <span className="order-city">{vacancy.city}</span>
-          <FavoriteButton type="vacancy" id={vacancy.id} className="order-card-fav" />
-        </div>
-      </div>
-      <h3>{vacancy.title}</h3>
-      <p className="vacancy-employment">
-        {employmentLabel(vacancy.employment_type)} · {experienceLabel(vacancy.experience)}
-      </p>
-      <p>{vacancy.description}</p>
-      <div className="order-card-bottom">
-        <span className="budget">{formatSalary(vacancy.salary_min, vacancy.salary_max)}</span>
-        <span className="date">{relativeDate(vacancy.created_at)}</span>
-      </div>
-    </Link>
+    <ListingCard
+      to={`/vacancies/${vacancy.id}`}
+      badge={vacancy.category}
+      city={vacancy.city}
+      date={relativeDate(vacancy.created_at)}
+      favorite={{ type: 'vacancy', id: vacancy.id }}
+      title={vacancy.title}
+      detail={terms(vacancy)}
+      description={vacancy.description}
+      price={formatSalary(vacancy.salary_min, vacancy.salary_max)}
+      priceMuted={!vacancy.salary_min && !vacancy.salary_max}
+      flags={{
+        online: vacancy.work_format === 'online',
+        students: !!vacancy.for_students,
+        pinned: !!vacancy.pinned,
+        example: !!vacancy.is_example,
+        imported: !!vacancy.is_imported,
+      }}
+    />
   );
 }

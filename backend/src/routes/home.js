@@ -27,7 +27,7 @@ router.get(
     // Ни счётчиков по категориям, ни общей статистики: главная больше их не
     // показывает, а это были два полных прохода по orders и users на каждое
     // истечение кэша.
-    const [cityCounts, orders, vacancies, cities, instagramFollowers, tasks, ads] = await Promise.all([
+    const [cityCounts, orders, vacancies, cities, instagramFollowers, tasks, ads, counts] = await Promise.all([
       cached('home:city-counts', REFERENCE_TTL, async () => {
         const { rows } = await db.query(
           "SELECT city, COUNT(*)::int AS count FROM orders WHERE status = 'open' GROUP BY city ORDER BY count DESC LIMIT 8"
@@ -39,7 +39,7 @@ router.get(
         const { rows } = await db.query(
           `SELECT ${ORDER_FIELDS} FROM orders JOIN users ON users.id = orders.user_id
            WHERE orders.status = 'open'
-           ORDER BY orders.pinned DESC, orders.created_at DESC LIMIT 12`
+           ORDER BY orders.pinned DESC, orders.created_at DESC LIMIT 8`
         );
         return rows;
       }),
@@ -76,9 +76,22 @@ router.get(
 
       // Четыре свежих объявления «сдам/продам» — для блока под биржей.
       cached('home:ads', FEED_TTL, async () => (await adsRepo.list({ limit: 4 })).ads.map(withPhotoUrls)),
+
+      // Плитки «Что ищете?»: сколько открыто в каждом разделе. Четыре счёта по
+      // индексам статуса одним запросом; сбрасывается вместе со всем home: при
+      // каждой подаче, а так — раз в минуту.
+      cached('home:counts', REFERENCE_TTL, async () => {
+        const { rows } = await db.query(
+          `SELECT (SELECT COUNT(*)::int FROM orders WHERE status = 'open') AS orders,
+                  (SELECT COUNT(*)::int FROM vacancies WHERE status = 'open') AS vacancies,
+                  (SELECT COUNT(*)::int FROM tasks WHERE status = 'open') AS tasks,
+                  (SELECT COUNT(*)::int FROM ads WHERE status = 'open') AS ads`
+        );
+        return rows[0];
+      }),
     ]);
 
-    res.json({ cityCounts, orders, vacancies, cities, instagramFollowers, tasks, ads });
+    res.json({ cityCounts, orders, vacancies, cities, instagramFollowers, tasks, ads, counts });
   })
 );
 

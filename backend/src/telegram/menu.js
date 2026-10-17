@@ -140,7 +140,7 @@ function bar(views, goal) {
   return '▰'.repeat(filled) + '▱'.repeat(BAR - filled);
 }
 
-const TYPE_NAMES = { vacancy: '💼 Вакансия', order: '🧰 Заказ', board: '📌 Записка на доске' };
+const TYPE_NAMES = { vacancy: '💼 Вакансия', order: '🧰 Заказ', board: '🏷 Объявление' };
 
 function groupLine(row, now) {
   const title = tg.esc(clamp(row.title || row.target, 40));
@@ -177,7 +177,7 @@ function adInfoView({
   const p = ad.parsed || {};
   const at = ad.published_at || ad.created_at;
   const lines = [`📣 <b>${tg.esc(clamp(p.title || 'реклама', 100))}</b>`, `Вышла ${whenText(at)} · ${agoText(now - new Date(at).getTime())}`];
-  const type = ad.vacancy_id ? 'vacancy' : ad.order_id ? 'order' : ad.board_post_id ? 'board' : null;
+  const type = ad.vacancy_id ? 'vacancy' : ad.order_id ? 'order' : ad.ad_id || ad.board_post_id ? 'board' : null;
   if (ad.status !== 'published') lines.push('🗑 Снята с сайта');
   else if (type) {
     lines.push(`${TYPE_NAMES[type]} на сайте${siteLink ? `: <a href="${siteLink}">${tg.esc(siteLabel || siteLink)}</a>` : ''}`);
