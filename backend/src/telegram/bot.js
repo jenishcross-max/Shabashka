@@ -12,6 +12,7 @@ const deferred = require('./deferred');
 const queue = require('./queue');
 const social = require('../social');
 const follow = require('../social/follow');
+const more = require('../social/more');
 const dm = require('../dm');
 const spam = require('../spam');
 const digestRepo = require('../digestRepo');
@@ -2659,11 +2660,15 @@ function startWatchers() {
     report: (chatId, text) => tg.sendMessage(chatId || adminChat(), text),
     siteLink: (ad) => prettyLink(adSiteUrl(ad)),
   });
-  // Число объявлений за сутки для строки «подпишись» (см. social/follow.js).
+  // Числа за сутки для строк «подпишись» и «все N за сутки» (см.
+  // social/follow.js и social/more.js).
   const countDaily = () =>
     imports
-      .countPublishedSince(24)
-      .then(follow.setDaily)
+      .countPublishedByType(24)
+      .then((counts) => {
+        follow.setDaily(counts.vacancy + counts.order);
+        more.setCounts(counts);
+      })
       .catch((err) => console.error('[подписка] число за сутки:', err.message));
   countDaily();
   setInterval(countDaily, 60 * 60 * 1000).unref();

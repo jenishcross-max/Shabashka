@@ -277,9 +277,12 @@ test('каждый четвёртый пост-объявление зовёт �
   for (const n of [21, 22, 23, 24]) social.shareListing(parsed, 'vacancy', `шабашка.com/vacancies/${n}`, { chatId: 1 }, {});
   social.shareListing(parsed, 'vacancy', 'шабашка.com/vacancies/25', { chatId: 1 }, { priority: true });
   // Пять постов через очередь: ждём по условию, а не по часам — таймеры Windows грубые.
-  for (let i = 0; i < 50 && posted.length < 5; i += 1) await settle();
-  const ad = posted.find((p) => /vacancies\/25/.test(p.text));
-  const ordinary = posted.filter((p) => p !== ad);
+  // Считаем только свои: под нагрузкой полного прогона сюда доезжал хвост
+  // очереди предыдущего теста, и «четыре обычных» превращались в пять.
+  const mine = () => posted.filter((p) => /vacancies\/2[1-5]\b/.test(p.text));
+  for (let i = 0; i < 50 && mine().length < 5; i += 1) await settle();
+  const ad = mine().find((p) => /vacancies\/25/.test(p.text));
+  const ordinary = mine().filter((p) => p !== ad);
   assert.equal(ordinary.length, 4);
   const withFollow = ordinary.filter((p) => p.text.includes('🔔 Подпишись'));
   assert.equal(withFollow.length, 1, 'ровно один из четырёх');
@@ -294,6 +297,42 @@ test('каждый четвёртый пост-объявление зовёт �
   );
   assert.ok(video.weight(long) <= 500, `вес ${video.weight(long)}`);
   assert.match(long, /…\n\n🔔 Подпишись — каждый день 60\+[^\n]*\nшабашка\.com\/vacancies\/9$/);
+});
+
+// Повод зайти на сайт (исследование 18 октября 2026, см. docs/research): пост
+// с номером самодостаточен, и из сотен просмотров на сайт переходили единицы.
+// Последняя строка зовёт не на одну карточку, а ко всем вакансиям за сутки.
+test('пост-объявление зовёт ко всем объявлениям за сутки, реклама — нет', async () => {
+  const more = requireSrc('social/more.js');
+  more.setCounts({ vacancy: 63, order: 18 });
+  try {
+    posted.length = 0;
+    social.shareListing(parsed, 'vacancy', 'шабашка.com/vacancies/41', { chatId: 1 }, {});
+    social.shareListing(parsed, 'order', 'шабашка.com/orders/42', { chatId: 1 }, {});
+    social.shareListing(parsed, 'vacancy', 'шабашка.com/vacancies/43', { chatId: 1 }, { priority: true });
+    for (let i = 0; i < 50 && posted.length < 3; i += 1) await settle();
+    const textOf = (n) => posted.find((p) => p.text.includes(`/${n}`)).text;
+    assert.match(textOf(41), /\nшабашка\.com\/vacancies\/41\n👉 Все 63 вакансии за сутки — шабашка\.com\/vacancies$/);
+    assert.match(textOf(42), /\n👉 Все 18 подработок за сутки — шабашка\.com\/orders$/);
+    assert.ok(!textOf(43).includes('👉'), 'реклама зовёт только к себе');
+
+    const long = video.threadsText(
+      { ...parsed, description: 'Очень длинное описание. '.repeat(60) },
+      'vacancy',
+      'шабашка.com/vacancies/9',
+      { follow: '🔔 Подпишись — каждый день 60+ новых вакансий и подработок', more: more.line('vacancy', 'шабашка.com/vacancies/9') }
+    );
+    assert.ok(video.weight(long) <= 500, `вес ${video.weight(long)}`);
+    assert.match(long, /…\n\n🔔 Подпишись[^\n]*\nшабашка\.com\/vacancies\/9\n👉 Все 63 вакансии за сутки/);
+
+    more.setCounts({ vacancy: 7, order: 0 });
+    assert.equal(more.line('vacancy', 'шабашка.com/vacancies/9'), '', 'меньше десяти — не хвалимся');
+    more.setCounts({ vacancy: 63 });
+    assert.equal(more.line('board', 'шабашка.com/ads#p5'), '', 'у объявлений «сдам/продам» своего счёта нет');
+    assert.equal(more.line('vacancy', ''), '', 'без ссылки звать некуда');
+  } finally {
+    more.setCounts({});
+  }
 });
 
 // Рубрика (см. telegram/rubrics.js): в Threads — как реклама, перед объявлениями;

@@ -9,6 +9,7 @@ const tokens = require('./tokens');
 const adTracker = require('./adTracker');
 const leads = require('./leads');
 const follow = require('./follow');
+const more = require('./more');
 
 // Публичный адрес самого бэкенда — по нему площадки придут за роликом. Отдельной
 // переменной не заводим: адрес уже известен из настроек вебхука, а на Render его
@@ -905,6 +906,7 @@ async function shareListing(parsed, listingType, siteLink, ctx, { priority = fal
     const text = video.threadsText(parsed, listingType, siteLink, {
       ad: priority,
       follow: priority ? '' : follow.next(),
+      more: priority ? '' : more.line(listingType, siteLink),
     });
     const withCard = THREADS_CARDS === 'all' || (THREADS_CARDS === 'ads' && priority);
     result.threadsQueued = true;

@@ -302,7 +302,7 @@ const THREADS_LIMIT = 500;
 // хештегов. Тег у Threads один на пост и уходит отдельным полем (см. cleanTag в
 // threads.js); решётки в тексте, кроме первой, оставались просто словами и
 // занимали место у описания.
-function threadsText(parsed, listingType, siteLink, { ad = false, follow = '' } = {}) {
+function threadsText(parsed, listingType, siteLink, { ad = false, follow = '', more = '' } = {}) {
   const isVacancy = listingType === 'vacancy';
   const head = [`${label(listingType, parsed)}: ${parsed.title || ''}`.trim()];
   if (ad && adLine()) head.unshift(adLine());
@@ -313,10 +313,12 @@ function threadsText(parsed, listingType, siteLink, { ad = false, follow = '' } 
   if (parsed.phone) head.push(`📞 ${parsed.phone}`);
 
   // Хвост собираем раньше описания: ссылка обязательна, а описание ужимается
-  // под остаток. Зов подписаться — прямо перед ссылкой (см. follow.js).
+  // под остаток. Зов подписаться — прямо перед ссылкой (см. follow.js), зов ко
+  // всем объявлениям за сутки — после неё (см. more.js).
   const tail = [];
   if (follow) tail.push(follow);
   if (siteLink) tail.push(siteLink);
+  if (more) tail.push(more);
 
   const fixed = weight([...head, '', ...tail].join('\n'));
   // Блок описания добавляет к посту сам текст и два перевода строки — пустую

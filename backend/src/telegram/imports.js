@@ -340,18 +340,18 @@ async function countPublished(from = 'groups') {
   return rows[0].n;
 }
 
-// Сколько вакансий и заказов вышло за последние часы — для строки «подпишись»
-// (см. social/follow.js): она обещает «N новых вакансий и подработок», и записки
-// доски (продают дом, сдают квартиру) число раздули бы. Тот же частичный
-// индекс, что у списка опубликованного.
-async function countPublishedSince(hours = 24) {
+// Сколько вакансий и заказов вышло за последние часы — для строк «подпишись»
+// (см. social/follow.js) и «все N за сутки» (см. social/more.js). Они обещают
+// вакансии и подработки, и записки доски (продают дом, сдают квартиру) число
+// раздули бы. Тот же частичный индекс, что у списка опубликованного.
+async function countPublishedByType(hours = 24) {
   const { rows } = await db.query(
-    `SELECT COUNT(*)::int AS n FROM imported_listings
+    `SELECT COUNT(vacancy_id)::int AS vacancy, COUNT(order_id)::int AS "order" FROM imported_listings
       WHERE status = 'published' AND published_at > NOW() - make_interval(hours => $1)
         AND (vacancy_id IS NOT NULL OR order_id IS NOT NULL)`,
     [hours]
   );
-  return rows[0].n;
+  return rows[0];
 }
 
 // Платная реклама для меню бота: сначала новые. Только та, что дошла до сайта
@@ -457,7 +457,7 @@ module.exports = {
   countThreadsPosts,
   listPublished,
   countPublished,
-  countPublishedSince,
+  countPublishedByType,
   listAds,
   countAds,
   remove,
