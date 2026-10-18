@@ -505,3 +505,8 @@ CREATE INDEX IF NOT EXISTS idx_ads_user ON ads(user_id);
 -- Колонки добавляются здесь, а не в CREATE TABLE: на проде таблицы уже есть.
 ALTER TABLE ads ADD COLUMN IF NOT EXISTS is_imported BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS ad_id INTEGER;
+
+-- Видео у своих продуктов (см. telegram/products.js): { file_id, kind } из
+-- Telegram. Ролик выходит Reels в Instagram и видео в Threads; видео и фото
+-- чередуются по выходам. Колонкой отдельно: на проде таблица уже есть.
+ALTER TABLE products ADD COLUMN IF NOT EXISTS videos JSONB NOT NULL DEFAULT '[]';

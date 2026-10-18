@@ -21,7 +21,23 @@ const CANCEL = { text: '✖️ Отмена', callback_data: cb('cancel') };
 
 const textsWord = (n) => plural(n, ['текст', 'текста', 'текстов']);
 const name = (product) => tg.esc(clamp(product.name, 60));
-const counts = (product) => `${product.texts.length} ${textsWord(product.texts.length)}, ${product.photos.length} фото`;
+const videosOf = (product) => product.videos || [];
+const counts = (product) => {
+  const videos = videosOf(product).length;
+  const base = `${product.texts.length} ${textsWord(product.texts.length)}, ${product.photos.length} фото`;
+  return videos ? `${base}, ${videos} видео` : base;
+};
+
+// Что покажет выход номер turn. Каждое видео — свой выход, все фото вместе —
+// ещё один: с двумя роликами и фото посты идут «видео, видео, фото» по кругу.
+// Без видео — всегда фото (или текст), как было до роликов.
+// { kind: 'video', index, total } | { kind: 'photos' }
+function mediaOf(product, turn) {
+  const videos = videosOf(product).length;
+  if (!videos) return { kind: 'photos' };
+  const slot = turn % (videos + (product.photos.length ? 1 : 0));
+  return slot < videos ? { kind: 'video', index: slot, total: videos } : { kind: 'photos' };
+}
 
 function everyText(days) {
   if (!days) return 'только по кнопке';
@@ -45,7 +61,7 @@ function listView(products) {
     '🛍 <b>Мои продукты</b>',
     products.length
       ? 'Выходят в Threads и Instagram по кнопке и по расписанию — каждый раз со следующим текстом из списка.'
-      : 'Пока пусто. Добавьте первый: название, несколько вариантов текста и фото — дальше бот выкладывает его сам.',
+      : 'Пока пусто. Добавьте первый: название, несколько вариантов текста, фото или видео — дальше бот выкладывает его сам.',
   ].join('\n');
   const rows = products.map((p) => [
     {
@@ -100,13 +116,19 @@ function cardView({ product, posts = [], views = {}, now = Date.now() }) {
   }
 
   lines.push('');
+  const media = mediaOf(product, product.turn);
+  if (media.kind === 'video') {
+    lines.push(`🎬 Следующим пойдёт видео №${media.index + 1} из ${media.total} — Reels в Instagram.`);
+  }
   if (product.texts.length) {
     const next = product.turn % product.texts.length;
     lines.push(`Следующим пойдёт текст №${next + 1}: «${tg.esc(clamp(product.texts[next], 120))}»`);
   } else {
     lines.push('⚠️ Ни одного текста — публиковать нечего.');
   }
-  if (!product.photos.length) lines.push('ℹ️ Без фото Instagram пост не примет — выйдет только в Threads.');
+  if (!product.photos.length && !videosOf(product).length) {
+    lines.push('ℹ️ Без фото и видео Instagram пост не примет — выйдет только в Threads.');
+  }
 
   if (posts.length) lines.push('', '<b>Последние выходы</b>', ...posts.map((p) => postLine(p, views)));
 
@@ -124,8 +146,9 @@ function cardView({ product, posts = [], views = {}, now = Date.now() }) {
       [
         { text: `📝 Тексты (${product.texts.length})`, callback_data: cb('txt', product.id) },
         { text: `🖼 Фото (${product.photos.length})`, callback_data: cb('pho', product.id) },
+        { text: `🎬 Видео (${videosOf(product).length})`, callback_data: cb('vid', product.id) },
       ],
-      [{ text: '➕ Добавить тексты или фото', callback_data: cb('add', product.id) }],
+      [{ text: '➕ Добавить тексты, фото или видео', callback_data: cb('add', product.id) }],
       schedule,
       [{ text: '🗑 Удалить', callback_data: cb('del', product.id) }, LIST],
     ]),
@@ -162,6 +185,23 @@ function photosView(product, max) {
   };
 }
 
+function videosView(product, max) {
+  const videos = videosOf(product);
+  const lines = [
+    `🎬 <b>Видео «${name(product)}»</b>: ${videos.length} из ${max}`,
+    'Каждое видео выходит отдельным постом: Reels в Instagram и роликом в Threads. Видео и фото чередуются — сначала ролики по очереди, потом пост с фото.',
+  ];
+  const remove = videos.map((_, i) => ({ text: `🗑 №${i + 1}`, callback_data: cb('delv', product.id, i) }));
+  return {
+    text: lines.join('\n'),
+    extra: keyboard([
+      ...(videos.length ? [[{ text: '👀 Показать все', callback_data: cb('showv', product.id) }]] : []),
+      ...rowsOf(remove, 5),
+      [{ text: '➕ Добавить', callback_data: cb('add', product.id) }, toCard(product)],
+    ]),
+  };
+}
+
 function scheduleView(product) {
   const mark = (days) => ((product.every_days || 0) === days ? '✅ ' : '');
   return {
@@ -185,7 +225,7 @@ function confirmDeleteView(product) {
   return {
     text: [
       `🗑 Удалить «${name(product)}»?`,
-      'Тексты, фото и расписание удалятся из бота. Посты, которые уже вышли в Threads и Instagram, останутся.',
+      'Тексты, фото, видео и расписание удалятся из бота. Посты, которые уже вышли в Threads и Instagram, останутся.',
     ].join('\n'),
     extra: keyboard([[{ text: '🗑 Да, удалить', callback_data: cb('delok', product.id) }, toCard(product)]]),
   };
@@ -206,11 +246,12 @@ function namePrompt() {
 function contentPrompt(product, { fresh = false } = {}) {
   return {
     text: [
-      `✍️ Присылайте тексты и фото для «${name(product)}» — в любом порядке, фото можно альбомом.`,
+      `✍️ Присылайте тексты, фото и видео для «${name(product)}» — в любом порядке, фото можно альбомом.`,
       '',
       '• Каждый текст — отдельным сообщением. Это варианты одного поста: бот берёт их по очереди, чтобы посты не повторялись слово в слово.',
       `• Текст — до ${TEXT_MAX} знаков: длиннее Threads не принимает. Ссылку (на Google Play, на WhatsApp) пишите прямо в тексте.`,
-      '• Фото с подписью — это и фото, и текст.',
+      '• Фото или видео с подписью — это и файл, и текст.',
+      `• Видео — от ${VIDEO_MIN_S} секунд до ${VIDEO_MAX_S / 60} минут и не тяжелее ${VIDEO_MAX_MB} МБ, лучше вертикальное 9:16: выйдет Reels в Instagram и роликом в Threads. Видео и фото выходят по очереди.`,
       '',
       fresh ? 'Когда всё пришлёте — «✅ Готово», дальше выберем расписание.' : 'Когда закончите — «✅ Готово».',
     ].join('\n'),
@@ -220,12 +261,15 @@ function contentPrompt(product, { fresh = false } = {}) {
 
 // Ответ на присланное. Альбом — это пачка сообщений, и на каждое фото по
 // ответу было бы шумом: products.js собирает их и отвечает одним.
-function savedView({ product, texts, photos, full = [] }) {
-  const got = [texts && `${texts} ${textsWord(texts)}`, photos && `${photos} фото`].filter(Boolean).join(' и ');
+function savedView({ product, texts, photos, videos = 0, full = [] }) {
+  const parts = [texts && `${texts} ${textsWord(texts)}`, photos && `${photos} фото`, videos && `${videos} видео`];
+  const said = parts.filter(Boolean);
+  const got = said.length > 1 ? `${said.slice(0, -1).join(', ')} и ${said.at(-1)}` : said.join('');
   const lines = [];
   if (got) lines.push(`✅ Сохранил ${got}. У «${name(product)}» теперь ${counts(product)}.`);
   if (full.includes('texts')) lines.push('⚠️ Текстов уже максимум — лишние не сохранил. Уберите ненужные в «📝 Тексты».');
   if (full.includes('photos')) lines.push('⚠️ Фото уже максимум — лишние не сохранил: больше Instagram в карусель не берёт.');
+  if (full.includes('videos')) lines.push('⚠️ Видео уже максимум — лишние не сохранил. Уберите ненужные в «🎬 Видео».');
   lines.push('Ещё — присылайте, или «✅ Готово».');
   return {
     text: lines.join('\n'),
@@ -237,17 +281,33 @@ function tooLongText(length) {
   return `✂️ В тексте ${num(length)} знаков, а Threads принимает не больше ${TEXT_MAX}. Сократите и пришлите ещё раз — этот не сохранил.`;
 }
 
+// Почему видео не взяли. Telegram отдаёт боту файлы до 20 МБ, Threads берёт
+// ролики до пяти минут, Instagram — Reels от трёх секунд.
+const VIDEO_MAX_MB = 20;
+const VIDEO_MAX_S = 300;
+const VIDEO_MIN_S = 3;
+function videoProblem({ size, duration }) {
+  if (size > VIDEO_MAX_MB * 1024 * 1024) {
+    return `🎬 Видео тяжелее ${VIDEO_MAX_MB} МБ Telegram боту не отдаёт — сожмите его и пришлите ещё раз.`;
+  }
+  if (duration > VIDEO_MAX_S) return '🎬 Видео длиннее 5 минут Threads не примет — укоротите и пришлите ещё раз.';
+  if (duration && duration < VIDEO_MIN_S) return `🎬 Видео короче ${VIDEO_MIN_S} секунд Instagram в Reels не берёт.`;
+  return '';
+}
+
 function result({ result: r, link }) {
   if (r.posted) return link ? `<a href="${tg.esc(link)}">вышел</a>` : 'вышел';
   return `не вышел: ${tg.esc(clamp(r.reason || 'причина неизвестна', 150))}`;
 }
 
 // Итог выхода продукта: что ушло и куда.
-function publishedView({ product, textNo, threads, instagram, notes = [] }) {
+// media — что ушло вместе с текстом (см. mediaOf).
+function publishedView({ product, textNo, media = { kind: 'photos' }, threads, instagram, notes = [] }) {
   const posted = threads.result.posted || instagram.result.posted;
+  const clip = media.kind === 'video' ? `, видео №${media.index + 1}` : '';
   return {
     text: [
-      `${posted ? '🛍' : '⚠️'} <b>${name(product)}</b> — текст №${textNo + 1}`,
+      `${posted ? '🛍' : '⚠️'} <b>${name(product)}</b> — текст №${textNo + 1}${clip}`,
       `🧵 Threads: ${result(threads)}`,
       `📸 Instagram: ${result(instagram)}`,
       ...notes.map((n) => `ℹ️ ${tg.esc(n)}`),
@@ -267,6 +327,7 @@ module.exports = {
   cardView,
   textsView,
   photosView,
+  videosView,
   scheduleView,
   confirmDeleteView,
   namePrompt,
@@ -276,6 +337,8 @@ module.exports = {
   publishedView,
   summaryLine,
   everyText,
+  mediaOf,
+  videoProblem,
   TEXT_MAX,
   DAY_FROM,
   DAY_TO,
