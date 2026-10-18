@@ -8,6 +8,7 @@
 |---|---|---|---|
 | «Шабашка: выложи — тебе напишут» | 24 с | `videos/shabashka-promo/renders/shabashka-promo.mp4` | `videos/shabashka-promo/index.html` |
 | «Биржа: исполнители найдут вас сами» | 26 с | `videos/birzha-promo/renders/birzha-promo.mp4` | `videos/birzha-promo/index.html` |
+| Реклама «Вся работа из чатов — в одном месте» | 31 с | `videos/shabashka-ad/renders/shabashka-ad.mp4` | `videos/shabashka-ad/index.html`, сценарий и озвучка — `ad/SCRIPT.md` |
 
 Тексты для групп, Threads и Instagram — `posts.md`.
 
