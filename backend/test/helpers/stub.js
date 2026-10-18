@@ -175,7 +175,7 @@ function adGroupsStub(extra = {}) {
 
 // Свои продукты (см. src/telegram/productStore.js) — в памяти, с тем же
 // поведением: пределы на тексты и фото, «занять выход» только при прежнем turn,
-// срок по every_days. Боту она нужна, чтобы не лезть в базу при загрузке, а
+// срок по every_days и per_day. Боту она нужна, чтобы не лезть в базу при загрузке, а
 // тестам продуктов — вместо неё.
 function productStoreStub() {
   const MAX_TEXTS = 20;
@@ -202,7 +202,7 @@ function productStoreStub() {
     get: async (id) => copy(rows.get(Number(id))),
     create: async (name) => {
       seq += 1;
-      const p = { id: seq, name, texts: [], photos: [], videos: [], every_days: null, paused: false, turn: 0, posted_at: null };
+      const p = { id: seq, name, texts: [], photos: [], videos: [], every_days: null, per_day: null, paused: false, turn: 0, posted_at: null };
       rows.set(seq, p);
       return copy(p);
     },
@@ -227,19 +227,26 @@ function productStoreStub() {
     removeText: (id, i) => update(id, (p) => void p.texts.splice(i, 1)),
     removePhoto: (id, i) => update(id, (p) => void p.photos.splice(i, 1)),
     removeVideo: (id, i) => update(id, (p) => void p.videos.splice(i, 1)),
-    setEvery: (id, days) => update(id, (p) => void (p.every_days = days || null)),
+    setEvery: (id, days, perDay = null) =>
+      update(id, (p) => {
+        p.every_days = days || null;
+        p.per_day = days === 1 && perDay > 1 ? perDay : null;
+      }),
     setPaused: (id, paused) => update(id, (p) => void (p.paused = paused)),
     remove: async (id) => rows.delete(Number(id)),
-    due: async () =>
-      copy(
+    // windowMin — длина дневного окна: «N раз в день» делят его поровну.
+    due: async (windowMin) => {
+      const gap = (p) => (p.per_day > 1 ? Math.floor(windowMin / p.per_day) * 60 * 1000 : p.every_days * DAY_MS);
+      return copy(
         [...rows.values()].find(
           (p) =>
             !p.paused &&
             p.every_days &&
             p.texts.length &&
-            (!p.posted_at || Date.parse(p.posted_at) <= Date.now() - p.every_days * DAY_MS)
+            (!p.posted_at || Date.parse(p.posted_at) <= Date.now() - gap(p))
         )
-      ),
+      );
+    },
     claim: (id, turn) =>
       update(id, (p) => {
         if (p.turn !== turn) return false;

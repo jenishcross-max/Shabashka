@@ -63,8 +63,15 @@ const removePhoto = (id, index) =>
 const removeVideo = (id, index) =>
   db.query('UPDATE products SET videos = videos - $2::int WHERE id = $1 RETURNING *', [id, index]).then(one);
 
-const setEvery = (id, days) =>
-  db.query('UPDATE products SET every_days = $2 WHERE id = $1 RETURNING *', [id, days || null]).then(one);
+// perDay — сколько раз в день, только при days = 1; иначе расписание в днях.
+const setEvery = (id, days, perDay = null) =>
+  db
+    .query('UPDATE products SET every_days = $2, per_day = $3 WHERE id = $1 RETURNING *', [
+      id,
+      days || null,
+      days === 1 && perDay > 1 ? perDay : null,
+    ])
+    .then(one);
 
 const setPaused = (id, paused) =>
   db.query('UPDATE products SET paused = $2 WHERE id = $1 RETURNING *', [id, paused]).then(one);
@@ -73,21 +80,29 @@ const remove = (id) => db.query('DELETE FROM products WHERE id = $1', [id]);
 
 // Чей черёд выйти по расписанию: дольше всех ждущий — первым.
 //
+// «N раз в день» делят дневное окно (windowMin минут, см. productViews.js)
+// поровну: три выхода на 10:00–21:00 — раз в 3 ч 40 мин. Последний выход дня
+// отодвигает следующий за 21:00, и он ждёт утра: так выходов в день ровно N, а
+// утро каждый день начинается заново с 10:00.
+//
 // Выход занимают до очереди (см. claim), а пишут в product_posts, когда
 // площадки ответили. Если между этим Render перезапустился — деплой, нехватка
 // памяти, — очередь стёрта вместе с постом, а продукт числится вышедшим и ждал
 // бы следующего срока через несколько дней. Поэтому выход без единой записи
 // через час после захвата считаем потерянным: продукт выходит снова. Час —
 // с запасом: впереди продукта в очереди только срочные, это минуты.
-const due = () =>
+const due = (windowMin) =>
   db
     .query(
       `SELECT * FROM products p
        WHERE NOT paused AND every_days IS NOT NULL AND jsonb_array_length(texts) > 0
-         AND (posted_at IS NULL OR posted_at <= NOW() - make_interval(days => every_days)
+         AND (posted_at IS NULL
+           OR posted_at <= NOW() - CASE WHEN per_day > 1 THEN make_interval(mins => $1::int / per_day)
+                                       ELSE make_interval(days => every_days) END
            OR (posted_at <= NOW() - INTERVAL '1 hour' AND NOT EXISTS (
              SELECT 1 FROM product_posts pp WHERE pp.product_id = p.id AND pp.created_at >= p.posted_at)))
-       ORDER BY posted_at NULLS FIRST LIMIT 1`
+       ORDER BY posted_at NULLS FIRST LIMIT 1`,
+      [windowMin]
     )
     .then(one);
 

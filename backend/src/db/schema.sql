@@ -384,6 +384,7 @@ CREATE TABLE IF NOT EXISTS products (
   texts       JSONB NOT NULL DEFAULT '[]',  -- варианты текста поста, по очереди
   photos      JSONB NOT NULL DEFAULT '[]',  -- фото в Telegram: { file_id, kind }, по порядку
   every_days  INTEGER,                      -- раз в сколько дней выходить; NULL — только по кнопке
+  per_day     INTEGER,                      -- при every_days = 1: сколько раз в день; NULL — один
   paused      BOOLEAN NOT NULL DEFAULT false,
   turn        INTEGER NOT NULL DEFAULT 0,   -- сколько раз выходил: по нему следующий текст
   posted_at   TIMESTAMPTZ,

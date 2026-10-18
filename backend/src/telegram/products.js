@@ -467,11 +467,14 @@ async function onCallback(query, [sub, rawId, arg], { show }) {
       return sendAlbum(chatId, product.videos, 'video');
     }
 
-    case 'every': {
-      const days = Number(arg) || 0;
-      const product = await store.setEvery(id, days);
+    case 'every':
+    case 'times': {
+      // «times» — сколько раз в день: это «каждый день», только чаще.
+      const days = sub === 'times' ? 1 : Number(arg) || 0;
+      const perDay = sub === 'times' ? Number(arg) : null;
+      const product = await store.setEvery(id, days, perDay);
       if (!product) return answer('Этого продукта уже нет');
-      await answer(views.everyText(days));
+      await answer(views.everyText(product.every_days, product.per_day));
       return show(chatId, await cardView(id), messageId);
     }
 
@@ -503,7 +506,7 @@ async function tick(report, now = Date.now()) {
   if (hour < views.DAY_FROM || hour >= views.DAY_TO) return;
   busy = true;
   try {
-    const product = await store.due();
+    const product = await store.due(views.WINDOW_MIN);
     if (product) await publish(product.id, report);
   } catch (err) {
     console.error('[продукты] расписание:', err.message);

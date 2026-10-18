@@ -260,6 +260,10 @@ function init() {
       await pool.query(
         'CREATE INDEX IF NOT EXISTS idx_imported_dedup ON imported_listings(dedup_hash) WHERE dedup_hash IS NOT NULL'
       );
+
+      // Свои продукты выходили не чаще раза в день — теперь и по нескольку
+      // раз в день (см. telegram/productStore.js).
+      await pool.query('ALTER TABLE products ADD COLUMN IF NOT EXISTS per_day INTEGER');
     })();
   }
   return readyPromise;

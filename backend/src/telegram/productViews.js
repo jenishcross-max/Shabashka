@@ -12,7 +12,12 @@ const TEXT_MAX = 500;
 // к утру его уже унесёт.
 const DAY_FROM = 10;
 const DAY_TO = 21;
+// Окно в минутах: «N раз в день» делят его поровну (см. due в productStore.js).
+const WINDOW_MIN = (DAY_TO - DAY_FROM) * 60;
+const HOUR_MS = 60 * 60 * 1000;
+const BISHKEK_MS = 6 * HOUR_MS;
 const EVERY = [1, 2, 3, 7];
+const PER_DAY = [2, 3, 4];
 
 const cb = (...parts) => ['pr', ...parts].join(':');
 const LIST = { text: '⬅️ Продукты', callback_data: 'm:products' };
@@ -39,20 +44,35 @@ function mediaOf(product, turn) {
   return slot < videos ? { kind: 'video', index: slot, total: videos } : { kind: 'photos' };
 }
 
-function everyText(days) {
+// perDay — сколько раз в день (только при days = 1).
+function everyText(days, perDay) {
   if (!days) return 'только по кнопке';
+  if (days === 1 && perDay > 1) return `${perDay} ${plural(perDay, ['раз', 'раза', 'раз'])} в день`;
   if (days === 1) return 'каждый день';
   if (days === 7) return 'раз в неделю';
   return `раз в ${days} ${plural(days, ['день', 'дня', 'дней'])}`;
 }
 
-// Когда продукт выйдет сам. Окно 10:00–21:00 отдельно не считаем: «≈ 12
-// октября, 23:40» с пометкой про окно понятнее, чем пересчитанное утро.
+function gapMs(product) {
+  return product.per_day > 1 ? Math.floor(WINDOW_MIN / product.per_day) * 60 * 1000 : product.every_days * DAY_MS;
+}
+
+// Срок, который выпал на ночь, — это ближайшие 10:00: ночью бот не публикует.
+// Без этого у «3 раза в день» последний выход дня обещал бы следующий на 21:10.
+function intoWindow(at) {
+  const local = new Date(at + BISHKEK_MS);
+  const hour = local.getUTCHours();
+  if (hour >= DAY_FROM && hour < DAY_TO) return at;
+  const morning = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), DAY_FROM) - BISHKEK_MS;
+  return hour < DAY_FROM ? morning : morning + DAY_MS;
+}
+
+// Когда продукт выйдет сам.
 function nextText(product, now) {
   if (!product.every_days) return '';
   if (product.paused) return 'на паузе';
   if (!product.texts.length) return 'ждёт хотя бы одного текста';
-  const at = product.posted_at ? new Date(product.posted_at).getTime() + product.every_days * DAY_MS : now;
+  const at = product.posted_at ? intoWindow(new Date(product.posted_at).getTime() + gapMs(product)) : now;
   return at <= now ? 'при ближайшей проверке' : `≈ ${whenText(at)}`;
 }
 
@@ -78,6 +98,8 @@ const PLATFORM = { threads: 'Threads', instagram: 'Instagram' };
 // сколько и сколько набрал в Threads (у Instagram просмотров не спрашиваем:
 // ✅ — вышел); не вышел на площадку — её причина. Сегодня не выходил вовсе —
 // почему: пауза, нет текстов, нет расписания или срок ещё не подошёл.
+// Несколько выходов за день — одна часть на площадку: время каждого и
+// просмотры в сумме, а не восемь частей через точку.
 function summaryLine(product, posts, seen, now) {
   if (!posts.length) {
     const next = nextText(product, now);
@@ -87,12 +109,24 @@ function summaryLine(product, posts, seen, now) {
     else if (next === 'при ближайшей проверке') why = `срок подошёл — выйдет днём, с ${DAY_FROM}:00 до ${DAY_TO}:00`;
     return `• ${name(product)} — сегодня не выходил: ${why}`;
   }
-  const part = (p) => {
-    const where = `${PLATFORM[p.platform] || p.platform} ${clock(p.created_at)}`;
-    if (!p.post_id) return `${where} ⚠️ ${tg.esc(clamp(p.note || 'не вышло', 80))}`;
-    return `${where} ${Number.isFinite(seen[p.post_id]) ? `👁 ${num(seen[p.post_id])}` : '✅'}`;
-  };
-  return `• ${name(product)} — ${posts.map(part).join(' · ')}`;
+  const times = (list) => list.map((p) => clock(p.created_at)).join(', ');
+  const parts = [];
+  for (const platform of new Set(posts.map((p) => p.platform))) {
+    const where = PLATFORM[platform] || platform;
+    const mine = posts.filter((p) => p.platform === platform);
+    const ok = mine.filter((p) => p.post_id);
+    const failed = mine.filter((p) => !p.post_id);
+    if (ok.length) {
+      const known = ok.filter((p) => Number.isFinite(seen[p.post_id]));
+      const total = known.reduce((sum, p) => sum + seen[p.post_id], 0);
+      parts.push(`${where} ${times(ok)} ${known.length ? `👁 ${num(total)}` : '✅'}`);
+    }
+    if (failed.length) {
+      const last = failed[failed.length - 1];
+      parts.push(`${where} ${times(failed)} ⚠️ ${tg.esc(clamp(last.note || 'не вышло', 80))}`);
+    }
+  }
+  return `• ${name(product)} — ${parts.join(' · ')}`;
 }
 
 // views — просмотры постов Threads по их id, если Threads их отдал.
@@ -106,7 +140,11 @@ function postLine(post, views) {
 
 function cardView({ product, posts = [], views = {}, now = Date.now() }) {
   const lines = [`🛍 <b>${name(product)}</b>`, `📝 ${counts(product)}`];
-  lines.push(`🗓 Расписание: ${everyText(product.every_days)}${product.every_days ? ` · следующий выход: ${nextText(product, now)}` : ''}`);
+  lines.push(
+    `🗓 Расписание: ${everyText(product.every_days, product.per_day)}${
+      product.every_days ? ` · следующий выход: ${nextText(product, now)}` : ''
+    }`
+  );
   if (product.turn) {
     lines.push(
       `📤 Выходил ${num(product.turn)} ${plural(product.turn, ['раз', 'раза', 'раз'])}${
@@ -128,6 +166,14 @@ function cardView({ product, posts = [], views = {}, now = Date.now() }) {
   }
   if (!product.photos.length && !videosOf(product).length) {
     lines.push('ℹ️ Без фото и видео Instagram пост не примет — выйдет только в Threads.');
+  }
+  // Один и тот же пост чаще раза в два дня лента показывает хуже, а
+  // подписчики начинают пролистывать.
+  const enough = 2 * (product.per_day || 1);
+  if (product.per_day > 1 && product.texts.length < enough) {
+    lines.push(
+      `ℹ️ На ${everyText(1, product.per_day)} лучше хотя бы ${enough} ${textsWord(enough)}, а сейчас ${product.texts.length}: иначе один и тот же пост выходит чуть ли не каждый день, и лента показывает его хуже.`
+    );
   }
 
   if (posts.length) lines.push('', '<b>Последние выходы</b>', ...posts.map((p) => postLine(p, views)));
@@ -203,16 +249,26 @@ function videosView(product, max) {
 }
 
 function scheduleView(product) {
-  const mark = (days) => ((product.every_days || 0) === days ? '✅ ' : '');
+  const perDay = product.per_day > 1 ? product.per_day : 0;
+  const mark = (days) => (!perDay && (product.every_days || 0) === days ? '✅ ' : '');
+  const markTimes = (n) => (perDay === n ? '✅ ' : '');
   return {
     text: [
       `🗓 <b>Как часто выкладывать «${name(product)}»?</b>`,
       `Посты по расписанию выходят днём, с ${DAY_FROM}:00 до ${DAY_TO}:00 по Бишкеку.`,
+      'Несколько раз в день — через равные промежутки с утра: 3 раза — около 10:00, 13:40 и 17:20. Чем чаще выход, тем больше нужно вариантов текста.',
       'Кнопка «Опубликовать сейчас» работает всегда.',
     ].join('\n'),
+    // От частого к редкому, по два в ряд: три в ряд на телефоне обрезаются.
     extra: keyboard([
       ...rowsOf(
-        EVERY.map((days) => ({ text: `${mark(days)}${everyText(days)}`, callback_data: cb('every', product.id, days) })),
+        [
+          ...[...PER_DAY].reverse().map((n) => ({
+            text: `${markTimes(n)}${everyText(1, n)}`,
+            callback_data: cb('times', product.id, n),
+          })),
+          ...EVERY.map((days) => ({ text: `${mark(days)}${everyText(days)}`, callback_data: cb('every', product.id, days) })),
+        ],
         2
       ),
       [{ text: `${mark(0)}Только по кнопке`, callback_data: cb('every', product.id, 0) }],
@@ -342,4 +398,5 @@ module.exports = {
   TEXT_MAX,
   DAY_FROM,
   DAY_TO,
+  WINDOW_MIN,
 };

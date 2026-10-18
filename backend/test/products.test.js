@@ -241,6 +241,89 @@ test('расписание: только днём по Бишкеку и тол�
   assert.equal(shared.length, 1, 'на паузе сам не выходит');
 });
 
+test('несколько раз в день: выбор в расписании, выходы поровну на дневное окно', async () => {
+  for (const id of [...store.rows.keys()]) store.rows.delete(id);
+  const product = await store.create('Scroll Book');
+  await store.addText(product.id, 'Текст один');
+
+  await press(`pr:sch:${product.id}`);
+  for (const n of [2, 3, 4]) assert.ok(buttons().includes(`pr:times:${product.id}:${n}`), `есть «${n} раза в день»`);
+  await press(`pr:times:${product.id}:3`);
+  const saved = await store.get(product.id);
+  assert.equal(saved.every_days, 1);
+  assert.equal(saved.per_day, 3);
+  assert.match(lastView.text, /Расписание: 3 раза в день/);
+  assert.match(lastView.text, /хотя бы 6 текстов/, 'на три выхода в день одного текста мало');
+
+  await press(`pr:sch:${product.id}`);
+  const marked = lastView.extra.reply_markup.inline_keyboard.flat().filter((b) => b.text.startsWith('✅'));
+  assert.deepEqual(
+    marked.map((b) => b.text),
+    ['✅ 3 раза в день'],
+    'отмечен только выбранный вариант, не «каждый день»'
+  );
+
+  // «Раз в N дней» сбрасывает «N раз в день».
+  await press(`pr:every:${product.id}:2`);
+  assert.equal((await store.get(product.id)).per_day, null);
+  await press(`pr:times:${product.id}:3`);
+
+  shared.length = 0;
+  const report = async () => {};
+  const noon = Date.parse('2026-10-08T06:00:00Z'); // 12:00 по Бишкеку
+  await products.tick(report, noon);
+  assert.equal(shared.length, 1);
+  // Окно 10:00–21:00 — 11 часов, на три выхода: раз в 3 ч 40 мин.
+  const ago = (min) => new Date(Date.now() - min * 60 * 1000).toISOString();
+  store.rows.get(product.id).posted_at = ago(3 * 60 + 30);
+  await products.tick(report, noon);
+  assert.equal(shared.length, 1, 'через 3,5 часа ещё рано');
+  store.rows.get(product.id).posted_at = ago(3 * 60 + 41);
+  await products.tick(report, noon);
+  assert.equal(shared.length, 2);
+});
+
+test('следующий выход после 21:00 — это 10:00 следующего дня', () => {
+  const productViews = requireSrc('telegram/productViews.js');
+  const base = { id: 1, name: 'Scroll Book', texts: ['1', '2', '3', '4', '5', '6'], photos: [{}], paused: false, turn: 1 };
+  const next = (product, postedAt) =>
+    productViews.cardView({ product: { ...base, ...product, posted_at: postedAt }, now: Date.parse(postedAt) }).text;
+
+  // 10:00 + 3 ч 40 мин.
+  const morning = next({ every_days: 1, per_day: 3 }, '2026-10-08T04:00:00Z');
+  assert.match(morning, /следующий выход: ≈ 8 октября(,| в) 13:40/);
+  assert.doesNotMatch(morning, /хотя бы/, 'шести текстов на три выхода в день хватает');
+  // 17:30 + 3 ч 40 мин = 21:10 — окно закрыто, выйдет утром.
+  assert.match(next({ every_days: 1, per_day: 3 }, '2026-10-08T11:30:00Z'), /следующий выход: ≈ 9 октября(,| в) 10:00/);
+  // Опубликован кнопкой в 23:00 — через сутки снова ночь, выйдет утром после.
+  assert.match(next({ every_days: 1, per_day: null }, '2026-10-08T17:00:00Z'), /следующий выход: ≈ 10 октября(,| в) 10:00/);
+});
+
+test('сводка: несколько выходов за день — одна часть на площадку, просмотры Threads в сумме', async () => {
+  store.rows.clear();
+  store.log.length = 0;
+  const book = await store.create('Scroll Book');
+  await store.addText(book.id, 'Текст один');
+  await store.addText(book.id, 'Текст два');
+  await store.addPhoto(book.id, { file_id: 'cover', kind: 'photo' });
+
+  const saved = shareResult;
+  let n = 0;
+  shareResult = () => {
+    n += 1;
+    return { threads: { posted: true, id: `t-many-${n}` }, instagram: { posted: true, id: `i-many-${n}` } };
+  };
+  try {
+    await products.publish(book.id, async () => {});
+    await products.publish(book.id, async () => {});
+  } finally {
+    shareResult = saved;
+  }
+
+  const text = (await products.summaryLines()).join('\n');
+  assert.match(text, /Scroll Book — Threads \d\d:\d\d, \d\d:\d\d 👁 2\s468 · Instagram \d\d:\d\d, \d\d:\d\d ✅$/m);
+});
+
 test('тексты и фото убираются по номеру, продукт удаляется с вопросом', async () => {
   const product = await store.create('Удаляемый');
   await store.addText(product.id, 'Раз');
