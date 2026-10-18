@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const db = require('../db');
 const categoriesRepo = require('../categoriesRepo');
+const professions = require('../professions');
 const { invalidate } = require('../cache');
 const moderation = require('../moderation');
 const adsRepo = require('../adsRepo');
@@ -149,6 +150,12 @@ async function applyDefaults(parsed) {
   if (!known.includes(out.category)) {
     out.category = known.includes(FALLBACK_CATEGORY) ? FALLBACK_CATEGORY : known[0];
     filled.push('категория');
+  }
+  // «Другое» — последнее средство: сперва профессия по словам заголовка и
+  // описания (см. professions.js). Выбор модели из списка не трогаем.
+  if (out.category === FALLBACK_CATEGORY) {
+    const profession = professions.guess(out.title, out.description);
+    if (profession && known.includes(profession)) out.category = profession;
   }
 
   if (!out.title && out.description) {

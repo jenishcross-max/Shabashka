@@ -159,6 +159,14 @@ function init() {
       }
       await tagCategories(onlineCategories, 'online');
 
+      // Профессии для вакансий (см. professions.js): без них 87% вакансий из
+      // чатов лежали в «Другом». Все — работа на месте.
+      const professionCategories = require('../professionCategories');
+      for (const name of professionCategories) {
+        await pool.query('INSERT INTO categories (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [name]);
+      }
+      await tagCategories(professionCategories, 'offline');
+
       // Объявления, которые бот взял из чужих чатов. Помечаем их в самой карточке:
       // автора такого объявления никто не проверял и он о публикации не просил,
       // и выдавать его за проверенное — единственное, чем площадка реально
