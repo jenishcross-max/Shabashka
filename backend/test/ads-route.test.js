@@ -292,3 +292,36 @@ test('главная отдаёт счётчики открытого по ра�
   const open = (await db.query("SELECT COUNT(*)::int AS n FROM ads WHERE status = 'open'")).rows[0].n;
   assert.equal(counts.ads, open);
 });
+
+// Живая строка над заголовком главной: сколько открытых заказов и вакансий
+// появилось за последние сутки. Старое и закрытое не считается.
+test('главная считает заказы и вакансии за сутки', async () => {
+  const { invalidate } = requireSrc('cache.js');
+  const owner = await user('Бакыт');
+  const order = (status, age) =>
+    db.query(
+      `INSERT INTO orders (user_id, title, description, category, city, status, created_at)
+       VALUES ($1, 'Подработка', 'Нужна помощь', 'Другое', 'Бишкек', $2, now() - $3::interval)`,
+      [owner.id, status, age]
+    );
+  const vacancy = (age) =>
+    db.query(
+      `INSERT INTO vacancies (user_id, title, description, category, city, employment_type, created_at)
+       VALUES ($1, 'Продавец', 'Работа в магазине', 'Другое', 'Бишкек', 'full', now() - $2::interval)`,
+      [owner.id, age]
+    );
+  invalidate('home:');
+  const before = (await call('/home')).body.counts;
+
+  await order('open', '1 hour');
+  await order('open', '23 hours');
+  await order('open', '2 days'); // старый
+  await order('closed', '1 hour'); // закрытый
+  await vacancy('2 hours');
+  await vacancy('3 days'); // старая
+  invalidate('home:');
+  const after = (await call('/home')).body.counts;
+
+  assert.equal(after.today_orders - before.today_orders, 2);
+  assert.equal(after.today_vacancies - before.today_vacancies, 1);
+});

@@ -79,13 +79,19 @@ router.get(
 
       // Плитки «Что ищете?»: сколько открыто в каждом разделе. Четыре счёта по
       // индексам статуса одним запросом; сбрасывается вместе со всем home: при
-      // каждой подаче, а так — раз в минуту.
+      // каждой подаче, а так — раз в минуту. today_* — для живой строки над
+      // заголовком («+19 заказов и +73 вакансии за сутки»): показывает, что
+      // сайт живой, а не заброшенная доска.
       cached('home:counts', REFERENCE_TTL, async () => {
         const { rows } = await db.query(
           `SELECT (SELECT COUNT(*)::int FROM orders WHERE status = 'open') AS orders,
                   (SELECT COUNT(*)::int FROM vacancies WHERE status = 'open') AS vacancies,
                   (SELECT COUNT(*)::int FROM tasks WHERE status = 'open') AS tasks,
-                  (SELECT COUNT(*)::int FROM ads WHERE status = 'open') AS ads`
+                  (SELECT COUNT(*)::int FROM ads WHERE status = 'open') AS ads,
+                  (SELECT COUNT(*)::int FROM orders
+                    WHERE status = 'open' AND created_at > now() - interval '24 hours') AS today_orders,
+                  (SELECT COUNT(*)::int FROM vacancies
+                    WHERE status = 'open' AND created_at > now() - interval '24 hours') AS today_vacancies`
         );
         return rows[0];
       }),

@@ -9,9 +9,24 @@ import CityAutocomplete from '../components/CityAutocomplete';
 import { useFavorites } from '../context/FavoritesContext';
 import { adWord, followerWord, orderWord, taskWord, vacancyWord } from '../plural';
 import { SkeletonOrderCard, SkeletonCityPills } from '../components/Skeleton';
+import { SOCIALS, SocialIcon } from '../components/SocialLinks';
 
-const INSTAGRAM_URL = 'https://www.instagram.com/shabashka.com_/';
-const TELEGRAM_URL = 'https://t.me/Shabashkacom';
+// «Часто ищут» под поиском — слова, по которым на сайте точно есть заказы
+// (проверено на живом сайте 2026-10-18: уборка 17, грузчик 15, ремонт 12,
+// электрик 6, швея 4). Поиск ищет подстроку, поэтому «Грузчик» найдёт и
+// «грузчики».
+const POPULAR = ['Уборка', 'Грузчик', 'Ремонт', 'Электрик', 'Швея'];
+
+// Живая строка над заголовком: «+19 заказов и +73 вакансии за сутки». Нулевые
+// части пропускаем, а если за сутки не добавилось ничего — строки нет вовсе:
+// «+0 заказов» говорит о заброшенном сайте, а не о живом.
+function freshLine(counts) {
+  if (!counts) return null;
+  const parts = [];
+  if (counts.today_orders > 0) parts.push(`+${counts.today_orders} ${orderWord(counts.today_orders)}`);
+  if (counts.today_vacancies > 0) parts.push(`+${counts.today_vacancies} ${vacancyWord(counts.today_vacancies)}`);
+  return parts.length ? `${parts.join(' и ')} за сутки` : null;
+}
 
 // «Что ищете?» — четыре раздела сайта сразу под поиском. Раньше с первого
 // экрана вела только строка «Смотреть подработку: Всю / Офлайн / Онлайн», а
@@ -72,10 +87,22 @@ export default function Home() {
     navigate(`/orders${params.toString() ? `?${params}` : ''}`);
   }
 
+  const fresh = freshLine(counts);
+
   return (
     <div>
       <section className="hero">
-        <h1>Шабашка в Кыргызстане</h1>
+        {/* Пока главная грузится, плашка стоит невидимой — иначе заголовок
+            съезжал бы вниз, когда придут числа. */}
+        {(loading || fresh) && (
+          <div className={`hero-live${fresh ? '' : ' is-pending'}`}>
+            <span className="hero-live-dot" aria-hidden="true" />
+            {fresh || 'Загружаем свежие заказы'}
+          </div>
+        )}
+        <h1>
+          <span className="hero-brand">Шабашка</span> в Кыргызстане
+        </h1>
         <p>Подработка, вакансии, мастера и объявления рядом с вами — без посредников и комиссии.</p>
         <form className="search-bar" onSubmit={submitSearch}>
           <input
@@ -94,6 +121,14 @@ export default function Home() {
           />
           <button type="submit">Найти</button>
         </form>
+        <div className="hero-popular">
+          <span className="hero-popular-label">Часто ищут:</span>
+          {POPULAR.map((word) => (
+            <Link key={word} to={`/orders?q=${encodeURIComponent(word.toLowerCase())}`} className="hero-popular-link">
+              {word}
+            </Link>
+          ))}
+        </div>
         <nav className="home-tiles" aria-label="Разделы сайта">
           {TILES.map((tile) => (
             <Link key={tile.to} to={tile.to} className="home-tile">
@@ -236,17 +271,17 @@ export default function Home() {
       <section className="section home-social">
         <h2>Свежие объявления каждый день в наших соцсетях</h2>
         <div className="hero-social">
-          <a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer me" className="hero-social-link">
-            📸 Instagram
-            {instagramFollowers != null && (
-              <span className="hero-social-count">
-                {instagramFollowers.toLocaleString('ru')} {followerWord(instagramFollowers)}
-              </span>
-            )}
-          </a>
-          <a href={TELEGRAM_URL} target="_blank" rel="noopener noreferrer me" className="hero-social-link">
-            ✈️ Telegram-канал
-          </a>
+          {SOCIALS.map((s) => (
+            <a key={s.id} href={s.url} target="_blank" rel="noopener noreferrer me" className="hero-social-link">
+              <SocialIcon id={s.id} />
+              {s.name}
+              {s.id === 'instagram' && instagramFollowers != null && (
+                <span className="hero-social-count">
+                  {instagramFollowers.toLocaleString('ru')} {followerWord(instagramFollowers)}
+                </span>
+              )}
+            </a>
+          ))}
         </div>
       </section>
 
