@@ -14,6 +14,7 @@ const homeRoutes = require('./routes/home');
 const conversationRoutes = require('./routes/conversations');
 const taskRoutes = require('./routes/tasks');
 const adRoutes = require('./routes/ads');
+const subscribeRoutes = require('./routes/subscribe');
 const adminRoutes = require('./routes/admin');
 const dmRoutes = require('./routes/dm');
 const telegram = require('./telegram');
@@ -22,6 +23,7 @@ const social = require('./social');
 const metaRoutes = require('./meta');
 const keepalive = require('./keepalive');
 const staleListings = require('./staleListings');
+const professions = require('./professions');
 const { notifyAdmins } = require('./telegram/notify');
 const { apiLimiter } = require('./rateLimit');
 
@@ -67,6 +69,7 @@ app.use('/api/board', boardRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/ads', adRoutes);
+app.use('/api/subscribe', subscribeRoutes);
 app.use('/api/admin', adminRoutes);
 app.use(metaRoutes);
 
@@ -104,6 +107,8 @@ async function bootstrap() {
   keepalive.start();
   // Старые объявления из чатов закрываются сами (см. staleListings.js).
   staleListings.start();
+  // Старые вакансии и заказы из «Другого» — по профессиям (см. professions.js).
+  professions.backfill().catch((err) => console.error('[профессии]', err.message));
 }
 
 bootstrap().catch((err) => {

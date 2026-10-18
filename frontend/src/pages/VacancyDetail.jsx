@@ -13,6 +13,7 @@ import { SkeletonOrderDetail } from '../components/Skeleton';
 import { useMeta, useJsonLd } from '../useMeta';
 import { viewWord } from '../plural';
 import { shownViews } from '../views';
+import { landingForCategory, landingPath } from '../landings';
 import { StudentBadge } from '../components/StudentField';
 
 // schema.org JobPosting ожидает свои значения employmentType, а не наши внутренние коды.
@@ -157,6 +158,7 @@ export default function VacancyDetail() {
 
   const isOwner = user?.id === vacancy.user_id;
   const views = shownViews(vacancy, isOwner);
+  const categoryLanding = landingForCategory(vacancy.category);
 
   return (
     <div className="order-detail-wrap">
@@ -297,7 +299,12 @@ export default function VacancyDetail() {
         <div className="similar-orders">
           <div className="section-head">
             <h2>Ещё вакансии</h2>
-            <Link to="/vacancies">Все вакансии</Link>
+            {/* Своя профессия — на её страницу (см. landings.js), иначе — ко всем. */}
+            {categoryLanding ? (
+              <Link to={landingPath(categoryLanding)}>Все: {categoryLanding.short.toLowerCase()}</Link>
+            ) : (
+              <Link to="/vacancies">Все вакансии</Link>
+            )}
           </div>
           <div className="order-grid">
             {similar.map((v) => (

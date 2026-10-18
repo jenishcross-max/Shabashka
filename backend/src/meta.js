@@ -5,10 +5,11 @@ const { ORDER_FIELDS, VACANCY_FIELDS } = require('./sqlFields');
 const EMPLOYMENT_TYPES = require('./employmentTypes');
 const EXPERIENCE_LEVELS = require('./experienceLevels');
 const { money } = require('./money');
+const landings = require('./landings');
 
 const router = express.Router();
 
-// Тот же список — в frontend/netlify/edge-functions/bot-preview.js: Netlify
+// Тот же список — в frontend/netlify/lib/bots.js: Netlify
 // отправляет сюда только тех, кого узнал он сам. Google-InspectionTool — это
 // «Проверка URL» в Search Console: пусть видит то же, что Googlebot.
 const BOT_UA_RE =
@@ -318,7 +319,9 @@ router.get(
       "SELECT id, created_at FROM vacancies WHERE status = 'open' ORDER BY created_at DESC LIMIT 5000"
     );
 
-    const staticUrls = ['', '/orders', '/vacancies', '/terms', '/privacy'];
+    // Посадочные — сразу за разделами: это страницы под поисковые запросы
+    // («работа официантом Бишкек»), см. landings.js.
+    const staticUrls = ['', '/orders', '/vacancies', ...landings.map((l) => `/rabota/${l.slug}`), '/terms', '/privacy'];
     const urls = [
       ...staticUrls.map((p) => `<url><loc>${base}${p}</loc></url>`),
       ...orders.map(

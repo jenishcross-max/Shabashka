@@ -95,6 +95,8 @@ export const api = {
   vacancies: (params = {}) => request(`/vacancies${toQueryString(params)}`),
   vacancy: (id) => request(`/vacancies/${id}`),
   similarVacancies: (id) => request(`/vacancies/${id}/similar`),
+  // Не запрос, а адрес для кнопки: бэкенд перенаправит в Telegram-бота (см. routes/subscribe.js).
+  subscribeUrl: (slug) => `${API_BASE}/subscribe/${slug}`,
   vacanciesBatch: (ids) => request(`/vacancies/batch?ids=${ids.join(',')}`),
   myVacancies: (token) => request('/vacancies/mine', { token }),
   createVacancy: (payload, token) => request('/vacancies', { method: 'POST', body: payload, token }),

@@ -5,7 +5,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { install, dmStub, statsStub, at, chat, adGroupsStub, adRaisesStub, productStoreStub } = require('./helpers/stub');
+const { install, dmStub, statsStub, at, chat, adGroupsStub, adRaisesStub, productStoreStub, subscriptionsStub } = require('./helpers/stub');
 
 const tg = chat();
 const stats = statsStub();
@@ -13,9 +13,11 @@ const stats = statsStub();
 const groups = adGroupsStub();
 const raises = adRaisesStub();
 
+const subscriptions = subscriptionsStub();
 const requireSrc = install({
   [at('telegram/adGroups.js')]: groups,
   [at('telegram/productStore.js')]: productStoreStub(),
+  [at('telegram/subscriptions.js')]: subscriptions,
   [at('telegram/adRaises.js')]: raises,
   [at('telegram/api.js')]: tg.api,
   [at('telegram/notify.js')]: {
@@ -131,4 +133,28 @@ test('чужому боту не отвечает ничем, кроме его 
   });
   assert.equal(tg.sent.length, 1);
   assert.match(tg.sent[0], /только для администраторов/);
+  assert.match(tg.sent[0], /Подписаться на новые вакансии — \/start/);
+});
+
+// Подписка на вакансии (см. src/telegram/subscriptions.js) — публичная часть
+// бота: /start постороннего уходит ей, а админу /start по-прежнему даёт справку.
+test('/start чужого — подписке, админа — справка', async () => {
+  tg.clear();
+  subscriptions.calls.length = 0;
+  await bot.handleUpdate({
+    message: { chat: { id: 99, type: 'private' }, from: { id: 777 }, message_id: 3, text: '/start' },
+  });
+  assert.equal(tg.sent.length, 0, 'ответила подписка, а не бот');
+  assert.deepEqual(subscriptions.calls.at(-1), { text: '/start', admin: false });
+
+  await say('/start');
+  assert.deepEqual(subscriptions.calls.at(-1), { text: '/start', admin: true });
+  assert.ok(tg.sent.length > 0, 'админу — справка');
+
+  tg.clear();
+  await bot.handleUpdate({
+    callback_query: { id: 'q', data: 'sub:obshchepit', from: { id: 777 }, message: { chat: { id: 99 }, message_id: 5 } },
+  });
+  assert.deepEqual(subscriptions.calls.at(-1), { data: 'sub:obshchepit' }, 'кнопку подписки жмёт кто угодно');
+  assert.equal(tg.sent.length, 0);
 });

@@ -35,6 +35,7 @@ import MyAds from './pages/MyAds';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
 import VerifyEmail from './pages/VerifyEmail';
+import Landing from './pages/Landing';
 import NotFound from './pages/NotFound';
 import { SkeletonPage } from './components/Skeleton';
 
@@ -71,6 +72,7 @@ function PublicSite() {
           <Route path="/orders/:id" element={<OrderDetail />} />
           <Route path="/vacancies" element={<Vacancies />} />
           <Route path="/vacancies/:id" element={<VacancyDetail />} />
+          <Route path="/rabota/:slug" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/favorites" element={<Favorites />} />

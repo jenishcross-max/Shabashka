@@ -18,9 +18,12 @@ const requireSrc = install({
 });
 
 const stale = requireSrc('staleListings.js');
+const landings = requireSrc('landings.js');
 const app = express();
 app.use(express.json());
 app.use('/api/vacancies', requireSrc('routes/vacancies.js'));
+app.use('/api/orders', requireSrc('routes/orders.js'));
+app.use(requireSrc('meta.js'));
 app.use((err, _req, res, _next) => res.status(500).json({ error: err.message }));
 
 let base = '';
@@ -145,4 +148,24 @@ test('у вакансии из «Другого» — свежие из того
     vacancies.map((v) => v.id),
     [fresh, older, otherCity]
   );
+});
+
+// «Подработка на сегодня» (посадочная /rabota/segodnya): заказы за сутки, считая
+// от поднятия, если оно было.
+test('заказы за сутки — fresh=1', async () => {
+  await db.query('DELETE FROM orders');
+  const today = await order({ days: 0 });
+  await order({ days: 2 });
+  const bumped = await order({ days: 3 });
+  await db.query("UPDATE orders SET bumped_at = NOW() - interval '1 hour' WHERE id = $1", [bumped]);
+
+  const { orders, total } = await (await fetch(`${base}/orders?fresh=1&limit=48`)).json();
+  assert.equal(total, 2);
+  assert.deepEqual(orders.map((o) => o.id).sort(), [today, bumped].sort());
+  assert.equal((await (await fetch(`${base}/orders?limit=48`)).json()).total, 3, 'без fresh — все');
+});
+
+test('посадочные страницы — в sitemap', async () => {
+  const xml = await (await fetch(`${base.replace(/\/api$/, '')}/sitemap.xml`)).text();
+  for (const { slug } of landings) assert.match(xml, new RegExp(`/rabota/${slug}</loc>`), slug);
 });

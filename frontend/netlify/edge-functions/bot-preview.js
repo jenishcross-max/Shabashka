@@ -2,10 +2,7 @@
 // с og:-тегами под конкретный заказ/вакансию. Бэкенд это уже умеет (backend/src/meta.js),
 // но фронтенд и бэкенд — разные домены, поэтому для ботов проксируем запрос на Render,
 // а обычных пользователей пропускаем дальше на SPA как обычно.
-const BOT_UA_RE =
-  /facebookexternalhit|WhatsApp|Twitterbot|TelegramBot|Slackbot|LinkedInBot|Discordbot|vkShare|Googlebot|Google-InspectionTool|bingbot|YandexBot/i;
-
-const BACKEND_ORIGIN = 'https://shabashka-zvkc.onrender.com';
+import { BOT_UA_RE, BACKEND_ORIGIN } from '../lib/bots.js';
 
 export default async (request, context) => {
   const ua = request.headers.get('user-agent') || '';

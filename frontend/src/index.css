@@ -3804,3 +3804,69 @@ label.admin-table-spam {
   align-items: center;
   gap: 10px;
 }
+
+/* ---------- посадочные страницы /rabota/<slug> (см. landings.js) ---------- */
+.landing {
+  max-width: 960px;
+  margin: 28px auto 0;
+}
+.landing-head {
+  margin-bottom: 24px;
+}
+.landing-head h1 {
+  font-weight: 800;
+  font-size: 34px;
+  line-height: 1.15;
+  margin: 0 0 12px;
+  letter-spacing: -0.01em;
+}
+.landing-intro {
+  font-size: 17px;
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 720px;
+  margin: 0 0 10px;
+}
+.landing-count {
+  font-weight: 600;
+  margin: 0 0 14px;
+}
+.landing-subscribe {
+  display: inline-block;
+  padding: 9px 16px;
+  border-radius: 100px;
+  background: #e8f4fd;
+  color: #1a73a8;
+  font-weight: 600;
+  font-size: 15px;
+  text-decoration: none;
+}
+.landing-subscribe:hover {
+  background: #d6ecfb;
+}
+.landing-more {
+  text-align: center;
+  margin: 28px 0 0;
+}
+.landing-links h2 {
+  font-weight: 700;
+  font-size: 20px;
+  margin: 28px 0 12px;
+}
+.landing-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.landing-chips [aria-current='page'] {
+  border-color: var(--red);
+  color: var(--red-dark);
+}
+@media (max-width: 720px) {
+  .landing-head h1 {
+    font-size: 26px;
+  }
+  .landing-intro {
+    font-size: 15px;
+  }
+}

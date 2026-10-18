@@ -511,3 +511,13 @@ ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS ad_id INTEGER;
 -- Telegram. Ролик выходит Reels в Instagram и видео в Threads; видео и фото
 -- чередуются по выходам. Колонкой отдельно: на проде таблица уже есть.
 ALTER TABLE products ADD COLUMN IF NOT EXISTS videos JSONB NOT NULL DEFAULT '[]';
+
+-- Подписка на новые вакансии по профессии в Telegram-боте (см.
+-- telegram/subscriptions.js). chat_id — личка подписчика, category — категория
+-- вакансий. Докуда уже разослали — в app_settings (subs:last_vacancy_id).
+CREATE TABLE IF NOT EXISTS subscriptions (
+  chat_id    BIGINT NOT NULL,
+  category   TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (chat_id, category)
+);

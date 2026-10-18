@@ -292,4 +292,35 @@ function adRaisesStub(extra = {}) {
   };
 }
 
-module.exports = { install, at, chat, wait, dmStub, statsStub, adGroupsStub, adRaisesStub, productStoreStub, SRC };
+// Подписка на вакансии (telegram/subscriptions.js) ходит в базу; боту в тестах
+// хватает того, что он её зовёт. calls — что бот ей передал; своим она считает
+// только /start не от админа.
+function subscriptionsStub() {
+  const calls = [];
+  return {
+    calls,
+    onMessage: async (message, _deps, { admin = false } = {}) => {
+      calls.push({ text: message.text, admin });
+      return message.text === '/start' && !admin;
+    },
+    onCallback: async (query) => {
+      calls.push({ data: query.data });
+      return String(query.data || '').startsWith('sub:');
+    },
+    start: () => {},
+  };
+}
+
+module.exports = {
+  install,
+  at,
+  chat,
+  wait,
+  dmStub,
+  statsStub,
+  adGroupsStub,
+  adRaisesStub,
+  productStoreStub,
+  subscriptionsStub,
+  SRC,
+};

@@ -132,6 +132,10 @@ router.get(
       clauses.push('orders.budget IS NOT NULL');
     }
     if (students) clauses.push('orders.for_students');
+    // За сутки, считая от поднятия: посадочная «Подработка на сегодня».
+    if (req.query.fresh === '1') {
+      clauses.push("COALESCE(orders.bumped_at, orders.created_at) > NOW() - interval '24 hours'");
+    }
     const minVal = Number(budgetMin);
     if (budgetMin && Number.isFinite(minVal)) {
       clauses.push(`orders.budget >= ${addParam(minVal)}`);

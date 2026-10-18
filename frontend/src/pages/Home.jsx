@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { api } from '../api';
 import OrderCard from '../components/OrderCard';
 import VacancyCard from '../components/VacancyCard';
+import LandingLinks from '../components/LandingLinks';
 import TaskCard from '../components/TaskCard';
 import AdCard from '../components/AdCard';
 import CityAutocomplete from '../components/CityAutocomplete';
@@ -247,6 +248,8 @@ export default function Home() {
           </div>
         </section>
       )}
+
+      <LandingLinks />
 
       {loading && (
         <section className="section">

@@ -23,6 +23,7 @@ const rejected = require('./rejected');
 const adGroups = require('./adGroups');
 const menu = require('./menu');
 const products = require('./products');
+const subscriptions = require('./subscriptions');
 const rubrics = require('./rubrics');
 const adRaises = require('./adRaises');
 const { num, plural, viewsWord, clamp, clock, whenText, agoText } = require('./format');
@@ -71,6 +72,17 @@ function prettyLink(link) {
     return link;
   }
 }
+
+// Что нужно подписке на вакансии (см. subscriptions.js): как писать, отвечать на
+// кнопку, менять кнопки под сообщением и как показывать ссылки на сайт.
+const subscriptionDeps = {
+  send: (chatId, text, extra) => tg.sendMessage(chatId, text, extra),
+  answer: (id, text) => tg.answerCallbackQuery(id, text),
+  edit: (chatId, messageId, extra) =>
+    tg.call('editMessageReplyMarkup', { chat_id: chatId, message_id: messageId, ...extra }),
+  siteUrl: SITE_URL,
+  pretty: prettyLink,
+};
 
 function publicText(parsed, listingType, siteLink) {
   const isVacancy = listingType === 'vacancy';
@@ -1618,12 +1630,21 @@ async function sendHelp(chatId) {
 async function onMessage(message) {
   const chatId = message.chat.id;
   const userId = message.from && message.from.id;
+  const admin = isAllowed(userId);
 
-  if (!isAllowed(userId)) {
+  // Подписка на новые вакансии (см. subscriptions.js) — публичная часть бота:
+  // /start, /subs, /stop и ссылка с сайта. Админу /start по-прежнему
+  // показывает справку, ему здесь только ссылка с сайта и /subs.
+  if (await subscriptions.onMessage(message, subscriptionDeps, { admin })) return;
+
+  if (!admin) {
     // В группе молчим полностью: если кто-то случайно кинет скриншот, бот не
     // должен отвечать всей группе. В личке отвечаем — так админ узнаёт свой ID.
     if (message.chat.type === 'private') {
-      await tg.sendMessage(chatId, `Этот бот только для администраторов Шабашки.\nВаш ID: ${userId}`);
+      await tg.sendMessage(
+        chatId,
+        `Команды бота — только для администраторов Шабашки. Подписаться на новые вакансии — /start.\nВаш ID: ${userId}`
+      );
     }
     return;
   }
@@ -1863,6 +1884,8 @@ async function onMessage(message) {
 
 async function onCallback(query) {
   const userId = query.from.id;
+  // Кнопки подписки (см. subscriptions.js) нажимает кто угодно.
+  if (await subscriptions.onCallback(query, subscriptionDeps)) return;
   if (!isAllowed(userId)) {
     await tg.answerCallbackQuery(query.id, 'Нет доступа');
     return;
@@ -2653,6 +2676,8 @@ function startWatchers() {
   summary.start((text) => tg.sendMessage(process.env.SOURCE_REPORT_CHAT_ID || adminChat(), text), {
     extra: pendingLines,
   });
+  // Рассылка новых вакансий подписчикам — раз в час днём.
+  subscriptions.start(subscriptionDeps);
   products.start({
     report: (view) => tg.sendMessage(process.env.SOURCE_REPORT_CHAT_ID || adminChat(), view.text, view.extra),
   });
