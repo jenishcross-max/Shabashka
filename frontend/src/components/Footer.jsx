@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import Logo from './Logo';
+import { SOCIALS, SocialIcon } from './SocialLinks';
 
 export default function Footer() {
   return (
@@ -59,33 +60,14 @@ export default function Footer() {
           {/* Ссылки нужны не только людям: поисковик идёт по ним с сайта на профили
               и обратно и убеждается, что это один и тот же проект. */}
           <ul>
-            <li>
-              <a
-                href="https://www.instagram.com/shabashka.com_/"
-                target="_blank"
-                rel="noopener noreferrer me"
-              >
-                📸 Instagram
-              </a>
-            </li>
-            <li>
-              <a
-                href="https://www.threads.com/@shabashka.com_"
-                target="_blank"
-                rel="noopener noreferrer me"
-              >
-                🧵 Threads
-              </a>
-            </li>
-            <li>
-              <a
-                href="https://t.me/Shabashkacom"
-                target="_blank"
-                rel="noopener noreferrer me"
-              >
-                ✈️ Telegram-канал
-              </a>
-            </li>
+            {SOCIALS.map((s) => (
+              <li key={s.id}>
+                <a className="footer-social" href={s.url} target="_blank" rel="noopener noreferrer me">
+                  <SocialIcon id={s.id} />
+                  {s.name}
+                </a>
+              </li>
+            ))}
           </ul>
         </div>
       </div>
