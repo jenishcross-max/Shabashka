@@ -10,6 +10,7 @@ import SafetyNote from '../components/SafetyNote';
 import { SkeletonOrderDetail } from '../components/Skeleton';
 import { useMeta } from '../useMeta';
 import { viewWord } from '../plural';
+import { shownViews } from '../views';
 import { StudentBadge } from '../components/StudentField';
 
 function waLink(phone, title) {
@@ -99,6 +100,7 @@ export default function OrderDetail() {
   if (!order) return <SkeletonOrderDetail />;
 
   const isOwner = user?.id === order.user_id;
+  const views = shownViews(order, isOwner);
 
   return (
     <div className="order-detail-wrap">
@@ -123,7 +125,7 @@ export default function OrderDetail() {
           <span>🗓 Опубликован {relativeDate(order.created_at)}</span>
           <span>👤 Заказчик: {order.owner_name}</span>
           <span>
-            👁 {order.views} {viewWord(order.views)}
+            👁 {views} {viewWord(views)}
           </span>
         </p>
 

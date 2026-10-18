@@ -12,6 +12,7 @@ import SafetyNote from '../components/SafetyNote';
 import { SkeletonOrderDetail } from '../components/Skeleton';
 import { useMeta, useJsonLd } from '../useMeta';
 import { viewWord } from '../plural';
+import { shownViews } from '../views';
 import { StudentBadge } from '../components/StudentField';
 
 // schema.org JobPosting ожидает свои значения employmentType, а не наши внутренние коды.
@@ -140,6 +141,7 @@ export default function VacancyDetail() {
   if (!vacancy) return <SkeletonOrderDetail />;
 
   const isOwner = user?.id === vacancy.user_id;
+  const views = shownViews(vacancy, isOwner);
 
   return (
     <div className="order-detail-wrap">
@@ -169,7 +171,7 @@ export default function VacancyDetail() {
           {vacancy.schedule && <span>🗓 {vacancy.schedule}</span>}
           <span>👤 Работодатель: {vacancy.owner_name}</span>
           <span>
-            👁 {vacancy.views} {viewWord(vacancy.views)}
+            👁 {views} {viewWord(views)}
           </span>
         </p>
 
