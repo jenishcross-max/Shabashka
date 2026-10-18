@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { relativeDate } from '../formatDate';
 import { useMeta } from '../useMeta';
 import { viewWord } from '../plural';
+import { shownViews } from '../views';
 import { bumpHint } from '../bump';
 import { CATEGORY_LABELS, KIND_LABELS, STATUS_LABELS, priceLabel, waLink } from '../ads';
 import FavoriteButton from '../components/FavoriteButton';
@@ -217,6 +218,7 @@ export default function AdDetail() {
   if (!ad) return <SkeletonOrderDetail />;
 
   const isOwner = user?.id === ad.user_id;
+  const views = shownViews(ad, isOwner);
   // Из групп бот публикует от имени админа: имя и «Сообщения» привели бы к
   // админу, а не к автору. Остаётся WhatsApp — номер из самого поста.
   const imported = !!ad.is_imported;
@@ -247,7 +249,7 @@ export default function AdDetail() {
           <span>🗓 {relativeDate(ad.bumped_at || ad.created_at)}</span>
           <span>👤 {imported ? 'Из открытых чатов' : ad.owner_name}</span>
           <span>
-            👁 {ad.views} {viewWord(ad.views)}
+            👁 {views} {viewWord(views)}
           </span>
         </p>
 
