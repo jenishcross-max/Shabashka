@@ -136,6 +136,24 @@ test('чужому боту не отвечает ничем, кроме его 
   assert.match(tg.sent[0], /Подписаться на новые вакансии — \/start/);
 });
 
+// Бот открыт всем ради подписки — завалить его сообщениями нельзя: сверх
+// десяти в минуту посторонний не получает ответа (см. src/telegram/throttle.js).
+// Админа норма не касается.
+test('посторонний не может завалить бота, админ — может писать сколько угодно', async () => {
+  tg.clear();
+  for (let i = 0; i < 15; i += 1) {
+    await bot.handleUpdate({
+      message: { chat: { id: 888, type: 'private' }, from: { id: 888 }, message_id: 10 + i, text: '/products' },
+    });
+  }
+  assert.equal(tg.sent.length, 10, tg.sent.join('\n'));
+  assert.ok(tg.sent.every((t) => /только для администраторов/.test(t)), 'к продуктам посторонний не попал');
+
+  tg.clear();
+  for (let i = 0; i < 12; i += 1) await say('/help');
+  assert.ok(tg.sent.length >= 12, 'админу норма не мешает');
+});
+
 // Подписка на вакансии (см. src/telegram/subscriptions.js) — публичная часть
 // бота: /start постороннего уходит ей, а админу /start по-прежнему даёт справку.
 test('/start чужого — подписке, админа — справка', async () => {

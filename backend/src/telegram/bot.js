@@ -24,6 +24,8 @@ const adGroups = require('./adGroups');
 const menu = require('./menu');
 const products = require('./products');
 const subscriptions = require('./subscriptions');
+const commands = require('./commands');
+const throttle = require('./throttle');
 const rubrics = require('./rubrics');
 const adRaises = require('./adRaises');
 const { num, plural, viewsWord, clamp, clock, whenText, agoText } = require('./format');
@@ -1631,6 +1633,8 @@ async function onMessage(message) {
   const chatId = message.chat.id;
   const userId = message.from && message.from.id;
   const admin = isAllowed(userId);
+  // Посторонний сверх нормы — молча мимо: завалить бота сообщениями нельзя.
+  if (!admin && !throttle.allow(userId)) return;
 
   // Подписка на новые вакансии (см. subscriptions.js) — публичная часть бота:
   // /start, /subs, /stop и ссылка с сайта. Админу /start по-прежнему
@@ -1884,6 +1888,7 @@ async function onMessage(message) {
 
 async function onCallback(query) {
   const userId = query.from.id;
+  if (!isAllowed(userId) && !throttle.allow(userId)) return;
   // Кнопки подписки (см. subscriptions.js) нажимает кто угодно.
   if (await subscriptions.onCallback(query, subscriptionDeps)) return;
   if (!isAllowed(userId)) {
@@ -2668,7 +2673,9 @@ async function dmStatusText() {
 // ответами в Threads отчитываются в Telegram, поэтому без бота им некуда.
 function startWatchers() {
   // Список команд у синей кнопки «Меню» рядом с полем ввода.
-  tg.call('setMyCommands', { commands: menu.COMMANDS }).catch((err) => console.error('Команды бота:', err.message));
+  // Подписчикам — команды подписки, админам в их личке — админские (см. commands.js).
+  commands.setCommands(tg, [...ADMIN_IDS]).catch((err) => console.error('Команды бота:', err.message));
+  commands.describeBot(tg).catch((err) => console.error('Описание бота:', err.message));
   announceMenu().catch((err) => console.error('Меню бота:', err.message));
   social.adTracker.start({ onReport: onAdReport, onWarn: onAdWarn, onDenied: onAdStatsDenied });
   social.leads.start({ onLead, onDenied: onLeadsDenied });
