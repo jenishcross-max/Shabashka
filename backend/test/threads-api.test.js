@@ -156,6 +156,54 @@ test('Instagram: «media is not ready» пережидается, а не ухо
   assert.equal(publishes, 3, 'две неудачи «не готов» и успех');
 });
 
+// Свежий контейнер Meta называет FINISHED раньше, чем его видят публикация и
+// карусель. 14 октября так упали карусель Scroll Book («дети недействительны»)
+// и обычный пост («объект не найден»): оба — через секунду после FINISHED на
+// первой же проверке. Контейнеры, которые сперва были IN_PROGRESS и прошли
+// паузу опроса, не падали ни разу. Поэтому первая проверка — после паузы.
+test('свежий контейнер не трогаем до паузы опроса, даже если Meta сразу говорит FINISHED', async () => {
+  const events = [];
+  const patched = global.setTimeout;
+  global.setTimeout = (fn, ms, ...rest) => {
+    if (ms >= 1000 && ms < 60 * 1000) events.push(`пауза ${ms}`);
+    return patched(fn, ms, ...rest);
+  };
+  let seq = 0;
+  respond = (p, params) => {
+    if (p.endsWith('/111/threads')) {
+      const id = params.media_type === 'CAROUSEL' ? 'car' : `ch${(seq += 1)}`;
+      events.push(`создан ${id}`);
+      return { body: { id } };
+    }
+    if (/\/(ch\d|car)$/.test(p)) {
+      events.push(`статус ${p.split('/').pop()}`);
+      return { body: { status: 'FINISHED' } };
+    }
+    if (p.endsWith('/threads_publish')) {
+      events.push('публикация');
+      return { body: { id: 'post-car' } };
+    }
+    return {};
+  };
+  try {
+    assert.equal(await threads.publishCarousel(['https://x/1.jpg', 'https://x/2.jpg'], 'Scroll Book'), 'post-car');
+  } finally {
+    global.setTimeout = patched;
+  }
+  assert.deepEqual(events, [
+    'создан ch1',
+    'пауза 5000',
+    'статус ch1',
+    'создан ch2',
+    'пауза 5000',
+    'статус ch2',
+    'создан car',
+    'пауза 5000',
+    'статус car',
+    'публикация',
+  ]);
+});
+
 // Свои продукты (см. telegram/products.js) выходят каруселью: каждое фото —
 // свой контейнер с is_carousel_item, потом общий со списком детей.
 test('карусель в Threads и в Instagram: дети с пометкой, потом общий контейнер', async () => {

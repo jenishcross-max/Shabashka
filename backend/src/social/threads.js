@@ -15,8 +15,14 @@ const RETRY_CHECK_DELAY_MS = 5000;
 
 // Meta просит подождать, прежде чем публиковать контейнер. Текстовый пост почти
 // всегда готов сразу, поэтому не спим фиксированные полминуты, а спрашиваем
-// статус: обычно это один лишний вызов, а не потерянная минута. Картинке нужно
-// чуть больше, видео — заметно больше: Meta его перекодирует у себя.
+// статус. Картинке нужно чуть больше, видео — заметно больше: Meta его
+// перекодирует у себя.
+//
+// Первый раз спрашиваем не сразу, а через паузу: свежий контейнер Meta называет
+// FINISHED раньше, чем его видят публикация и карусель. 14 октября так упали
+// карусель Scroll Book («дети недействительны») и обычный пост («объект не
+// найден») — оба через секунду после FINISHED на первой проверке, а
+// контейнеры, проверенные через паузу, не падали ни разу.
 const STATUS_INTERVAL_MS = 5000;
 const STATUS_ATTEMPTS = { TEXT: 6, IMAGE: 12, VIDEO: 36, CAROUSEL: 12 };
 
@@ -95,6 +101,7 @@ function statusOf(creationId) {
 // «An unknown error occurred», то есть ничем.
 async function waitReady(creationId, attempts) {
   for (let i = 0; i < attempts; i += 1) {
+    await sleep(STATUS_INTERVAL_MS);
     let status;
     let message;
     try {
@@ -110,7 +117,6 @@ async function waitReady(creationId, attempts) {
     if (status === 'ERROR' || status === 'EXPIRED') {
       throw new Error(`пост не принят (${status}${message ? `: ${message}` : ''})`);
     }
-    await sleep(STATUS_INTERVAL_MS);
   }
   throw new Error('пост слишком долго готовится');
 }
