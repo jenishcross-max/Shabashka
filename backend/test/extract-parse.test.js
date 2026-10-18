@@ -52,6 +52,36 @@ test('первый номер из текста приводится к виду
   assert.equal(extract.phoneFrom('цена 2000 сом'), null);
 });
 
+// Реклама кофейни MICHELLE 18 октября: номер +7 (Казахстан и Россия). Сайт ждал
+// только +996, и оплаченная реклама вышла без строки с номером и без кнопки
+// WhatsApp.
+const MICHELLE = `ОФИЦИАНТЫ с опытом 🚨🚨🚨 — общий сбор!
+
+В MICHELLE высокий %, хороший доход и, что немаловажно, выплаты всегда вовремя 💸
+
+💰 Средний доход — от 65 000 сом
+💳 Выплаты 2 раза в месяц
+
+📲 Ватсапп: +79827124863`;
+
+test('номер +7 узнаётся в рекламе, но не в объявлениях из чужих чатов', async () => {
+  assert.equal(extract.phoneFrom(MICHELLE), null, 'из групп — только кыргызские: чужой номер там — примета вербовки');
+  assert.equal(extract.phoneFrom(MICHELLE, { foreign: true }), '+79827124863');
+  for (const text of ['8 701 123 45 67', '+7 (701) 123-45-67', '77011234567']) {
+    assert.equal(extract.phoneFrom(text, { foreign: true }), '+77011234567', text);
+  }
+  assert.equal(extract.phoneFrom('Ватс ап 0500 16 06 33', { foreign: true }), '+996500160633', 'кыргызские — как раньше');
+
+  const vacancy = (phone) => ({ is_listing: true, listing_type: 'vacancy', title: 'Официанты', description: 'Кофейня', city: 'Бишкек', phone });
+  answer = { listings: [vacancy('+79827124863')] };
+  assert.equal((await extract.fromText(MICHELLE, { ad: true }))[0].phone, '+79827124863');
+  // Модель «привела» номер к +996 по промпту — берём его из самого текста.
+  answer = { listings: [vacancy('+99679827124863')] };
+  assert.equal((await extract.fromText(MICHELLE, { ad: true }))[0].phone, '+79827124863');
+  answer = { listings: [vacancy('+79827124863')] };
+  assert.equal((await extract.fromText(MICHELLE))[0].phone, null, 'не реклама — номер не наш');
+});
+
 test('поля приводятся к виду карточки, а мусорные значения заменяются своими', async () => {
   const [listing] = await parse([
     {

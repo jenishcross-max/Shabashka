@@ -150,7 +150,8 @@ function buildSystem(categories) {
 
 // Номера телефонов — в phone.js: те же правила нужны и чёрному списку номеров.
 
-function normalize(raw) {
+// foreign — реклама: номер +7 в ней тоже номер (см. normalizePhone).
+function normalize(raw, { foreign = false } = {}) {
   const clean = (v) => String(v ?? '').trim();
   // Первое число с разрядами через пробел, точку или запятую («25.000»): у вилки
   // «300 000 - 400 000» — нижняя граница. Все цифры подряд дали бы 300000400000
@@ -169,7 +170,7 @@ function normalize(raw) {
     city: clean(raw.city),
     address: clean(raw.address).slice(0, 200) || null,
     budget: budgetDigits ? Number(budgetDigits) : null,
-    phone: normalizePhone(raw.phone),
+    phone: normalizePhone(raw.phone, { foreign }),
     work_format: raw.work_format === 'online' ? 'online' : 'offline',
     employment_type: EMPLOYMENT_VALUES.includes(employmentType) ? employmentType : 'gig',
     experience: EXPERIENCE_VALUES.includes(experience) ? experience : 'no_experience',
@@ -934,7 +935,7 @@ function parseJson(text) {
 
 // Разбор объявлений. content — текст user-сообщения. Возвращает массив
 // разобранных объявлений (обычно один элемент).
-async function ask(content, systemSuffix, opts = {}) {
+async function ask(content, systemSuffix, { foreign = false, ...opts } = {}) {
   const categories = await categoriesRepo.listNames();
   const base = buildSystem(categories);
   const system = systemSuffix ? `${base}\n\n${systemSuffix}` : base;
@@ -944,7 +945,7 @@ async function ask(content, systemSuffix, opts = {}) {
   // Сколько объявлений модель разглядела на картинке — по одной этой строке
   // видно, разбор ли потерял объявления или их и правда было столько.
   console.log(`[extract] модель вернула объявлений: ${list.length}`);
-  return list.map(normalize);
+  return list.map((raw) => normalize(raw, { foreign }));
 }
 
 // Оплаченная реклама (см. /ad в bot.js) проходит мимо отсева: фильтр писался
@@ -958,6 +959,7 @@ const AD_SUFFIX = [
   'Правила про сетевой маркетинг, «работу без названной профессии» и прочий отсев к нему не применяй — по ним его отбраковывать нельзя.',
   'Исключение одно: запрещённое (наркотики, мошенничество, ставки, займы, документы, оформление машин, карт, ИП и кредитов на чужие документы за деньги, оружие, интим-услуги, вербовка девушек под видом уборки или помощи по дому, работа за границей) остаётся запрещённым — для него is_listing = false, как и раньше. За такое объявление могли заплатить точно так же, и это ничего не меняет.',
   'Поля разбирай так же, как в обычном объявлении, и ничего не выдумывай.',
+  'Номер с кодом +7 (Казахстан, Россия) оставь с этим кодом: «+7 701 123 45 67» → «+77011234567».',
 ].join('\n');
 
 
@@ -984,9 +986,10 @@ function screen(listing, { ad = false } = {}) {
 // Работодатель перечисляет три вакансии и ставит «Ватсап: 0500…» в самом
 // конце, а модель приписывает номер одной из них или ни одной — и вакансии без
 // номера не публикуются: откликнуться некуда. Номеров несколько — не гадаем,
-// какой чей.
-function shareSolePhone(listings, text) {
-  const phones = phonesIn(text);
+// какой чей. Отсюда же номер +7 в рекламе, который модель «привела» к +996 по
+// промпту и испортила.
+function shareSolePhone(listings, text, { foreign = false } = {}) {
+  const phones = phonesIn(text, { foreign });
   if (phones.length !== 1) return listings;
   return listings.map((l) => (l.is_listing && !l.phone ? { ...l, phone: phones[0] } : l));
 }
@@ -1012,8 +1015,8 @@ async function fromText(text, { ad = false, background = false, trusted = false 
   let lastErr = null;
   for (const maxTokens of TEXT_STEPS) {
     try {
-      const listings = await ask(task, ad ? AD_SUFFIX : undefined, { maxTokens, kind });
-      return studentsAsSaid(shareSolePhone(listings, text), text).map((l) => screen(l, { ad: ad || trusted }));
+      const listings = await ask(task, ad ? AD_SUFFIX : undefined, { maxTokens, kind, foreign: ad });
+      return studentsAsSaid(shareSolePhone(listings, text, { foreign: ad }), text).map((l) => screen(l, { ad: ad || trusted }));
     } catch (err) {
       // Подвинуться можно только местом, зарезервированным под ответ.
       // Остальные отказы на второй попытке повторятся один в один.

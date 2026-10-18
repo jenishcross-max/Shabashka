@@ -842,7 +842,8 @@ async function adFields(text, classify) {
     listing_type: guessType(text),
     title: clamp(headline(text), 80),
     description: text,
-    phone: extract.phoneFrom(text) || '',
+    // Реклама: номер +7 в ней тоже номер (см. normalizePhone в phone.js).
+    phone: extract.phoneFrom(text, { foreign: true }) || '',
     city: '',
     category: '',
     address: '',

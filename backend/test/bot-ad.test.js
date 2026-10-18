@@ -31,6 +31,8 @@ const created = [];
 const rows = [];
 let rowSeq = 0;
 let parse = async () => [];
+const KG_PHONE = () => '+996500160633';
+let phoneOf = KG_PHONE;
 
 const groups = adGroupsStub();
 const raises = adRaisesStub();
@@ -46,7 +48,7 @@ const requireSrc = install({
     PACE_MS: 35000,
     KEY_COUNT: 1,
     hasPhone: () => true,
-    phoneFrom: () => '+996500160633',
+    phoneFrom: (...args) => phoneOf(...args),
     fromText: (...args) => parse(...args),
   },
   [at('telegram/imports.js')]: {
@@ -301,4 +303,21 @@ test('вакансия «как есть» уходит без пустых ст
   assert.equal(ad.budget, null);
   assert.equal(ad.employment_type, 'gig');
   assert.equal(ad.experience, 'no_experience');
+});
+
+// Реклама кофейни MICHELLE 18 октября: номер +7. Реклама — от админа и
+// оплачена, поэтому номер другой страны в ней свой, а не примета вербовки.
+test('реклама «как есть» берёт и номер +7', async () => {
+  reset();
+  created.length = 0;
+  groups.enqueue = async () => ({ queued: 0, silent: true });
+  phoneOf = require('../src/phone').phoneFrom;
+  try {
+    await say('/ad_fast Требуются официанты в кофейню MICHELLE, доход от 65 000 сом. Ватсапп: +79827124863');
+    await realWait(60);
+  } finally {
+    phoneOf = KG_PHONE;
+  }
+  assert.equal(created.at(-1).phone, '+79827124863', tg.dump());
+  assert.ok(!tg.has(/Номера в тексте нет/), tg.dump());
 });
