@@ -161,6 +161,33 @@ router.get(
   })
 );
 
+// «Ещё вакансии» под карточкой: без них с вакансии некуда было идти дальше, и
+// человек уходил с сайта после одной карточки (исследование 18 октября 2026, см.
+// docs/research). Впереди та же категория, потом тот же город, свежие выше.
+// «Другое» за категорию не считаем: в нём 87% вакансий из чатов, подбор по нему
+// — то же, что наугад. Просмотров не добавляет.
+router.get(
+  '/:id/similar',
+  asyncHandler(async (req, res) => {
+    const id = toId(req.params.id);
+    if (id === null) return res.json({ vacancies: [] });
+
+    const { rows: currentRows } = await db.query('SELECT category, city FROM vacancies WHERE id = $1', [id]);
+    const current = currentRows[0];
+    if (!current) return res.json({ vacancies: [] });
+
+    const { rows } = await db.query(
+      `SELECT ${VACANCY_FIELDS} FROM vacancies JOIN users ON users.id = vacancies.user_id
+       WHERE vacancies.status = 'open' AND vacancies.id != $1
+       ORDER BY (vacancies.category = $2 AND $2 <> 'Другое') DESC, (vacancies.city = $3) DESC,
+                COALESCE(vacancies.bumped_at, vacancies.created_at) DESC
+       LIMIT 4`,
+      [id, current.category, current.city]
+    );
+    res.json({ vacancies: rows });
+  })
+);
+
 async function validateVacancyFields(body, { partial }) {
   const {
     title,

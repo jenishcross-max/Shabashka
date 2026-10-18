@@ -43,7 +43,10 @@ export function CardFlags({ online, students, pinned, example, imported } = {}) 
         </span>
       )}
       {imported && (
-        <span className="card-flag" title="Взято из открытых чатов, автор не проверен">
+        <span
+          className="card-flag"
+          title="Взято из открытых чатов и прошло фильтр на сетевой маркетинг и мошенничество. Автора мы не проверяли"
+        >
           Из чатов
         </span>
       )}

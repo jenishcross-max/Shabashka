@@ -431,6 +431,12 @@ a:hover {
   max-width: 600px;
   margin: 0 auto 34px;
 }
+/* Строка про фильтр — сразу под подзаголовком, мельче и плотнее к нему. */
+.hero p.hero-trust {
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: -22px;
+}
 /* Правила ниже базовых: при равной специфичности побеждает последнее объявление */
 @media (max-width: 720px) {
   .hero {
@@ -443,6 +449,10 @@ a:hover {
   .hero p {
     font-size: 16px;
     margin-bottom: 24px;
+  }
+  .hero p.hero-trust {
+    font-size: 13px;
+    margin-top: -14px;
   }
 }
 
@@ -995,6 +1005,9 @@ a:hover {
   font-weight: 700;
   font-size: 22px;
   margin: 0 0 18px;
+}
+.similar-orders .section-head h2 {
+  margin: 0;
 }
 .similar-orders .order-grid {
   grid-template-columns: repeat(3, 1fr);

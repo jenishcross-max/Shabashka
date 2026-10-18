@@ -21,6 +21,7 @@ const sourceWatcher = require('./telegram/sourceWatcher');
 const social = require('./social');
 const metaRoutes = require('./meta');
 const keepalive = require('./keepalive');
+const staleListings = require('./staleListings');
 const { notifyAdmins } = require('./telegram/notify');
 const { apiLimiter } = require('./rateLimit');
 
@@ -101,6 +102,8 @@ async function bootstrap() {
   // Ролики выходят по расписанию, а не по наполнению очереди (см. social/index.js).
   social.startReleases();
   keepalive.start();
+  // Старые объявления из чатов закрываются сами (см. staleListings.js).
+  staleListings.start();
 }
 
 bootstrap().catch((err) => {

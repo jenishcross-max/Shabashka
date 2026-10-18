@@ -5,7 +5,7 @@ import { relativeDate } from '../formatDate';
 import { useAuth } from '../context/AuthContext';
 import { employmentLabel } from '../employmentTypes';
 import { experienceLabel } from '../experienceLevels';
-import { formatSalary } from '../components/VacancyCard';
+import VacancyCard, { formatSalary } from '../components/VacancyCard';
 import FavoriteButton from '../components/FavoriteButton';
 import FormatIcon from '../components/FormatIcon';
 import SafetyNote from '../components/SafetyNote';
@@ -24,6 +24,11 @@ const SCHEMA_EMPLOYMENT_TYPE = {
   internship: 'INTERN',
 };
 
+// Столько живёт вакансия из чата: как VACANCY_DAYS в backend/src/staleListings.js.
+const IMPORTED_DAYS = 21;
+const expiresAt = (vacancy) =>
+  new Date(new Date(vacancy.bumped_at || vacancy.created_at).getTime() + IMPORTED_DAYS * 24 * 3600 * 1000).toISOString();
+
 function waLink(phone, title) {
   const digits = phone.replace(/[^\d]/g, '');
   const text = encodeURIComponent(`Здравствуйте! Пишу по вакансии «${title}» на Шабашка.`);
@@ -35,6 +40,7 @@ export default function VacancyDetail() {
   const { user, token } = useAuth();
   const navigate = useNavigate();
   const [vacancy, setVacancy] = useState(null);
+  const [similar, setSimilar] = useState([]);
   const [error, setError] = useState('');
   const [shareMsg, setShareMsg] = useState('');
   const [reportMsg, setReportMsg] = useState('');
@@ -47,6 +53,11 @@ export default function VacancyDetail() {
       .vacancy(id)
       .then(({ vacancy }) => setVacancy(vacancy))
       .catch((e) => setError(e.message));
+    // С одной вакансии раньше некуда было идти дальше — человек уходил с сайта.
+    api
+      .similarVacancies(id)
+      .then(({ vacancies }) => setSimilar(vacancies))
+      .catch(() => {});
   }, [id]);
 
   async function handleShare() {
@@ -109,6 +120,10 @@ export default function VacancyDetail() {
       title: vacancy.title,
       description: vacancy.description,
       datePosted: vacancy.created_at,
+      // Вакансию из чата бэкенд закрывает сам через три недели после выхода или
+      // поднятия (см. backend/src/staleListings.js) — Google должен знать срок,
+      // иначе показывает в поиске давно занятые места.
+      ...(vacancy.is_imported ? { validThrough: expiresAt(vacancy) } : {}),
       employmentType: SCHEMA_EMPLOYMENT_TYPE[vacancy.employment_type] || 'OTHER',
       hiringOrganization: { '@type': 'Organization', name: vacancy.owner_name },
       jobLocation: {
@@ -277,6 +292,20 @@ export default function VacancyDetail() {
           </p>
         )}
       </div>
+
+      {similar.length > 0 && (
+        <div className="similar-orders">
+          <div className="section-head">
+            <h2>Ещё вакансии</h2>
+            <Link to="/vacancies">Все вакансии</Link>
+          </div>
+          <div className="order-grid">
+            {similar.map((v) => (
+              <VacancyCard key={v.id} vacancy={v} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

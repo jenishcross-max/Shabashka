@@ -94,6 +94,7 @@ export const api = {
   vacancyCategoryCounts: () => request('/vacancies/category-counts'),
   vacancies: (params = {}) => request(`/vacancies${toQueryString(params)}`),
   vacancy: (id) => request(`/vacancies/${id}`),
+  similarVacancies: (id) => request(`/vacancies/${id}/similar`),
   vacanciesBatch: (ids) => request(`/vacancies/batch?ids=${ids.join(',')}`),
   myVacancies: (token) => request('/vacancies/mine', { token }),
   createVacancy: (payload, token) => request('/vacancies', { method: 'POST', body: payload, token }),
