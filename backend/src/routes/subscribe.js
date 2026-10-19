@@ -6,6 +6,7 @@ const express = require('express');
 const asyncHandler = require('../asyncHandler');
 const tg = require('../telegram/api');
 const landings = require('../landings');
+const { TASKS } = require('../telegram/subscriptions');
 
 const router = express.Router();
 
@@ -20,8 +21,11 @@ router.get(
   '/:slug',
   asyncHandler(async (req, res) => {
     if (!tg.hasToken()) return res.status(404).json({ error: 'Telegram-бот не настроен' });
-    const page = landings.find((l) => l.slug === req.params.slug && l.category);
-    res.redirect(302, `https://t.me/${await botName()}?start${page ? `=sub_${page.slug}` : ''}`);
+    // birzha — задачи биржи для исполнителей (см. subscriptions.js), остальное —
+    // профессии посадочных страниц.
+    const slug = req.params.slug;
+    const known = slug === TASKS.slug || landings.some((l) => l.slug === slug && l.category);
+    res.redirect(302, `https://t.me/${await botName()}?start${known ? `=sub_${slug}` : ''}`);
   })
 );
 

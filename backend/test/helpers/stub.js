@@ -295,6 +295,27 @@ function adRaisesStub(extra = {}) {
 // Подписка на вакансии (telegram/subscriptions.js) ходит в базу; боту в тестах
 // хватает того, что он её зовёт. calls — что бот ей передал; своим она считает
 // только /start не от админа.
+// Биржа в боте (см. telegram/taskShare.js и outreach.js) ходит в базу, а тестам
+// бота она не нужна: подставляем заглушки разом — их кладут в install() через
+// «...exchangeStubs()». calls — что бот у них просил.
+function exchangeStubs() {
+  const calls = [];
+  return {
+    [at('telegram/taskShare.js')]: {
+      calls,
+      announce: async (task) => calls.push({ announce: task.id }),
+      onCallback: async (query) => String(query.data || '').startsWith('tk:'),
+    },
+    [at('telegram/outreach.js')]: {
+      BATCH: 5,
+      DAILY: 10,
+      send: async (chatId) => calls.push({ outreach: chatId }),
+      onCallback: async (query) => query.data === 'or:more',
+    },
+    [at('tasksRepo.js')]: { get: async () => null },
+  };
+}
+
 function subscriptionsStub() {
   const calls = [];
   return {
@@ -322,5 +343,6 @@ module.exports = {
   adRaisesStub,
   productStoreStub,
   subscriptionsStub,
+  exchangeStubs,
   SRC,
 };

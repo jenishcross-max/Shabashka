@@ -5,7 +5,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { install, dmStub, statsStub, at, chat, adGroupsStub, adRaisesStub, productStoreStub, subscriptionsStub } = require('./helpers/stub');
+const { install, dmStub, statsStub, at, chat, adGroupsStub, adRaisesStub, productStoreStub, subscriptionsStub, exchangeStubs } = require('./helpers/stub');
 
 process.env.TELEGRAM_CHANNEL_ID = '@shabashka';
 process.env.PUBLIC_URL = 'https://xn--80aaac0cyed.com';
@@ -45,6 +45,7 @@ const raises = adRaisesStub();
 
 const subscriptions = subscriptionsStub();
 const requireSrc = install({
+  ...exchangeStubs(),
   [at('telegram/adGroups.js')]: groups,
   [at('telegram/productStore.js')]: productStoreStub(),
   [at('telegram/subscriptions.js')]: subscriptions,

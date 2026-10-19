@@ -5,7 +5,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { install, dmStub, statsStub, at, chat, adGroupsStub, adRaisesStub, productStoreStub, subscriptionsStub } = require('./helpers/stub');
+const { install, dmStub, statsStub, at, chat, adGroupsStub, adRaisesStub, productStoreStub, subscriptionsStub, exchangeStubs } = require('./helpers/stub');
 
 const tg = chat();
 const stats = statsStub();
@@ -14,7 +14,10 @@ const groups = adGroupsStub();
 const raises = adRaisesStub();
 
 const subscriptions = subscriptionsStub();
+const exchange = exchangeStubs();
+const exchangeCalls = exchange[at('telegram/taskShare.js')].calls;
 const requireSrc = install({
+  ...exchange,
   [at('telegram/adGroups.js')]: groups,
   [at('telegram/productStore.js')]: productStoreStub(),
   [at('telegram/subscriptions.js')]: subscriptions,
@@ -105,6 +108,29 @@ test('справка называет то, что бот делает на са
   assert.match(text, /\/ads/, 'отчёты по рекламе');
   assert.match(text, /\/threads/, 'статистика Threads');
   assert.match(text, /1000 просмотров/, 'гарантия названа числом');
+  assert.match(text, /⚡ Биржа/, 'про раздачу задач биржи');
+  assert.match(text, /\/outreach/, '«кому написать»');
+  assert.match(text, /Не больше 10 в день/);
+});
+
+// Биржа (см. src/telegram/taskShare.js и outreach.js): /outreach и кнопки
+// «Раздать» — только админу.
+test('/outreach и «Раздать» — админу, постороннему — нет', async () => {
+  exchangeCalls.length = 0;
+  await say('/outreach');
+  assert.deepEqual(exchangeCalls, [{ outreach: 1 }]);
+
+  tg.clear();
+  await bot.handleUpdate({
+    callback_query: { id: 'q', data: 'tk:share:3', from: { id: 1 }, message: { chat: { id: 1 }, message_id: 5 } },
+  });
+  assert.equal(tg.sent.length, 0, 'кнопку разобрал модуль биржи');
+
+  exchangeCalls.length = 0;
+  await bot.handleUpdate({
+    message: { chat: { id: 99, type: 'private' }, from: { id: 779 }, message_id: 4, text: '/outreach' },
+  });
+  assert.deepEqual(exchangeCalls, [], 'постороннему список не даём');
 });
 
 test('/limits показывает и норму Meta, и свой потолок', async () => {

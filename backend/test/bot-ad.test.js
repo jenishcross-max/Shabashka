@@ -12,7 +12,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { install, dmStub, statsStub, at, chat, adGroupsStub, adRaisesStub, productStoreStub, subscriptionsStub } = require('./helpers/stub');
+const { install, dmStub, statsStub, at, chat, adGroupsStub, adRaisesStub, productStoreStub, subscriptionsStub, exchangeStubs } = require('./helpers/stub');
 
 // Час ожидания превращается в доли секунды: проверяем поведение, а не сроки.
 const realSetTimeout = global.setTimeout;
@@ -39,6 +39,7 @@ const raises = adRaisesStub();
 
 const subscriptions = subscriptionsStub();
 const requireSrc = install({
+  ...exchangeStubs(),
   [at('telegram/adGroups.js')]: groups,
   [at('telegram/productStore.js')]: productStoreStub(),
   [at('telegram/subscriptions.js')]: subscriptions,

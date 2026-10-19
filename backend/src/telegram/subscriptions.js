@@ -16,7 +16,13 @@ const { money } = require('../money');
 const { esc } = require('./api');
 
 const PROFESSIONS = landings.filter((l) => l.category);
-const bySlug = (slug) => PROFESSIONS.find((p) => p.slug === slug) || null;
+// Задачи биржи — не профессия, а отдельная подписка для исполнителей: заказчик
+// разместил задачу, админ её одобрил — подписчик получает её сразу, а не
+// часовой подборкой (см. notifyTask и taskShare.js). Кто откликнулся первым,
+// того заказчик и видит первым. В таблице — та же строка категории; у вакансий
+// такой категории нет, и часовая подборка её не задевает.
+const TASKS = { slug: 'birzha', category: 'Задачи биржи' };
+const bySlug = (slug) => (slug === TASKS.slug ? TASKS : PROFESSIONS.find((p) => p.slug === slug) || null);
 const byCategory = (category) => PROFESSIONS.find((p) => p.category === category) || null;
 
 // Шлём днём: с 9:00 до 21:59 по Бишкеку (UTC+6). Ночные вакансии придут
@@ -49,7 +55,9 @@ function keyboard(chosen) {
     text: `${set.has(p.category) ? '✅ ' : ''}${p.category}`,
     callback_data: `sub:${p.slug}`,
   }));
-  const rows = [];
+  const rows = [
+    [{ text: `${set.has(TASKS.category) ? '✅ ' : ''}⚡ Задачи биржи — сразу`, callback_data: `sub:${TASKS.slug}` }],
+  ];
   for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
   if (set.size) rows.push([{ text: '🔕 Отписаться от всех', callback_data: 'sub:off' }]);
   return { reply_markup: { inline_keyboard: rows } };
@@ -60,6 +68,8 @@ function menuText(chosen, lead = '') {
     ...(lead ? [lead, ''] : []),
     '🔔 Новые вакансии Шабашки — прямо сюда.',
     `Отметьте профессии: раз в час, с ${HOUR_FROM}:00 до ${HOUR_TO}:00, пришлю свежие вакансии по ним. Одно сообщение и только когда есть новое.`,
+    '',
+    '⚡ Задачи биржи — пришлю сразу, как заказчик разместит задачу: предложите цену первым.',
     '',
     chosen.length ? `Сейчас: ${chosen.join(', ')}` : 'Сейчас подписок нет.',
   ].join('\n');
@@ -90,7 +100,7 @@ async function onMessage(message, deps, { admin = false } = {}) {
   }
   if (text === '/stop') {
     await unsubscribeAll(chatId);
-    await deps.send(chatId, 'Отписал от всех вакансий. Вернуться — /start.');
+    await deps.send(chatId, 'Отписал от всего: вакансий и задач больше не пришлю. Вернуться — /start.');
     return true;
   }
   return false;
@@ -110,7 +120,7 @@ async function onCallback(query, { answer, edit }) {
   } else {
     const profession = bySlug(slug);
     if (!profession) {
-      await answer(query.id, 'Такой профессии уже нет');
+      await answer(query.id, 'Такой подписки уже нет');
       return true;
     }
     const chosen = await categoriesOf(chatId);
@@ -216,9 +226,57 @@ async function digest({ now = new Date(), pause = (ms) => new Promise((r) => set
   return { sent, removed };
 }
 
+function taskText(task, { siteUrl, pretty }) {
+  const pay = task.budget ? `💰 ${money(task.budget)} сом` : '💰 цену предлагаете вы';
+  const where = task.work_format === 'online' ? 'удалённо' : task.city;
+  const about = String(task.description || '').trim();
+  const short = about.length > 300 ? `${about.slice(0, 300).replace(/\s+\S*$/, '')}…` : about;
+  return [
+    '⚡ <b>Новая задача на бирже</b>',
+    '',
+    `<b>${esc(task.title)}</b>`,
+    `📍 ${esc(where)} · ${pay}`,
+    ...(task.when_text ? [`🗓 ${esc(task.when_text)}`] : []),
+    ...(short ? ['', esc(short)] : []),
+    '',
+    `Предложить цену и срок: ${esc(pretty(`${siteUrl}/tasks/${task.id}`))}`,
+    '',
+    'Настроить подписки — /subs',
+  ].join('\n');
+}
+
+// Задача биржи — всем подписанным на задачи, сразу и в любое время: её одобрил
+// админ, а он не спит по ночам за ботом. { sent, removed } — как у подборки.
+async function notifyTask(task, { pause = (ms) => new Promise((r) => setTimeout(r, ms)), ...deps }) {
+  const { rows } = await db.query('SELECT chat_id FROM subscriptions WHERE category = $1', [TASKS.category]);
+  const text = taskText(task, deps);
+  let sent = 0;
+  let removed = 0;
+  for (const { chat_id: chatId } of rows) {
+    try {
+      await deps.send(chatId, text);
+      sent += 1;
+    } catch (err) {
+      if (/Forbidden|chat not found|user is deactivated/i.test(err.message)) {
+        await unsubscribeAll(chatId);
+        removed += 1;
+      } else {
+        console.error(`[подписка] задача ${task.id} → ${chatId}:`, err.message);
+      }
+    }
+    await pause(PAUSE_MS);
+  }
+  return { sent, removed };
+}
+
+async function taskSubscribers() {
+  const { rows } = await db.query('SELECT COUNT(*)::int AS n FROM subscriptions WHERE category = $1', [TASKS.category]);
+  return rows[0].n;
+}
+
 function start(deps) {
   const run = () => digest(deps).catch((err) => console.error('[подписка]', err.message));
   setInterval(run, EVERY_MS).unref();
 }
 
-module.exports = { onMessage, onCallback, digest, start, categoriesOf, PROFESSIONS };
+module.exports = { onMessage, onCallback, digest, notifyTask, taskSubscribers, start, categoriesOf, PROFESSIONS, TASKS };

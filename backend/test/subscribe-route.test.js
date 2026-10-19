@@ -9,6 +9,8 @@ const { install, at } = require('./helpers/stub');
 
 let asked = 0;
 const requireSrc = install({
+  // Роут берёт у подписки только имя «birzha» — в базу он не ходит.
+  [at('db/index.js')]: {},
   [at('telegram/api.js')]: {
     hasToken: () => true,
     call: async (method) => {
@@ -37,5 +39,7 @@ test('профессия — сразу в подписку, подборка �
   assert.equal(await go('obshchepit'), 'https://t.me/shabashka_test_bot?start=sub_obshchepit');
   assert.equal(await go('studentam'), 'https://t.me/shabashka_test_bot?start');
   assert.equal(await go('net-takoy'), 'https://t.me/shabashka_test_bot?start');
+  // Задачи биржи — кнопка «Новые задачи в Telegram» на странице биржи.
+  assert.equal(await go('birzha'), 'https://t.me/shabashka_test_bot?start=sub_birzha');
   assert.equal(asked, 1, 'имя бота спрашиваем у Telegram один раз');
 });

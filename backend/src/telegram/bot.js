@@ -28,6 +28,10 @@ const commands = require('./commands');
 const throttle = require('./throttle');
 const rubrics = require('./rubrics');
 const adRaises = require('./adRaises');
+const taskShare = require('./taskShare');
+const outreach = require('./outreach');
+const taskEvents = require('../taskEvents');
+const tasksRepo = require('../tasksRepo');
 const { num, plural, viewsWord, clamp, clock, whenText, agoText } = require('./format');
 const { money } = require('../money');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
@@ -84,6 +88,22 @@ const subscriptionDeps = {
     tg.call('editMessageReplyMarkup', { chat_id: chatId, message_id: messageId, ...extra }),
   siteUrl: SITE_URL,
   pretty: prettyLink,
+};
+
+// Биржа (см. taskShare.js): карточка новой задачи админам и раздача по кнопке —
+// в Threads, Telegram-канал и подписчикам на задачи.
+const taskShareDeps = {
+  ...subscriptionDeps,
+  edit: (chatId, messageId, text) => tg.editMessageText(chatId, messageId, text),
+  adminIds: [...ADMIN_IDS],
+  load: (id) => tasksRepo.get(id),
+  channel: CHANNEL_ID ? (html) => tg.sendMessage(CHANNEL_ID, html) : null,
+  threads: social.threadsConfigured() ? (text) => social.shareRubric({ text }).then((r) => r.threads) : null,
+  report: (text) => notifyAdmins(text),
+  subscribers: {
+    count: () => subscriptions.taskSubscribers(),
+    notify: (task) => subscriptions.notifyTask(task, subscriptionDeps),
+  },
 };
 
 function publicText(parsed, listingType, siteLink) {
@@ -1623,6 +1643,20 @@ async function sendHelp(chatId) {
       'с «🎓 Вакансия для студентов», а в Instagram выходит отдельным синим',
       'выпуском — первый экран «Вакансия для студентов», он же обложка.',
     ],
+    [
+      '⚡ Биржа',
+      '',
+      'Новую задачу на бирже присылаю сюда с кнопками 📣 «Раздать» — в Threads,',
+      'Telegram-канал и исполнителям, подписанным на задачи, — и 🙈 «Не раздавать».',
+      'Номера в посте нет: чтобы предложить цену, исполнитель идёт на сайт.',
+      'Подписаться на задачи можно кнопкой на странице биржи или в /start у бота.',
+      '',
+      `/outreach — кому написать: по ${outreach.BATCH} авторов свежих объявлений из групп,`,
+      'у каждого кнопка WhatsApp с готовым текстом: «ваше объявление на Шабашке,',
+      'вот ссылка» и приглашение на биржу. Отправляете вы сами, проверив текст.',
+      `Не больше ${outreach.DAILY} в день — WhatsApp блокирует номера, которые пачками`,
+      'пишут незнакомым. Одному номеру предлагаю написать только раз.',
+    ],
   ];
   for (const [i, part] of help.entries()) {
     await tg.sendMessage(chatId, part.join('\n'), i === 0 ? menu.KEYBOARD : undefined);
@@ -1770,6 +1804,11 @@ async function onMessage(message) {
     return;
   }
 
+  if (text === '/outreach') {
+    await outreach.send(chatId, subscriptionDeps);
+    return;
+  }
+
   // Пометку тратим здесь, а не в начале обработчика: между «/ad» и самим
   // объявлением админ может успеть спросить /stats, и съедать её на этом
   // вопросе было бы обидно.
@@ -1895,6 +1934,9 @@ async function onCallback(query) {
     await tg.answerCallbackQuery(query.id, 'Нет доступа');
     return;
   }
+  // Биржа: «Раздать» под новой задачей и «Ещё» в списке «Кому написать».
+  if (await taskShare.onCallback(query, taskShareDeps)) return;
+  if (await outreach.onCallback(query, subscriptionDeps)) return;
 
   const [action, rawId, arg2, arg3] = String(query.data || '').split(':');
   const chatId = query.message.chat.id;
@@ -2685,6 +2727,8 @@ function startWatchers() {
   });
   // Рассылка новых вакансий подписчикам — раз в час днём.
   subscriptions.start(subscriptionDeps);
+  // Новая задача на бирже — карточка админам с кнопкой «Раздать».
+  taskEvents.onCreated((task) => taskShare.announce(task, taskShareDeps));
   products.start({
     report: (view) => tg.sendMessage(process.env.SOURCE_REPORT_CHAT_ID || adminChat(), view.text, view.extra),
   });

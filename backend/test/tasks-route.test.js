@@ -22,6 +22,10 @@ const requireSrc = install({
 });
 
 const { signToken } = requireSrc('middleware/auth.js');
+// Новую задачу роут отдаёт боту — тот предложит админу раздать её (см.
+// src/telegram/taskShare.js). Здесь бота нет: просто запоминаем, что сообщили.
+const announced = [];
+requireSrc('taskEvents.js').onCreated((task) => announced.push(task));
 const app = express();
 app.use(express.json());
 app.use('/api/tasks', requireSrc('routes/tasks.js'));
@@ -74,6 +78,8 @@ test('гость видит задачу и ленту, но откликнут�
   const owner = await user('Айгуль');
   const { body } = await call('/tasks', { as: owner, body: TASK });
   const id = body.task.id;
+  assert.equal(announced.at(-1).id, id, 'о новой задаче узнал бот');
+  assert.equal(announced.at(-1).owner_name, 'Айгуль', 'с именем заказчика — для карточки админу');
   assert.equal((await call('/tasks')).body.tasks.some((t) => t.id === id), true);
   const view = await call(`/tasks/${id}`);
   assert.equal(view.status, 200);

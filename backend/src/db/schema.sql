@@ -521,3 +521,18 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (chat_id, category)
 );
+
+-- Задачу биржи раздают в Threads, Telegram-канал и подписчикам бота после
+-- одобрения админом (см. telegram/taskShare.js). shared_at — когда раздали:
+-- второе нажатие (другой админ, двойной тап) ничего не повторит.
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS shared_at TIMESTAMPTZ;
+
+-- «Кому написать» (см. telegram/outreach.js): авторы объявлений из групп, которым
+-- админ предложил написать в WhatsApp. Номер — ключ: одному человеку второй раз
+-- не предлагаем, сколько бы объявлений он ни разместил.
+CREATE TABLE IF NOT EXISTS outreach_contacts (
+  phone        TEXT PRIMARY KEY,
+  listing_type TEXT NOT NULL, -- order | vacancy
+  listing_id   INTEGER NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

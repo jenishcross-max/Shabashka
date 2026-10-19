@@ -136,3 +136,35 @@ test('рассылка: раз в час днём, по пять на профе
   sent.length = 0;
   assert.deepEqual(await subs.digest({ ...deps, now: AT_10 }), { sent: 0, removed: 0 }, 'второй раз то же не шлём');
 });
+
+// Задачи биржи: исполнитель подписывается кнопкой со страницы биржи
+// (/start sub_birzha) и получает задачу сразу, как админ её раздал (см.
+// src/telegram/taskShare.js), — в любое время, без часовой подборки.
+test('подписка на задачи биржи: кнопкой с сайта, задача приходит сразу', async () => {
+  sent.length = 0;
+  await subs.onMessage(message('/start sub_birzha', 701), deps);
+  assert.deepEqual(await subs.categoriesOf(701), ['Задачи биржи']);
+  assert.match(sent[0].text, /✅ Подписал: Задачи биржи/);
+  assert.match(sent[0].text, /Задачи биржи — пришлю сразу/);
+  assert.equal(buttons(sent[0].extra)[0].text, '✅ ⚡ Задачи биржи — сразу', 'первая кнопка — биржа');
+
+  await subs.onMessage(message('/start sub_obshchepit', 702), deps);
+  await subs.onMessage(message('/start sub_birzha', 703), deps);
+  blocked.add(703);
+  assert.equal(await subs.taskSubscribers(), 2);
+
+  sent.length = 0;
+  const task = { id: 15, title: 'Собрать шкаф', description: 'Шкаф-купе, 2 метра.', city: 'Бишкек', budget: 2500, when_text: 'завтра' };
+  assert.deepEqual(await subs.notifyTask(task, deps), { sent: 1, removed: 1 });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].chatId, 701, 'подписанным только на вакансии задачу не шлём');
+  assert.match(sent[0].text, /<b>Собрать шкаф<\/b>\n📍 Бишкек · 💰 2 500 сом\n🗓 завтра/);
+  assert.match(sent[0].text, /Предложить цену и срок: шабашка\.com\/tasks\/15/);
+  assert.deepEqual(await subs.categoriesOf(703), [], 'заблокировал бота — подписку убрали');
+
+  // В часовую подборку вакансий подписка на задачи не попадает.
+  sent.length = 0;
+  await vacancy('Ещё официант', 'Общепит');
+  await subs.digest({ ...deps, now: AT_10 });
+  assert.ok(sent.every((m) => m.chatId !== 701));
+});

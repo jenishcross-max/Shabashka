@@ -282,7 +282,10 @@ function OwnerPanel({ task, offers, chatId, busy, run }) {
     <div className="task-owner">
       <h3 className="desc-heading">Отклики ({offers.length})</h3>
       {offers.length === 0 && (
-        <p className="status-msg">Откликов пока нет. Когда исполнители предложат цену, они появятся здесь.</p>
+        <p className="status-msg">
+          Откликов пока нет. После проверки задачу увидят подписчики Шабашки в Threads и Telegram, а
+          подписанные на биржу исполнители получат её в боте. Предложения появятся здесь.
+        </p>
       )}
       <div className="offer-list">
         {offers.map((offer) => (

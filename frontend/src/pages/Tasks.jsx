@@ -12,6 +12,18 @@ import WorkSwitcher from '../components/WorkSwitcher';
 import CityAutocomplete from '../components/CityAutocomplete';
 import { SkeletonBox, SkeletonOrderCard } from '../components/Skeleton';
 
+// Что обычно поручают — подсказка заказчику на пустой бирже, чтобы было
+// понятно, с чем сюда идти.
+const EXAMPLES = [
+  'уборка квартиры',
+  'сборка мебели',
+  'сантехник или электрик',
+  'переезд и грузчики',
+  'покраска и мелкий ремонт',
+  'репетитор',
+  'логотип или сайт',
+];
+
 // Лента биржи: только открытые задачи. Фильтры живут в адресе — так ссылку на
 // «уборка в Оше» можно переслать, и кнопка «назад» возвращает к тем же фильтрам.
 export default function Tasks() {
@@ -34,6 +46,7 @@ export default function Tasks() {
   const category = searchParams.get('category') || '';
   const page = Math.max(1, Number(searchParams.get('page')) || 1);
 
+  const filtered = Boolean(q || city || category);
   const [qInput, setQInput] = useState(q);
   const [cityInput, setCityInput] = useState(city);
 
@@ -102,6 +115,11 @@ export default function Tasks() {
               {newOffers > 0 && <span className="nav-unread-badge">{newOffers}</span>}
             </Link>
           )}
+          {/* Исполнителю — повод вернуться: бот пришлёт новую задачу сразу
+              (см. backend/src/telegram/subscriptions.js, подписка birzha). */}
+          <a className="landing-subscribe" href={api.subscribeUrl('birzha')} target="_blank" rel="noopener noreferrer">
+            🔔 Задачи в Telegram
+          </a>
           <Link to="/tasks/new" className="cta">
             + Разместить задачу
           </Link>
@@ -126,25 +144,50 @@ export default function Tasks() {
         <button type="submit">Найти</button>
       </form>
 
-      <div className="orders-results-head">
-        <span>
-          {loading ? (
-            <SkeletonBox width={90} height={14} />
-          ) : (
-            <>
-              <strong>{meta.total}</strong> {taskWord(meta.total)}
-            </>
-          )}
-        </span>
-      </div>
+      {/* «0 задач» крупно отпугивает обе стороны — на пустой бирже счётчик
+          прячем, объяснение ниже. */}
+      {(loading || meta.total > 0 || filtered) && (
+        <div className="orders-results-head">
+          <span>
+            {loading ? (
+              <SkeletonBox width={90} height={14} />
+            ) : (
+              <>
+                <strong>{meta.total}</strong> {taskWord(meta.total)}
+              </>
+            )}
+          </span>
+        </div>
+      )}
 
       {error && <p className="status-msg error">{error}</p>}
-      {!loading && !error && tasks.length === 0 && (
-        <p className="status-msg">
-          {q || city || category
-            ? 'По этим фильтрам открытых задач нет.'
-            : 'Пока нет открытых задач. Разместите первую — исполнители увидят её здесь.'}
-        </p>
+      {!loading && !error && tasks.length === 0 && filtered && (
+        <p className="status-msg">По этим фильтрам открытых задач нет.</p>
+      )}
+      {!loading && !error && tasks.length === 0 && !filtered && (
+        <section className="tasks-empty">
+          <h2>Биржа только открылась — ваша задача будет на виду первой</h2>
+          <ol className="tasks-steps">
+            <li>
+              <b>Опишите задачу</b> — что сделать, где и когда. Бюджет можно не указывать.
+            </li>
+            <li>
+              <b>Получите предложения</b> — исполнители пришлют цену, срок и что именно сделают.
+            </li>
+            <li>
+              <b>Выберите одного</b> — ваш телефон увидит только он. Без комиссии.
+            </li>
+          </ol>
+          <p className="tasks-examples">Что поручают: {EXAMPLES.join(', ')}.</p>
+          <div className="tasks-empty-actions">
+            <Link to="/tasks/new" className="cta">
+              + Разместить задачу
+            </Link>
+            <a className="landing-subscribe" href={api.subscribeUrl('birzha')} target="_blank" rel="noopener noreferrer">
+              🔔 Я исполнитель — присылать задачи в Telegram
+            </a>
+          </div>
+        </section>
       )}
 
       <div className="order-grid">

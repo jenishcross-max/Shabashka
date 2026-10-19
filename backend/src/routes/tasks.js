@@ -8,6 +8,7 @@ const { canCreateListing } = require('../emailGate');
 const { invalidate } = require('../cache');
 const repo = require('../tasksRepo');
 const exchange = require('../exchange');
+const taskEvents = require('../taskEvents');
 
 // Биржа услуг: задачи и отклики (см. exchange.js — правила, tasksRepo.js —
 // запросы). Тот же API потом использует Android-приложение, поэтому ответы
@@ -109,7 +110,9 @@ router.post(
 
     const id = await repo.create(req.user.id, result);
     invalidate('home:'); // свежая задача сразу видна в блоке биржи на главной
-    res.status(201).json({ task: await repo.get(id) });
+    const task = await repo.get(id);
+    taskEvents.created(task); // бот предложит админу раздать её (см. telegram/taskShare.js)
+    res.status(201).json({ task });
   })
 );
 
