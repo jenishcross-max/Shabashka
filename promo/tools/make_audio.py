@@ -1,7 +1,9 @@
 """Своя музыка и звуки для промо-роликов: без чужих прав и без сети.
 
-python3 make_audio.py <папка> <длина_музыки_сек>
-Пишет music.wav (бит 120 BPM с затуханием), pop.wav и whoosh.wav.
+python3 make_audio.py <папка> <длина_музыки_сек> [настроение]
+Пишет music.wav, pop.wav и whoosh.wav. Настроение: beat (по умолчанию — бит
+120 BPM, как в первых роликах), soft (колокольчики 96 BPM — для пригласительных),
+calm (спокойно, 84 BPM — для читалки).
 """
 import sys
 import wave
@@ -106,6 +108,61 @@ def music(length):
     return mix / np.max(np.abs(mix)) * 0.8
 
 
+def bell(freq, dur):
+    """Колокольчик: синус с призвуками и долгим затуханием."""
+    n = int(dur * SR)
+    t = np.arange(n) / SR
+    x = np.sin(2 * np.pi * freq * t) + 0.35 * np.sin(2 * np.pi * freq * 2.01 * t) + 0.12 * np.sin(2 * np.pi * freq * 3.02 * t)
+    return x * env(n, 0.003, dur / 3)
+
+
+def gentle(length, bpm, chords, roots, arp_octave, drums_level):
+    """Мягкая музыка: пэд из аккордов, арпеджио колокольчиками и тихий бит."""
+    n = int(length * SR)
+    pad = np.zeros(n)
+    arp = np.zeros(n)
+    drums = np.zeros(n)
+    bass = np.zeros(n)
+    beat = 60 / bpm
+    bars = int(length / (4 * beat)) + 1
+    for bar in range(bars):
+        t0 = bar * 4 * beat
+        ci = bar % len(chords)
+        for m in chords[ci]:
+            place(pad, tone(midi(m), 4 * beat, "sine", 0.4, 2.5) * 0.06, t0)
+        place(bass, tone(midi(roots[ci]), 2 * beat, "sine", 0.02, 0.8) * 0.35, t0)
+        place(bass, tone(midi(roots[ci]), 2 * beat, "sine", 0.02, 0.8) * 0.25, t0 + 2 * beat)
+        notes = list(chords[ci]) + [chords[ci][1] + 12]
+        for e in range(8):  # арпеджио восьмыми
+            m = notes[e % len(notes)] + arp_octave
+            place(arp, bell(midi(m), 1.2) * (0.09 if e % 2 == 0 else 0.06), t0 + e * beat / 2)
+        if bar >= 1:  # бит со второго такта
+            for b in range(4):
+                tb = t0 + b * beat
+                if b in (0, 2):
+                    place(drums, kick() * 0.6, tb)
+                place(drums, hat() * 0.5, tb + beat / 2)
+                if b == 3:
+                    place(drums, clap() * 0.4, tb)
+    mix = pad + arp + bass + drums * drums_level
+    fade = int(1.5 * SR)
+    mix[-fade:] *= np.linspace(1, 0, fade)
+    return mix / np.max(np.abs(mix)) * 0.8
+
+
+MOODS = {
+    "beat": music,
+    # До мажор: C – G – Am – F — светло, по-праздничному.
+    "soft": lambda length: gentle(
+        length, 96, [(60, 64, 67), (55, 59, 62), (57, 60, 64), (53, 57, 60)], [48, 43, 45, 41], 12, 0.45
+    ),
+    # Am – F – C – G тише и медленнее: фон для чтения.
+    "calm": lambda length: gentle(
+        length, 84, [(57, 60, 64), (53, 57, 60), (48, 52, 55), (55, 59, 62)], [45, 41, 36, 43], 12, 0.6
+    ),
+}
+
+
 def pop():
     n = int(0.15 * SR)
     t = np.arange(n) / SR
@@ -127,6 +184,7 @@ def whoosh():
 
 if __name__ == "__main__":
     folder, length = sys.argv[1], float(sys.argv[2])
-    write(f"{folder}/music.wav", music(length))
+    mood = sys.argv[3] if len(sys.argv) > 3 else "beat"
+    write(f"{folder}/music.wav", MOODS[mood](length))
     write(f"{folder}/pop.wav", pop())
     write(f"{folder}/whoosh.wav", whoosh())

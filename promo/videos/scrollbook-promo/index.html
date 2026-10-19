@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Scroll Book — промо</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      @font-face{font-family:'Rubik';font-weight:500;font-style:normal;src:url(assets/fonts/rubik-cyrillic-500-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:500;font-style:normal;src:url(assets/fonts/rubik-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:700;font-style:normal;src:url(assets/fonts/rubik-cyrillic-700-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:700;font-style:normal;src:url(assets/fonts/rubik-latin-700-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:800;font-style:normal;src:url(assets/fonts/rubik-cyrillic-800-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:800;font-style:normal;src:url(assets/fonts/rubik-latin-800-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:900;font-style:normal;src:url(assets/fonts/rubik-cyrillic-900-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:900;font-style:normal;src:url(assets/fonts/rubik-latin-900-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:400;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-400-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:400;font-style:normal;src:url(assets/fonts/golos-text-latin-400-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:500;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-500-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:500;font-style:normal;src:url(assets/fonts/golos-text-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:600;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-600-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:600;font-style:normal;src:url(assets/fonts/golos-text-latin-600-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:700;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-700-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:700;font-style:normal;src:url(assets/fonts/golos-text-latin-700-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #121019;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: 'Golos Text', sans-serif;
+        color: #fff;
+        background: #121019;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: radial-gradient(120% 70% at 50% 30%, #2a2140 0%, #121019 70%);
+      }
+      .violet-bg {
+        background: radial-gradient(120% 80% at 50% 35%, #7d5cf0 0%, #4a2fb0 75%);
+      }
+      .pad {
+        position: absolute;
+        inset: 0;
+        padding: 230px 80px 300px;
+        display: flex;
+        flex-direction: column;
+      }
+      .center {
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+      }
+      .h-xl {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 112px;
+        line-height: 1.04;
+        letter-spacing: -0.03em;
+      }
+      .h-l {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 800;
+        font-size: 90px;
+        line-height: 1.06;
+        letter-spacing: -0.025em;
+      }
+      .word {
+        display: block;
+      }
+      .accent {
+        color: #b9a3ff;
+      }
+      /* Полосы ленты, которые бегут вверх, — фон крючка */
+      .feed-bg {
+        position: absolute;
+        left: 120px;
+        right: 120px;
+        top: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 40px;
+        opacity: 0.07;
+      }
+      .feed-card {
+        height: 300px;
+        border-radius: 36px;
+        background: #fff;
+      }
+      .app-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 26px;
+        margin-top: 70px;
+        padding: 26px 50px 26px 30px;
+        border-radius: 999px;
+        background: #fff;
+        color: #1a1530;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 800;
+        font-size: 66px;
+      }
+      .book-icon {
+        width: 96px;
+        height: 96px;
+        border-radius: 26px;
+        background: #7d5cf0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .book-icon svg {
+        width: 58px;
+        height: 58px;
+      }
+      .caps {
+        position: absolute;
+        top: 150px;
+        left: 60px;
+        right: 60px;
+        height: 200px;
+      }
+      .cap {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        opacity: 0;
+      }
+      .cap-small {
+        font-size: 40px;
+        color: #c9c2e0;
+        font-weight: 500;
+      }
+      .cap-big {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 96px;
+        letter-spacing: -0.025em;
+        margin-top: 6px;
+      }
+      .phone {
+        position: absolute;
+        left: 220px;
+        top: 390px;
+        width: 640px;
+        height: 1105px;
+        border-radius: 80px;
+        background: #000;
+        padding: 22px;
+        box-shadow: 0 40px 120px rgba(125, 92, 240, 0.35);
+      }
+      .screen {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        border-radius: 60px;
+        overflow: hidden;
+        background: #121019;
+      }
+      .screen img {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        opacity: 0;
+      }
+      .note {
+        position: absolute;
+        left: 80px;
+        right: 80px;
+        top: 1525px;
+        text-align: center;
+        font-size: 38px;
+        color: #c9c2e0;
+        opacity: 0;
+      }
+      .list {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+        margin-top: 80px;
+        width: 100%;
+      }
+      .tile {
+        background: rgba(255, 255, 255, 0.08);
+        border: 2px solid rgba(185, 163, 255, 0.35);
+        border-radius: 34px;
+        padding: 44px 30px;
+        text-align: center;
+      }
+      .tile-icon {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 64px;
+        color: #b9a3ff;
+      }
+      .tile-text {
+        display: block;
+        margin-top: 14px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 700;
+        font-size: 44px;
+        line-height: 1.15;
+      }
+      .tile.wide {
+        grid-column: span 2;
+      }
+      .pill {
+        margin-top: 60px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 800;
+        font-size: 58px;
+        padding: 24px 56px;
+        border-radius: 999px;
+        background: #fff;
+        color: #4a2fb0;
+      }
+      .small {
+        margin-top: 46px;
+        font-size: 44px;
+        font-weight: 600;
+      }
+      .tiny {
+        margin-top: 18px;
+        font-size: 34px;
+        opacity: 0.8;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="24" data-width="1080" data-height="1920" data-fps="30">
+      <!-- 1. Крючок: читать хочется, а палец листает ленту -->
+      <section id="s1" class="scene clip" data-start="0" data-duration="2.8" data-track-index="0">
+        <div id="s1-feed" class="feed-bg">
+          <div class="feed-card"></div>
+          <div class="feed-card"></div>
+          <div class="feed-card"></div>
+          <div class="feed-card"></div>
+          <div class="feed-card"></div>
+          <div class="feed-card"></div>
+          <div class="feed-card"></div>
+          <div class="feed-card"></div>
+          <div class="feed-card"></div>
+        </div>
+        <div class="pad center">
+          <div class="h-xl">
+            <span id="s1-a" class="word">Хочешь читать,</span>
+            <span id="s1-b" class="word accent">а палец листает</span>
+            <span id="s1-c" class="word">ленту?</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Ответ: листай книгу -->
+      <section id="s2" class="scene violet-bg clip" data-start="2.8" data-duration="2.2" data-track-index="0">
+        <div class="pad center">
+          <div class="h-xl">
+            <span id="s2-a" class="word">Тогда листай</span>
+            <span id="s2-b" class="word">книгу</span>
+          </div>
+          <div id="s2-pill" class="app-pill">
+            <span class="book-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z" /><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5" /></svg></span>
+            Scroll Book
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Один абзац — четыре способа -->
+      <section id="s3" class="scene clip" data-start="5" data-duration="10.4" data-track-index="0">
+        <div class="caps">
+          <div id="cap1" class="cap"><span class="cap-small">Книга приходит</span><span class="cap-big">как <span class="accent">переписка</span></span></div>
+          <div id="cap2" class="cap"><span class="cap-small">Листаешь абзацы</span><span class="cap-big">как <span class="accent">Reels</span></span></div>
+          <div id="cap3" class="cap"><span class="cap-small">Герои пишут</span><span class="cap-big">как <span class="accent">чаты</span></span></div>
+          <div id="cap4" class="cap"><span class="cap-small">Страница за страницей</span><span class="cap-big">как <span class="accent">лента</span></span></div>
+        </div>
+        <div id="phone" class="phone">
+          <div class="screen">
+            <img data-layout-allow-overflow id="sc1" src="assets/shots/01-chat.jpg" alt="" />
+            <img data-layout-allow-overflow id="sc2" src="assets/shots/02-reels.jpg" alt="" />
+            <img data-layout-allow-overflow id="sc3" src="assets/shots/03-chats.jpg" alt="" />
+            <img data-layout-allow-overflow id="sc4" src="assets/shots/06-feed.jpg" alt="" />
+          </div>
+        </div>
+        <div id="s3-note" class="note">Одна книга. Переключился — продолжил с той же строки</div>
+      </section>
+
+      <!-- 4. Чего нет -->
+      <section id="s4" class="scene clip" data-start="15.4" data-duration="4" data-track-index="0">
+        <div class="pad center">
+          <div id="s4-title" class="h-l">Бесплатно и <span class="accent">честно</span></div>
+          <div class="list">
+            <div id="s4-t1" class="tile"><span class="tile-icon">Без</span><span class="tile-text">рекламы</span></div>
+            <div id="s4-t2" class="tile"><span class="tile-icon">Без</span><span class="tile-text">регистрации</span></div>
+            <div id="s4-t3" class="tile"><span class="tile-icon">Без</span><span class="tile-text">интернета</span></div>
+            <div id="s4-t4" class="tile"><span class="tile-icon">Без</span><span class="tile-text">подписок</span></div>
+            <div id="s4-t5" class="tile wide"><span class="tile-text">Свои книги: epub, fb2, txt</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. Просьба: тестировщики -->
+      <section id="s5" class="scene violet-bg clip" data-start="19.4" data-duration="4.6" data-track-index="0">
+        <div class="pad center">
+          <div id="s5-a" class="h-l">Ищу 12 тестировщиков</div>
+          <div id="s5-b" class="h-l" style="margin-top: 10px">с Android</div>
+          <div id="s5-c" class="pill">14 дней · бесплатно</div>
+          <div id="s5-d" class="small">Две минуты, три кнопки</div>
+          <div id="s5-e" class="tiny">Ссылка — в посте</div>
+        </div>
+      </section>
+
+      <audio id="bgm" src="assets/music.wav" data-start="0" data-duration="24" data-volume="0.8" data-track-index="10"></audio>
+      <audio id="sfx-w1" src="assets/whoosh.wav" data-start="2.65" data-duration="0.45" data-volume="0.5" data-track-index="11"></audio>
+      <audio id="sfx-p1" src="assets/pop.wav" data-start="3.9" data-duration="0.15" data-volume="0.8" data-track-index="12"></audio>
+      <audio id="sfx-w2" src="assets/whoosh.wav" data-start="4.85" data-duration="0.45" data-volume="0.5" data-track-index="11"></audio>
+      <audio id="sfx-w3" src="assets/whoosh.wav" data-start="7.45" data-duration="0.45" data-volume="0.4" data-track-index="12"></audio>
+      <audio id="sfx-w4" src="assets/whoosh.wav" data-start="10.05" data-duration="0.45" data-volume="0.4" data-track-index="11"></audio>
+      <audio id="sfx-w5" src="assets/whoosh.wav" data-start="12.65" data-duration="0.45" data-volume="0.4" data-track-index="12"></audio>
+      <audio id="sfx-w6" src="assets/whoosh.wav" data-start="15.25" data-duration="0.45" data-volume="0.5" data-track-index="11"></audio>
+      <audio id="sfx-p2" src="assets/pop.wav" data-start="16.1" data-duration="0.15" data-volume="0.7" data-track-index="12"></audio>
+      <audio id="sfx-p3" src="assets/pop.wav" data-start="16.5" data-duration="0.15" data-volume="0.7" data-track-index="11"></audio>
+      <audio id="sfx-p4" src="assets/pop.wav" data-start="16.9" data-duration="0.15" data-volume="0.7" data-track-index="12"></audio>
+      <audio id="sfx-p5" src="assets/pop.wav" data-start="17.3" data-duration="0.15" data-volume="0.7" data-track-index="11"></audio>
+      <audio id="sfx-w7" src="assets/whoosh.wav" data-start="19.25" data-duration="0.45" data-volume="0.5" data-track-index="12"></audio>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      const pop = { duration: 0.45, ease: 'back.out(1.8)' };
+      const rise = { duration: 0.5, ease: 'power3.out' };
+
+      // 1. Лента бежит вверх, как под пальцем, поверх — вопрос
+      tl.fromTo('#s1-feed', { y: 0 }, { y: -1400, duration: 2.8, ease: 'power1.in' }, 0);
+      ['#s1-a', '#s1-b', '#s1-c'].forEach((sel, i) => {
+        tl.fromTo(sel, { opacity: 0, y: 70 }, { opacity: 1, y: 0, ...pop }, 0.15 + i * 0.35);
+      });
+
+      // 2. «Тогда листай книгу» и название
+      tl.fromTo('#s2-a', { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, ...pop }, 2.85);
+      tl.fromTo('#s2-b', { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, ...pop }, 3.15);
+      tl.fromTo('#s2-pill', { opacity: 0, y: 60 }, { opacity: 1, y: 0, duration: 0.5, ease: 'back.out(1.6)' }, 3.75);
+
+      // 3. Телефон: экран сменяется свайпом вверх, как в Reels
+      tl.fromTo('#phone', { y: 240, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 5);
+      for (let i = 1; i <= 4; i += 1) {
+        const at = 5 + (i - 1) * 2.6;
+        if (i === 1) tl.fromTo('#sc1', { opacity: 0 }, { opacity: 1, duration: 0.3 }, at);
+        else tl.fromTo('#sc' + i, { opacity: 1, yPercent: 100 }, { yPercent: 0, duration: 0.45, ease: 'power3.inOut' }, at);
+        if (i > 1) tl.to('#sc' + (i - 1), { yPercent: -100, duration: 0.45, ease: 'power3.inOut' }, at);
+        tl.fromTo('#cap' + i, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.4, ease: 'power3.out' }, at + 0.1);
+        if (i < 4) tl.to('#cap' + i, { opacity: 0, y: -40, duration: 0.25 }, at + 2.35);
+      }
+      tl.fromTo('#s3-note', { opacity: 0 }, { opacity: 1, duration: 0.5 }, 8.4);
+
+      // 4. Плитки «Без рекламы…»
+      tl.fromTo('#s4-title', { opacity: 0, y: 50 }, { opacity: 1, y: 0, ...rise }, 15.45);
+      [1, 2, 3, 4, 5].forEach((n, i) => {
+        tl.fromTo('#s4-t' + n, { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, ...pop }, 16.05 + i * 0.4);
+      });
+
+      // 5. Просьба
+      tl.fromTo('#s5-a', { opacity: 0, y: 50 }, { opacity: 1, y: 0, ...rise }, 19.45);
+      tl.fromTo('#s5-b', { opacity: 0, y: 50 }, { opacity: 1, y: 0, ...rise }, 19.75);
+      tl.fromTo('#s5-c', { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, ...pop }, 20.3);
+      tl.fromTo('#s5-d', { opacity: 0 }, { opacity: 1, duration: 0.4 }, 20.8);
+      tl.fromTo('#s5-e', { opacity: 0 }, { opacity: 0.8, duration: 0.4 }, 21.2);
+
+      window.__timelines['main'] = tl;
+    </script>
+  </body>
+</html>

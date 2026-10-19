@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Сайт-пригласительное — промо</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      @font-face{font-family:'Rubik';font-weight:500;font-style:normal;src:url(assets/fonts/rubik-cyrillic-500-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:500;font-style:normal;src:url(assets/fonts/rubik-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:700;font-style:normal;src:url(assets/fonts/rubik-cyrillic-700-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:700;font-style:normal;src:url(assets/fonts/rubik-latin-700-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:800;font-style:normal;src:url(assets/fonts/rubik-cyrillic-800-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:800;font-style:normal;src:url(assets/fonts/rubik-latin-800-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:900;font-style:normal;src:url(assets/fonts/rubik-cyrillic-900-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:900;font-style:normal;src:url(assets/fonts/rubik-latin-900-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:400;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-400-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:400;font-style:normal;src:url(assets/fonts/golos-text-latin-400-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:500;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-500-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:500;font-style:normal;src:url(assets/fonts/golos-text-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:600;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-600-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:600;font-style:normal;src:url(assets/fonts/golos-text-latin-600-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:700;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-700-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:700;font-style:normal;src:url(assets/fonts/golos-text-latin-700-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #8f1d24;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: 'Golos Text', sans-serif;
+        color: #f6efe4;
+        background: #8f1d24;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      /* Рушник: красное полотно с ромбами-вышивкой по краям */
+      .rushnik {
+        background-color: #8f1d24;
+        background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1.5px, transparent 1.6px);
+        background-size: 14px 14px;
+      }
+      .cream {
+        background: #f6efe4;
+        color: #3a1d1c;
+      }
+      .band {
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 70px;
+        background-image: linear-gradient(45deg, transparent 42%, #f6efe4 42%, #f6efe4 58%, transparent 58%),
+          linear-gradient(-45deg, transparent 42%, #f6efe4 42%, #f6efe4 58%, transparent 58%);
+        background-size: 70px 70px;
+        opacity: 0.85;
+      }
+      .band.top {
+        top: 90px;
+      }
+      .band.bottom {
+        bottom: 300px;
+      }
+      .pad {
+        position: absolute;
+        inset: 0;
+        padding: 230px 80px 300px;
+        display: flex;
+        flex-direction: column;
+      }
+      .center {
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+      }
+      .h-xl {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 120px;
+        line-height: 1.04;
+        letter-spacing: -0.03em;
+      }
+      .h-l {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 800;
+        font-size: 92px;
+        line-height: 1.06;
+        letter-spacing: -0.025em;
+      }
+      .word {
+        display: block;
+      }
+      .gold {
+        color: #f2c25c;
+      }
+      .wine {
+        color: #8f1d24;
+      }
+      .strike {
+        position: relative;
+        display: inline-block;
+      }
+      .strike-line {
+        position: absolute;
+        left: -10px;
+        right: -10px;
+        top: 52%;
+        height: 16px;
+        border-radius: 8px;
+        background: #f2c25c;
+        transform-origin: left center;
+      }
+      /* Сообщение в WhatsApp со ссылкой */
+      .chat {
+        width: 880px;
+        margin-top: 90px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+      }
+      .bubble {
+        width: 760px;
+        background: #dcf8c6;
+        border-radius: 36px 36px 10px 36px;
+        padding: 22px;
+        box-shadow: 0 18px 50px rgba(58, 29, 28, 0.18);
+        text-align: left;
+        color: #1f2c1f;
+      }
+      .preview {
+        display: flex;
+        gap: 22px;
+        background: #cdeeb5;
+        border-radius: 22px;
+        overflow: hidden;
+      }
+      .preview img {
+        width: 200px;
+        height: 200px;
+        object-fit: cover;
+        object-position: top;
+      }
+      .preview-text {
+        padding: 26px 18px 0 0;
+      }
+      .preview-title {
+        display: block;
+        font-weight: 700;
+        font-size: 36px;
+        line-height: 1.2;
+      }
+      .preview-url {
+        display: block;
+        font-size: 28px;
+        color: #4a6b46;
+        margin-top: 10px;
+      }
+      .bubble-text {
+        font-size: 38px;
+        line-height: 1.3;
+        margin: 22px 10px 4px;
+      }
+      .ticks {
+        text-align: right;
+        font-size: 26px;
+        color: #4fa3e0;
+        margin-right: 8px;
+      }
+      .sent {
+        margin-top: 30px;
+        font-size: 40px;
+        font-weight: 600;
+        color: #8f1d24;
+        background: #fff;
+        padding: 16px 34px;
+        border-radius: 999px;
+        align-self: center;
+      }
+      /* Телефон с экранами демо */
+      .caps {
+        position: absolute;
+        top: 150px;
+        left: 60px;
+        right: 60px;
+        height: 200px;
+      }
+      .cap {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 800;
+        font-size: 78px;
+        line-height: 1.05;
+        letter-spacing: -0.02em;
+        opacity: 0;
+      }
+      .phone {
+        position: absolute;
+        left: 200px;
+        top: 390px;
+        width: 680px;
+        height: 1400px;
+        border-radius: 86px;
+        background: #1b1212;
+        padding: 22px;
+        box-shadow: 0 40px 100px rgba(0, 0, 0, 0.45);
+      }
+      .screen {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        border-radius: 66px;
+        overflow: hidden;
+        background: #f6efe4;
+      }
+      .screen img {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        opacity: 0;
+      }
+      .notch {
+        position: absolute;
+        top: 18px;
+        left: 50%;
+        width: 170px;
+        height: 44px;
+        margin-left: -85px;
+        border-radius: 22px;
+        background: #1b1212;
+        z-index: 3;
+      }
+      .toast {
+        position: absolute;
+        left: 60px;
+        right: 60px;
+        bottom: 120px;
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        background: #fff;
+        color: #3a1d1c;
+        border-radius: 30px;
+        padding: 26px 30px;
+        font-size: 32px;
+        font-weight: 600;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+        opacity: 0;
+        z-index: 4;
+      }
+      .toast-dot {
+        flex: none;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: #1c8a4a;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+      }
+      /* Три пункта */
+      .list {
+        display: flex;
+        flex-direction: column;
+        gap: 34px;
+        margin-top: 70px;
+        width: 100%;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 30px;
+        background: #fff;
+        border-radius: 34px;
+        padding: 38px 40px;
+        box-shadow: 0 14px 40px rgba(58, 29, 28, 0.1);
+        text-align: left;
+      }
+      .check {
+        flex: none;
+        width: 88px;
+        height: 88px;
+        border-radius: 50%;
+        background: #8f1d24;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .check svg {
+        width: 50px;
+        height: 50px;
+      }
+      .row-text {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 700;
+        font-size: 48px;
+        line-height: 1.15;
+      }
+      .pill {
+        margin-top: 70px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 800;
+        font-size: 62px;
+        padding: 26px 64px;
+        border-radius: 999px;
+        background: #f6efe4;
+        color: #8f1d24;
+      }
+      .handle {
+        margin-top: 36px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 700;
+        font-size: 58px;
+      }
+      .small {
+        margin-top: 40px;
+        font-size: 38px;
+        opacity: 0.85;
+      }
+      .heart {
+        width: 90px;
+        height: 90px;
+        margin-bottom: 30px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="24" data-width="1080" data-height="1920" data-fps="30">
+      <!-- 1. Крючок: 300 гостей, развезти — зачёркиваем -->
+      <section id="s1" class="scene rushnik clip" data-start="0" data-duration="2.8" data-track-index="0">
+        <div class="band top"></div>
+        <div class="band bottom"></div>
+        <div class="pad center">
+          <div class="h-xl">
+            <span id="s1-a" class="word">300 гостей.</span>
+            <span id="s1-b" class="word gold">300 пригла­си­тельных.</span>
+            <span id="s1-c" class="word"><span class="strike">Развезти<span id="s1-line" class="strike-line"></span></span></span>
+            <span id="s1-d" class="word">до субботы?</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Одной ссылкой в WhatsApp -->
+      <section id="s2" class="scene cream clip" data-start="2.8" data-duration="2.4" data-track-index="0">
+        <div class="pad center">
+          <div id="s2-title" class="h-l">Отправь <span class="wine">одной ссылкой</span></div>
+          <div class="chat">
+            <div id="s2-bubble" class="bubble">
+              <div class="preview">
+                <img src="assets/shots/01-hero.jpg" alt="" />
+                <div class="preview-text">
+                  <span class="preview-title">Алина и Тимур — приглашение</span>
+                  <span class="preview-url">rushnik-invitation-demo.web.app</span>
+                </div>
+              </div>
+              <div class="bubble-text">Ждём вас на нашем тое!</div>
+              <div class="ticks">✓✓</div>
+            </div>
+          </div>
+          <div id="s2-sent" class="sent">и все гости уже знают</div>
+        </div>
+      </section>
+
+      <!-- 3. Экраны демо в телефоне -->
+      <section id="s3" class="scene rushnik clip" data-start="5.2" data-duration="12" data-track-index="0">
+        <div class="caps">
+          <div id="cap1" class="cap">Имена — <span class="gold">&nbsp;вышивкой</span></div>
+          <div id="cap2" class="cap">Отсчёт до тоя</div>
+          <div id="cap3" class="cap">Программа дня</div>
+          <div id="cap4" class="cap">Гости отвечают <span class="gold">&nbsp;сами</span></div>
+          <div id="cap5" class="cap">Пожелания — узором</div>
+        </div>
+        <div id="phone" class="phone">
+          <div class="screen">
+            <div class="notch"></div>
+            <img id="sc1" data-layout-allow-overflow src="assets/shots/01-hero.jpg" alt="" />
+            <img id="sc2" data-layout-allow-overflow src="assets/shots/02-countdown.jpg" alt="" />
+            <img id="sc3" data-layout-allow-overflow src="assets/shots/03-program.jpg" alt="" />
+            <img id="sc4" data-layout-allow-overflow src="assets/shots/05-rsvp.jpg" alt="" />
+            <img id="sc5" data-layout-allow-overflow src="assets/shots/06-wishes.jpg" alt="" />
+            <div id="toast" class="toast"><span class="toast-dot">✓</span>Айгерим: приду с радостью</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. Зачем это -->
+      <section id="s4" class="scene cream clip" data-start="17.2" data-duration="3.8" data-track-index="0">
+        <div class="pad center">
+          <div id="s4-title" class="h-l">Сайт вместо <span class="wine">открытки</span></div>
+          <div class="list">
+            <div id="s4-r1" class="row">
+              <span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17.5 19 7.5" /></svg></span>
+              <span class="row-text">Без печати и развоза</span>
+            </div>
+            <div id="s4-r2" class="row">
+              <span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17.5 19 7.5" /></svg></span>
+              <span class="row-text">Сколько гостей придёт — знаете заранее</span>
+            </div>
+            <div id="s4-r3" class="row">
+              <span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17.5 19 7.5" /></svg></span>
+              <span class="row-text">Свадьба, кыз узатуу, любой той</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. Финал -->
+      <section id="s5" class="scene rushnik clip" data-start="21" data-duration="3" data-track-index="0">
+        <div class="band top"></div>
+        <div class="pad center">
+          <svg id="s5-heart" class="heart" viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.5-9.2C1.2 8.6 3.2 5 6.6 5c2 0 3.4 1.1 4.4 2.6h2C14 6.1 15.4 5 17.4 5c3.4 0 5.4 3.6 4.1 6.8C19.5 16.4 12 21 12 21z" fill="#f2c25c" /></svg>
+          <div id="s5-a" class="h-l">Сайт-<br />пригласительное</div>
+          <div id="s5-b" class="pill">Пишите в директ</div>
+          <div id="s5-c" class="handle">@shabashka.com_</div>
+          <div id="s5-d" class="small">Демо — по ссылке в посте</div>
+        </div>
+      </section>
+
+      <audio id="bgm" src="assets/music.wav" data-start="0" data-duration="24" data-volume="0.8" data-track-index="10"></audio>
+      <audio id="sfx-w1" src="assets/whoosh.wav" data-start="2.65" data-duration="0.45" data-volume="0.5" data-track-index="11"></audio>
+      <audio id="sfx-p1" src="assets/pop.wav" data-start="3.35" data-duration="0.15" data-volume="0.8" data-track-index="12"></audio>
+      <audio id="sfx-w2" src="assets/whoosh.wav" data-start="5.05" data-duration="0.45" data-volume="0.5" data-track-index="11"></audio>
+      <audio id="sfx-p2" src="assets/pop.wav" data-start="13.4" data-duration="0.15" data-volume="0.8" data-track-index="12"></audio>
+      <audio id="sfx-w3" src="assets/whoosh.wav" data-start="17.05" data-duration="0.45" data-volume="0.5" data-track-index="11"></audio>
+      <audio id="sfx-p3" src="assets/pop.wav" data-start="17.8" data-duration="0.15" data-volume="0.7" data-track-index="12"></audio>
+      <audio id="sfx-p4" src="assets/pop.wav" data-start="18.5" data-duration="0.15" data-volume="0.7" data-track-index="11"></audio>
+      <audio id="sfx-p5" src="assets/pop.wav" data-start="19.2" data-duration="0.15" data-volume="0.7" data-track-index="12"></audio>
+      <audio id="sfx-w4" src="assets/whoosh.wav" data-start="20.85" data-duration="0.45" data-volume="0.5" data-track-index="11"></audio>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      const pop = { duration: 0.45, ease: 'back.out(1.8)' };
+      const rise = { duration: 0.5, ease: 'power3.out' };
+
+      // 1. «300 гостей…» — «Развезти» зачёркиваем
+      ['#s1-a', '#s1-b', '#s1-c', '#s1-d'].forEach((sel, i) => {
+        tl.fromTo(sel, { opacity: 0, y: 70 }, { opacity: 1, y: 0, ...pop }, 0.15 + i * 0.3);
+      });
+      tl.fromTo('#s1-line', { scaleX: 0 }, { scaleX: 1, duration: 0.35, ease: 'power2.inOut' }, 1.9);
+
+      // 2. Ссылка в WhatsApp
+      tl.fromTo('#s2-title', { opacity: 0, y: 50 }, { opacity: 1, y: 0, ...rise }, 2.85);
+      tl.fromTo('#s2-bubble', { opacity: 0, y: 120, scale: 0.9 }, { opacity: 1, y: 0, scale: 1, duration: 0.55, ease: 'back.out(1.5)' }, 3.3);
+      tl.fromTo('#s2-sent', { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, ...pop }, 4.1);
+
+      // 3. Телефон: пять экранов по 2.4 с, подпись меняется вместе с экраном
+      tl.fromTo('#phone', { y: 260, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: 'power3.out' }, 5.2);
+      for (let i = 1; i <= 5; i += 1) {
+        const at = 5.2 + (i - 1) * 2.4;
+        tl.fromTo('#sc' + i, { opacity: 0, y: 0 }, { opacity: 1, duration: 0.35, ease: 'power1.out' }, at);
+        // лёгкая прокрутка экрана вверх, как пальцем
+        tl.to('#sc' + i, { y: -90, duration: 2.4, ease: 'none' }, at);
+        tl.fromTo('#cap' + i, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.4, ease: 'power3.out' }, at + 0.05);
+        if (i < 5) {
+          tl.to('#cap' + i, { opacity: 0, y: -40, duration: 0.25 }, at + 2.15);
+          tl.to('#sc' + i, { opacity: 0, duration: 0.3 }, at + 2.4);
+        }
+      }
+      // ответ гостя всплывает поверх формы
+      tl.fromTo('#toast', { opacity: 0, y: 80 }, { opacity: 1, y: 0, duration: 0.45, ease: 'back.out(1.6)' }, 13.4);
+      tl.to('#toast', { opacity: 0, duration: 0.3 }, 14.6);
+
+      // 4. Три пункта
+      tl.fromTo('#s4-title', { opacity: 0, y: 50 }, { opacity: 1, y: 0, ...rise }, 17.25);
+      [1, 2, 3].forEach((n, i) => {
+        tl.fromTo('#s4-r' + n, { opacity: 0, x: -160 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power3.out' }, 17.75 + i * 0.7);
+      });
+
+      // 5. Финал
+      tl.fromTo('#s5-heart', { scale: 0 }, { scale: 1, duration: 0.5, ease: 'back.out(2)' }, 21.05);
+      tl.fromTo('#s5-a', { opacity: 0, y: 50 }, { opacity: 1, y: 0, ...rise }, 21.25);
+      tl.fromTo('#s5-b', { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, ...pop }, 21.7);
+      tl.fromTo('#s5-c', { opacity: 0 }, { opacity: 1, duration: 0.4 }, 22.1);
+      tl.fromTo('#s5-d', { opacity: 0 }, { opacity: 0.85, duration: 0.4 }, 22.4);
+
+      window.__timelines['main'] = tl;
+    </script>
+  </body>
+</html>
