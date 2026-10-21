@@ -123,9 +123,9 @@ export default function VacancyDetail() {
       description: vacancy.description,
       datePosted: vacancy.created_at,
       // Вакансию из чата бэкенд закрывает сам через три недели после выхода или
-      // поднятия (см. backend/src/staleListings.js) — Google должен знать срок,
-      // иначе показывает в поиске давно занятые места.
-      ...(vacancy.is_imported ? { validThrough: expiresAt(vacancy) } : {}),
+      // поднятия, кроме закреплённой (см. backend/src/staleListings.js) — Google
+      // должен знать срок, иначе показывает в поиске давно занятые места.
+      ...(vacancy.is_imported && !vacancy.pinned ? { validThrough: expiresAt(vacancy) } : {}),
       employmentType: SCHEMA_EMPLOYMENT_TYPE[vacancy.employment_type] || 'OTHER',
       hiringOrganization: { '@type': 'Organization', name: vacancy.owner_name },
       jobLocation: {
@@ -136,7 +136,14 @@ export default function VacancyDetail() {
           addressCountry: 'KG',
         },
       },
-      ...(vacancy.work_format === 'online' ? { jobLocationType: 'TELECOMMUTE' } : {}),
+      // У удалённой работы Google требует страну, откуда можно откликаться
+      // (как в backend/src/meta.js), иначе вакансия не идёт в блок вакансий.
+      ...(vacancy.work_format === 'online'
+        ? {
+            jobLocationType: 'TELECOMMUTE',
+            applicantLocationRequirements: { '@type': 'Country', name: 'Kyrgyzstan' },
+          }
+        : {}),
       ...(vacancy.salary_min || vacancy.salary_max
         ? {
             baseSalary: {

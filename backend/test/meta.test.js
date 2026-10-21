@@ -104,6 +104,37 @@ test('Googlebot получает вакансию целиком, без пер�
   assert.equal(ld.title, VACANCY.title);
   assert.equal(ld.jobLocation.address.addressLocality, 'Бишкек');
   assert.equal(ld.baseSalary.value.minValue, 1500);
+  assert.equal(ld.jobLocationType, undefined, 'вакансия на месте — не удалённая');
+  assert.equal(ld.applicantLocationRequirements, undefined);
+  assert.equal(ld.validThrough, undefined, 'поданную на сайте закрывает автор — срока нет');
+});
+
+test('вакансия из чата — со сроком, как её закроет staleListings', async () => {
+  const ldOf = async (vacancy) => {
+    rows.vacancies = [vacancy];
+    const html = await (await get('/vacancies/131')).text();
+    rows.vacancies = [VACANCY];
+    return JSON.parse(/<script type="application\/ld\+json">(.*?)<\/script>/s.exec(html)[1]);
+  };
+
+  const fresh = await ldOf({ ...VACANCY, is_imported: true, pinned: 0 });
+  assert.equal(fresh.validThrough, '2026-08-26T10:00:00.000Z', '21 день от выхода');
+
+  const bumped = await ldOf({ ...VACANCY, is_imported: true, pinned: 0, bumped_at: '2026-08-20T10:00:00Z' });
+  assert.equal(bumped.validThrough, '2026-09-10T10:00:00.000Z', 'после поднятия — от поднятия');
+
+  const pinned = await ldOf({ ...VACANCY, is_imported: true, pinned: 1 });
+  assert.equal(pinned.validThrough, undefined, 'закреплённую staleListings не закрывает');
+});
+
+test('удалённая вакансия — с местом откликов, иначе Google не берёт её в блок вакансий', async () => {
+  rows.vacancies = [{ ...VACANCY, work_format: 'online' }];
+  const html = await (await get('/vacancies/131')).text();
+  rows.vacancies = [VACANCY];
+
+  const ld = JSON.parse(/<script type="application\/ld\+json">(.*?)<\/script>/s.exec(html)[1]);
+  assert.equal(ld.jobLocationType, 'TELECOMMUTE');
+  assert.deepEqual(ld.applicantLocationRequirements, { '@type': 'Country', name: 'Kyrgyzstan' });
 });
 
 test('закрытое объявление — превью остаётся, из поиска уходит', async () => {

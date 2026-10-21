@@ -7,6 +7,7 @@ const EXPERIENCE_LEVELS = require('./experienceLevels');
 const { money } = require('./money');
 const landings = require('./landings');
 const { BOT_UA_RE } = require('./bots');
+const { VACANCY_DAYS } = require('./staleListings');
 
 const router = express.Router();
 
@@ -80,20 +81,37 @@ const SCHEMA_EMPLOYMENT_TYPE = {
 // Та же разметка, что SPA вставляет в VacancyDetail: по ней вакансия может
 // попасть в блок вакансий Google. Googlebot SPA отсюда не видит — значит, и
 // разметку должен получить здесь.
+// Вакансию из чата бэкенд закрывает сам через VACANCY_DAYS после выхода или
+// поднятия, кроме закреплённой (см. staleListings.js). Google должен знать
+// этот срок, иначе показывает в поиске давно занятые места. Поданную на сайте
+// закрывает автор — срока у неё нет.
+function validThrough(v) {
+  if (!v.is_imported || v.pinned) return null;
+  const from = new Date(v.bumped_at || v.created_at).getTime();
+  return new Date(from + VACANCY_DAYS * 24 * 3600 * 1000).toISOString();
+}
+
 function jobPosting(v) {
+  const until = validThrough(v);
   return {
     '@context': 'https://schema.org/',
     '@type': 'JobPosting',
     title: v.title,
     description: v.description,
     datePosted: new Date(v.created_at).toISOString(),
+    ...(until ? { validThrough: until } : {}),
     employmentType: SCHEMA_EMPLOYMENT_TYPE[v.employment_type] || 'OTHER',
     hiringOrganization: { '@type': 'Organization', name: v.owner_name },
     jobLocation: {
       '@type': 'Place',
       address: { '@type': 'PostalAddress', addressLocality: v.city, addressCountry: 'KG' },
     },
-    ...(v.work_format === 'online' ? { jobLocationType: 'TELECOMMUTE' } : {}),
+    // У удалённой работы Google требует сказать, из какой страны можно
+    // откликаться: без applicantLocationRequirements Search Console пишет
+    // ошибку, и вакансия не попадает в блок вакансий.
+    ...(v.work_format === 'online'
+      ? { jobLocationType: 'TELECOMMUTE', applicantLocationRequirements: { '@type': 'Country', name: 'Kyrgyzstan' } }
+      : {}),
     ...(v.salary_min || v.salary_max
       ? {
           baseSalary: {
