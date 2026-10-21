@@ -32,6 +32,7 @@ const taskShare = require('./taskShare');
 const outreach = require('./outreach');
 const taskEvents = require('../taskEvents');
 const tasksRepo = require('../tasksRepo');
+const { tag } = require('../sourceTag');
 const { num, plural, viewsWord, clamp, clock, whenText, agoText } = require('./format');
 const { money } = require('../money');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
@@ -751,13 +752,16 @@ async function publishOne(chatId, id, parsed, priority = false, { quiet = false 
   const body = `${adMark}${publicText(ready, result.type, '')}`;
   const publicMsg = `${adMark}${publicText(ready, result.type, shown)}`;
   const linkTag = siteLink ? `\n\n<a href="${siteLink}">${tg.esc(shown)}</a>` : '';
+  // В канал — с меткой Telegram (см. sourceTag.js), админу — без: его заходы
+  // каналу не засчитываем.
+  const channelTag = siteLink ? `\n\n<a href="${tag(siteLink, 'telegram')}">${tg.esc(shown)}</a>` : '';
 
   // Канал — необязательный шаг: если пост туда не ушёл (бот не админ, канал
   // не задан), публикация на сайте всё равно должна засчитаться.
   let channelLine = '';
   if (CHANNEL_ID) {
     try {
-      const inChannel = await tg.sendMessage(CHANNEL_ID, `${tg.esc(body)}${linkTag}`);
+      const inChannel = await tg.sendMessage(CHANNEL_ID, `${tg.esc(body)}${channelTag}`);
       await imports.setPosts(id, { channelMessageId: inChannel.message_id });
       channelLine = '📢 Выложено в Telegram-канал';
     } catch (err) {
@@ -953,7 +957,8 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
   }
 
   const shown = prettyLink(siteLink);
-  const linkTag = siteLink ? `\n\n<a href="${siteLink}">${tg.esc(shown)}</a>` : '';
+  // Ссылка — только в канал, поэтому сразу с меткой Telegram (см. sourceTag.js).
+  const linkTag = siteLink ? `\n\n<a href="${tag(siteLink, 'telegram')}">${tg.esc(shown)}</a>` : '';
 
   if (CHANNEL_ID) {
     try {

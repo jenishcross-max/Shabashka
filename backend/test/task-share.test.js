@@ -78,7 +78,7 @@ test('пост в Threads влезает в 500 знаков и не теряе�
   assert.match(text, /^⚡ Задача на бирже: Покрасить забор/);
   assert.match(text, /💰 цену предложите вы/);
   assert.match(text, /предложите цену и срок на сайте/);
-  assert.match(text, new RegExp(`шабашка\\.com/tasks/${t.id}$`), 'ссылка — последней строкой');
+  assert.match(text, new RegExp(`шабашка\\.com/tasks/${t.id}\\?s=t$`), 'ссылка — последней строкой, с меткой Threads');
   assert.match(text, /…/, 'описание обрезано по словам');
   assert.doesNotMatch(text, /\+996/, 'номера заказчика в посте нет');
 });
@@ -103,7 +103,7 @@ test('«Раздать» — в канал, подписчикам и в Threads
   assert.equal(await taskShare.onCallback(press(`tk:share:${t.id}`), deps), true);
 
   assert.equal(deps.log.channel.length, 1);
-  assert.match(deps.log.channel[0], /<a href="https:\/\/xn--80aaac0cyed\.com\/tasks\/\d+">шабашка\.com\/tasks\/\d+<\/a>/);
+  assert.match(deps.log.channel[0], /<a href="https:\/\/xn--80aaac0cyed\.com\/tasks\/\d+\?s=tg">шабашка\.com\/tasks\/\d+<\/a>/);
   assert.deepEqual(deps.log.notified, [t.id]);
   assert.equal(deps.log.threads.length, 1);
   assert.match(deps.log.edits[0], /Threads — в очереди\nTelegram-канал — ✅\nПодписчикам на задачи — 7/);

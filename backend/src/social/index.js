@@ -10,6 +10,8 @@ const adTracker = require('./adTracker');
 const leads = require('./leads');
 const follow = require('./follow');
 const more = require('./more');
+const subLine = require('./subLine');
+const { tag } = require('../sourceTag');
 
 // Публичный адрес самого бэкенда — по нему площадки придут за роликом. Отдельной
 // переменной не заводим: адрес уже известен из настроек вебхука, а на Render его
@@ -32,10 +34,13 @@ function backendUrl() {
 // уезжает точно так же (см. RELEASE_INTERVAL_MS).
 const BATCH_SIZE = 3;
 
-// Как часто выпускаем ролик. Два с половиной часа — это 9–10 постов в сутки,
-// ровным потоком, а не залпом на десять минут. Столько же примерно выкладывает
-// живой аккаунт, который ведут руками.
-const RELEASE_INTERVAL_MS = Number(process.env.INSTAGRAM_RELEASE_MINUTES || 150) * 60 * 1000;
+// Как часто выпускаем ролик. Полчаса — это до сорока роликов за двадцать часов,
+// что сервис не спит (см. keepalive.js), ровным потоком, а не залпом: сорок
+// роликов по три объявления везут в Instagram весь день Шабашки. Было два с
+// половиной часа (8 роликов, четверть объявлений) — поднято по решению
+// владельца 22 октября 2026; почему это риск и как откатить — см. OWN_LIMIT в
+// quota.js.
+const RELEASE_INTERVAL_MS = Number(process.env.INSTAGRAM_RELEASE_MINUTES || 30) * 60 * 1000;
 
 // Сколько объявление ждёт своего ролика, прежде чем его выбросят из очереди.
 // Из групп за день приходит больше, чем влезает в суточную норму постов, и без
@@ -650,7 +655,7 @@ function shareMedia({ kind, buffer, text = '', siteLink = '', title = 'рекл�
   else {
     result.threadsQueued = true;
     result.threadsWaiting = scheduleThreads(
-      { text: video.threadsCaption(text, siteLink, { ad }), media: { kind, buffer } },
+      { text: video.threadsCaption(text, tag(siteLink, 'threads'), { ad }), media: { kind, buffer } },
       title,
       { ...ctx, ad },
       priority
@@ -778,7 +783,7 @@ async function raiseAd({
           // Карточка не нарисовалась — пост уйдёт текстом, как в publishToThreads.
           const buffer = !media && cardData ? await image().catch(() => null) : null;
           return publishToThreads({
-            text: threadsText || video.threadsCaption(text, siteLink, { ad: true }),
+            text: threadsText || video.threadsCaption(text, tag(siteLink, 'threads'), { ad: true }),
             media: media || (buffer && { kind: 'image', buffer }),
           });
         }),
@@ -903,10 +908,15 @@ async function shareListing(parsed, listingType, siteLink, ctx, { priority = fal
   const result = { threads: null, skipped, batchSize: BATCH_SIZE };
 
   if (threads.isConfigured()) {
-    const text = video.threadsText(parsed, listingType, siteLink, {
+    // Ссылка — с меткой Threads (см. sourceTag.js): иначе Метрика пишет такой
+    // заход в «прямые». Подписка в бота (см. subLine.js) — вместо «Все N за
+    // сутки» и не рядом с «подпишись»: два зова в одном посте спорят.
+    const followLine = priority ? '' : follow.next();
+    const subscribe = priority || followLine ? '' : subLine.line(listingType, parsed, siteLink);
+    const text = video.threadsText(parsed, listingType, tag(siteLink, 'threads'), {
       ad: priority,
-      follow: priority ? '' : follow.next(),
-      more: priority ? '' : more.line(listingType, siteLink),
+      follow: followLine,
+      more: priority ? '' : subscribe || more.line(listingType, siteLink),
     });
     const withCard = THREADS_CARDS === 'all' || (THREADS_CARDS === 'ads' && priority);
     result.threadsQueued = true;

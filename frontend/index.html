@@ -52,6 +52,27 @@
       href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&family=Golos+Text:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
+    <!-- Метка источника из постов бота: «?s=t» → utm_source=threads (коды — в
+         backend/src/sourceTag.js). Telegram и встроенный браузер Threads не
+         говорят сайту, откуда пришёл человек, и Метрика писала такие заходы в
+         «прямые». Полную utm-метку в пост не ставим — она съела бы 20 из 500
+         знаков Threads. Поэтому разворачиваем здесь, до запуска Метрики. -->
+    <script id="source-tag">
+      (function () {
+        var SOURCES = { t: 'threads', tg: 'telegram', b: 'bot' };
+        try {
+          var url = new URL(location.href);
+          var source = SOURCES[url.searchParams.get('s')];
+          if (!source) return;
+          url.searchParams.delete('s');
+          url.searchParams.set('utm_source', source);
+          url.searchParams.set('utm_medium', 'social');
+          history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+        } catch (e) {
+          // старый браузер без URL — зайдёт без метки, как раньше
+        }
+      })();
+    </script>
     <script type="text/javascript">
       var YM_ID = "%VITE_YANDEX_METRIKA_ID%";
       if (YM_ID) {

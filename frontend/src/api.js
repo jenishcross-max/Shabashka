@@ -95,8 +95,9 @@ export const api = {
   vacancies: (params = {}) => request(`/vacancies${toQueryString(params)}`),
   vacancy: (id) => request(`/vacancies/${id}`),
   similarVacancies: (id) => request(`/vacancies/${id}/similar`),
-  // Не запрос, а адрес для кнопки: бэкенд перенаправит в Telegram-бота (см. routes/subscribe.js).
-  subscribeUrl: (slug) => `${API_BASE}/subscribe/${slug}`,
+  // Не запрос, а адрес для кнопки: бэкенд посчитает переход и перенаправит в
+  // Telegram-бота (см. routes/subscribe.js). Без профессии — в меню бота.
+  subscribeUrl: (slug, from = 'site') => `${API_BASE}/subscribe/${slug || 'menu'}/${from}`,
   vacanciesBatch: (ids) => request(`/vacancies/batch?ids=${ids.join(',')}`),
   myVacancies: (token) => request('/vacancies/mine', { token }),
   createVacancy: (payload, token) => request('/vacancies', { method: 'POST', body: payload, token }),

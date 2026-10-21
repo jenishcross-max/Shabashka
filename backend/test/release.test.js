@@ -73,6 +73,12 @@ const lastReel = async () => {
   return published.at(-1);
 };
 
+// Темп ленты по умолчанию — 40 роликов в сутки (README, «Сколько роликов в
+// сутки»): раз в полчаса за двадцать часов, что сервис не спит.
+test('по умолчанию ролик выезжает раз в полчаса', () => {
+  assert.equal(social.RELEASE_INTERVAL_MIN, 30);
+});
+
 test('объявление больше не уезжает в ту же секунду — оно встаёт в очередь', async () => {
   const result = await share('Заказ 1', 'order');
   assert.equal(result.queued, true);

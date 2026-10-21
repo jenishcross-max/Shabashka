@@ -155,6 +155,8 @@ test('пост из группы уходит на сайт, в канал и н
   assert.equal(toAdmin().length, 0, `в чат ушло: ${toAdmin().map((m) => m.text).join(' | ')}`);
   assert.equal(toChannel().length, 1, 'в канал пост ушёл как обычно');
   assert.equal(toChannel()[0].extra, undefined, 'кнопки «Подписаться» под постом нет — она вела в ту же группу');
+  // Метка источника (см. src/sourceTag.js): в ссылке — Telegram, в тексте — чистый адрес.
+  assert.match(toChannel()[0].text, /<a href="https:\/\/xn--80aaac0cyed\.com\/ads\/\d+\?s=tg">шабашка\.com\/ads\/\d+<\/a>$/);
   assert.equal(shared.length, 1);
   assert.equal(shared[0].ctx.quiet, true, 'площадки знают, что отчитываться не надо');
   assert.equal(stats.counters['grp.ok.board'], 1, 'вышедшее посчитано для сводки');
@@ -189,6 +191,7 @@ test('присланное админом — по-прежнему с карт�
   assert.ok(card, 'карточка пришла');
   // У объявления своя страница — ссылка на неё, а не на доску с якорем.
   assert.ok(!/board#p/.test(card.text), card.text);
+  assert.ok(!/\?s=/.test(card.text), 'в карточке админу ссылка без метки: его заходы — не Telegram-канал');
   const buttons = card.extra.reply_markup.inline_keyboard.flat().map((b) => b.callback_data);
   assert.ok(buttons.some((d) => d.startsWith('del:')));
   assert.ok(buttons.some((d) => d.startsWith('spm:')), 'кнопка «Спам» есть');

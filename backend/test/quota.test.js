@@ -17,11 +17,13 @@ function fresh(env = {}) {
   return quota;
 }
 
-test('по умолчанию — десять публикаций в сутки, из них восемь роликами', () => {
+test('по умолчанию — полсотни публикаций в сутки, из них сорок роликами', () => {
   const quota = fresh({ INSTAGRAM_DAILY_LIMIT: '' });
-  assert.equal(quota.hardLimit(), 10);
-  assert.equal(quota.RESERVE, 2, 'запас — пятая часть потолка, а не фиксированный десяток');
-  assert.equal(quota.dailyLimit(), 8);
+  assert.equal(quota.hardLimit(), 50);
+  assert.equal(quota.RESERVE, 10, 'запас — пятая часть потолка');
+  assert.equal(quota.dailyLimit(), 40);
+  // Маленький потолок — по-прежнему с запасом в пятую часть, а не в десяток.
+  assert.equal(fresh({ INSTAGRAM_DAILY_LIMIT: '10' }).RESERVE, 2);
 });
 
 test('запас растёт вместе с потолком, но не съедает его целиком', () => {

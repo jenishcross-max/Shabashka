@@ -328,6 +328,8 @@ function subscriptionsStub() {
       calls.push({ data: query.data });
       return String(query.data || '').startsWith('sub:');
     },
+    // Для сводки (см. summary.js).
+    stats: async () => ({ chats: 0, byCategory: [] }),
     start: () => {},
   };
 }

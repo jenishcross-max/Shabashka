@@ -10,11 +10,13 @@
 // что базы этому модулю не нужно.
 
 // FOLLOW_EVERY — раз в сколько постов Threads; off или 0 — строки нет нигде.
-function parseEvery(value) {
-  const raw = String(value ?? '4').trim();
+// fallback — для пустого и непонятного значения (строке подписки в бота нужно
+// своё, см. subLine.js).
+function parseEvery(value, fallback = 4) {
+  const raw = String(value ?? fallback).trim();
   if (/^(off|no|нет|-|0)$/i.test(raw)) return 0;
   const n = Number(raw);
-  return Number.isInteger(n) && n > 0 ? n : 4;
+  return Number.isInteger(n) && n > 0 ? n : fallback;
 }
 const EVERY = parseEvery(process.env.FOLLOW_EVERY);
 

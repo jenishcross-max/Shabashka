@@ -2348,6 +2348,56 @@ a:hover {
 .cta-banner a:hover {
   background: #fff1f0;
 }
+.cta-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+/* Вторая кнопка баннера — контуром: главное действие здесь — подписка. */
+.cta-banner a.cta-banner-ghost {
+  background: transparent;
+  color: #fff !important;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.7);
+}
+.cta-banner a.cta-banner-ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+@media (max-width: 640px) {
+  .cta-banner {
+    padding: 32px 20px;
+  }
+  .cta-banner-actions a {
+    width: 100%;
+  }
+}
+
+/* Подписка в боте на карточке вакансии и над списком (см. SubscribeButton). */
+.detail-subscribe {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 18px 0 4px;
+}
+.detail-subscribe span {
+  font-size: 13px;
+  color: var(--muted);
+}
+.list-subscribe {
+  margin: -6px 0 16px;
+}
+/* На телефоне название профессии переносит кнопку на вторую строку, и
+   «таблетка» превращается в кляксу — там она обычная кнопка во всю ширину. */
+@media (max-width: 640px) {
+  .detail-subscribe .landing-subscribe,
+  .list-subscribe .landing-subscribe {
+    display: block;
+    width: 100%;
+    border-radius: 12px;
+    text-align: center;
+  }
+}
 
 /* ---------- footer ---------- */
 .site-footer {

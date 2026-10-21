@@ -95,11 +95,11 @@ test('утренний топ выходит с 9:00 и один раз в де�
 
   const [post] = shared;
   assert.match(post.text, /^💰 Топ-5 вакансий дня по зарплате\n\n1\. Водитель-экспедитор на грузовик — от 60 000 сом, Бишкек/);
-  assert.match(post.text, /Все вакансии — шабашка\.com\/vacancies\n🔔 Подпишись — топ по зарплате каждое утро$/);
+  assert.match(post.text, /Все вакансии — шабашка\.com\/vacancies\?s=t\n🔔 Подпишись — топ по зарплате каждое утро$/);
   assert.ok(weight(post.text) <= 500, `вес ${weight(post.text)}`);
   assert.equal(post.items.length, 5, 'в ролик — все пять');
   assert.equal(post.collection, 'Топ-5 по зарплате');
-  assert.match(channel[0], /<a href="https:\/\/xn--80aaac0cyed\.com\/vacancies">шабашка\.com\/vacancies<\/a>$/);
+  assert.match(channel[0], /<a href="https:\/\/xn--80aaac0cyed\.com\/vacancies\?s=tg">шабашка\.com\/vacancies<\/a>$/);
   assert.doesNotMatch(channel[0], /Подпишись/, 'в Telegram строки «подпишись» нет — читают уже вступившие');
   assert.equal(stats.counters['rub.ok'], 1);
 });

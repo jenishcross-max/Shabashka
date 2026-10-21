@@ -294,10 +294,22 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Раньше здесь было «заходите почаще» — а повода зайти снова не было.
+          Подписка в боте и есть этот повод (см. SubscribeButton). */}
       <section className="cta-banner">
-        <h2>Хотите найти ещё?</h2>
-        <p>Новые заказы и вакансии появляются каждый день — заходите почаще.</p>
-        <Link to="/orders">Смотреть все заказы</Link>
+        <h2>Не пропустите новую работу</h2>
+        <p>
+          Бот в Telegram пришлёт свежие вакансии по вашей профессии: раз в час днём и только когда есть новые. Без
+          регистрации.
+        </p>
+        <div className="cta-banner-actions">
+          <a href={api.subscribeUrl()} target="_blank" rel="noopener noreferrer">
+            🔔 Подписаться в Telegram
+          </a>
+          <Link to="/orders" className="cta-banner-ghost">
+            Смотреть все заказы
+          </Link>
+        </div>
       </section>
     </div>
   );

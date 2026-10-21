@@ -4,6 +4,7 @@ const queue = require('./queue');
 const feedStats = require('./feedStats');
 const social = require('../social');
 const products = require('./products');
+const subscriptions = require('./subscriptions');
 const { num, plural, viewsWord, clamp, clock } = require('./format');
 
 // Сводка в Telegram вместо потока «кто что опубликовал».
@@ -118,6 +119,10 @@ const PLACES = [
   // В TELEGRAM_CHANNEL_ID может стоять и группа (у Шабашки так и есть) — пишем
   // площадку, а не «канал».
   ['channel', 'Telegram'],
+  // Подписчики бота (см. subscriptions.js) — люди, подписанные хоть на одну
+  // профессию. Прирост — так же, от вчерашнего снимка: он учитывает и
+  // отписавшихся, а «новые за сутки» — нет.
+  ['bot', 'Бот'],
 ];
 
 async function readJson(key) {
@@ -128,17 +133,18 @@ async function readJson(key) {
   }
 }
 
-async function followerCounts() {
+// bot — числа подписки (subscriptions.stats), null — база не ответила.
+async function followerCounts(bot) {
   const channelId = process.env.TELEGRAM_CHANNEL_ID;
   const [platforms, channel] = await Promise.all([
     (async () => social.followers())().catch(() => ({})),
     channelId ? tg.call('getChatMemberCount', { chat_id: channelId }).catch(() => null) : null,
   ]);
-  return { threads: platforms.threads, instagram: platforms.instagram, channel };
+  return { threads: platforms.threads, instagram: platforms.instagram, channel, bot: bot ? bot.chats : null };
 }
 
-async function followerLines(now) {
-  const current = await followerCounts();
+async function followerLines(now, bot) {
+  const current = await followerCounts(bot);
   const known = PLACES.filter(([key]) => Number.isFinite(current[key]));
   if (!known.length) return [];
 
@@ -163,6 +169,31 @@ async function followerLines(now) {
     return ` (${d < 0 ? '−' : '+'}${num(Math.abs(d))})`;
   };
   return [`👥 Подписчики: ${known.map(([key, label]) => `${label} ${num(current[key])}${delta(key)}`).join(' · ')}`];
+}
+
+// Подписка в боте: на какие профессии подписаны и сколько людей пришло в бота
+// по ссылкам сегодня — из постов Threads (social/subLine.js) и с кнопок сайта
+// (см. routes/subscribe.js). Сравнивать — с заходами из Threads в Метрике.
+const TOP_CATEGORIES = 5;
+const CLICKS = [
+  ['threads', 'из Threads'],
+  ['site', 'с сайта'],
+  // Старые ссылки без источника — например, из закэшированной страницы сайта.
+  ['other', 'без метки'],
+];
+
+function botLines(bot, n) {
+  const lines = [];
+  if (bot && bot.byCategory.length) {
+    const top = bot.byCategory.slice(0, TOP_CATEGORIES).map((c) => `${tg.esc(c.category)} ${num(c.n)}`);
+    if (bot.byCategory.length > TOP_CATEGORIES) top.push('…');
+    lines.push(`🔔 В боте: ${top.join(' · ')}`);
+  }
+  const clicks = CLICKS.filter(([key]) => n(`sub.click.${key}`));
+  if (clicks.length) {
+    lines.push(`↪️ Перешли в бота сегодня: ${clicks.map(([key, label]) => `${label} ${num(n(`sub.click.${key}`))}`).join(' · ')}`);
+  }
+  return lines;
 }
 
 // Технические строки — только в /stats: в сводке по расписанию они шум, а
@@ -193,10 +224,16 @@ function techLines() {
 // строка «+12 с прошлой сводки». extra — строки, которые знает только бот
 // (отложенные объявления).
 async function build({ now = Date.now(), previous = null, tech = false, title = null, extra = [] } = {}) {
-  const c = await feedStats.day(feedStats.today(now)).catch((err) => {
-    console.error('[сводка] счётчики не прочитать:', err.message);
-    return {};
-  });
+  const [c, bot] = await Promise.all([
+    feedStats.day(feedStats.today(now)).catch((err) => {
+      console.error('[сводка] счётчики не прочитать:', err.message);
+      return {};
+    }),
+    subscriptions.stats().catch((err) => {
+      console.error('[сводка] подписку в боте не прочитать:', err.message);
+      return null;
+    }),
+  ]);
   const n = (key) => c[key] || 0;
   const grpOk = n('grp.ok.vacancy') + n('grp.ok.order') + n('grp.ok.board');
   const published = grpOk + n('adm.ok') + n('ad.ok');
@@ -263,7 +300,8 @@ async function build({ now = Date.now(), previous = null, tech = false, title = 
           }`,
         ]
       : []),
-    ...(await followerLines(now))
+    ...(await followerLines(now, bot)),
+    ...botLines(bot, n)
   );
 
   // Разборы считаются в памяти процесса — после перезапуска Render с нуля.

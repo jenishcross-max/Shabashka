@@ -13,6 +13,7 @@
 const db = require('../db');
 const landings = require('../landings');
 const { money } = require('../money');
+const { tag } = require('../sourceTag');
 const { esc } = require('./api');
 
 const PROFESSIONS = landings.filter((l) => l.category);
@@ -151,9 +152,13 @@ const writeCursor = (id) =>
     [CURSOR_KEY, String(id)]
   );
 
+// Ссылка тегом: в тексте — чистый адрес, а в самой ссылке — метка бота (см.
+// sourceTag.js), чтобы Метрика отличала заходы из подборки от прямых.
+const linkTo = (url, pretty) => `<a href="${esc(tag(url, 'bot'))}">${esc(pretty(url))}</a>`;
+
 function vacancyLine(v, { siteUrl, pretty }) {
   const pay = v.salary_min ? `, от ${money(v.salary_min)} сом` : '';
-  return `• ${esc(v.title)} — ${esc(v.city)}${pay}\n${esc(pretty(`${siteUrl}/vacancies/${v.id}`))}`;
+  return `• ${esc(v.title)} — ${esc(v.city)}${pay}\n${linkTo(`${siteUrl}/vacancies/${v.id}`, pretty)}`;
 }
 
 function digestText(sections, deps) {
@@ -163,7 +168,7 @@ function digestText(sections, deps) {
     const lines = [`<b>${esc(category)}</b>`, ...shown.map((v) => vacancyLine(v, deps))];
     const rest = items.length - shown.length;
     const page = byCategory(category);
-    if (rest > 0 && page) lines.push(`Ещё ${rest} — ${esc(deps.pretty(`${deps.siteUrl}/rabota/${page.slug}`))}`);
+    if (rest > 0 && page) lines.push(`Ещё ${rest} — ${linkTo(`${deps.siteUrl}/rabota/${page.slug}`, deps.pretty)}`);
     parts.push(lines.join('\n'));
   }
   parts.push('Настроить профессии — /subs, отписаться — /stop');
@@ -239,7 +244,7 @@ function taskText(task, { siteUrl, pretty }) {
     ...(task.when_text ? [`🗓 ${esc(task.when_text)}`] : []),
     ...(short ? ['', esc(short)] : []),
     '',
-    `Предложить цену и срок: ${esc(pretty(`${siteUrl}/tasks/${task.id}`))}`,
+    `Предложить цену и срок: ${linkTo(`${siteUrl}/tasks/${task.id}`, pretty)}`,
     '',
     'Настроить подписки — /subs',
   ].join('\n');
@@ -274,9 +279,30 @@ async function taskSubscribers() {
   return rows[0].n;
 }
 
+// Для сводки (см. summary.js): сколько людей подписано и на что — по ним видно,
+// работают ли кнопки на сайте и строка подписки в Threads (social/subLine.js).
+async function stats() {
+  const [total, byCategory] = await Promise.all([
+    db.query('SELECT COUNT(DISTINCT chat_id)::int AS chats FROM subscriptions'),
+    db.query('SELECT category, COUNT(*)::int AS n FROM subscriptions GROUP BY category ORDER BY n DESC, category'),
+  ]);
+  return { chats: total.rows[0].chats, byCategory: byCategory.rows };
+}
+
 function start(deps) {
   const run = () => digest(deps).catch((err) => console.error('[подписка]', err.message));
   setInterval(run, EVERY_MS).unref();
 }
 
-module.exports = { onMessage, onCallback, digest, notifyTask, taskSubscribers, start, categoriesOf, PROFESSIONS, TASKS };
+module.exports = {
+  onMessage,
+  onCallback,
+  digest,
+  notifyTask,
+  taskSubscribers,
+  stats,
+  start,
+  categoriesOf,
+  PROFESSIONS,
+  TASKS,
+};

@@ -108,6 +108,8 @@ test('обычное объявление уходит в Threads текстом
   assert.equal(post.opts.topicTag, 'шабашка');
   assert.ok(!post.text.includes('#'), post.text);
   assert.ok(!post.text.includes('Реклама'));
+  // Метка источника (см. src/sourceTag.js): по ней Метрика отличит Threads.
+  assert.match(post.text, /\nшабашка\.com\/vacancies\/1\?s=t$/);
 });
 
 test('реклама — картинкой-карточкой, с пометкой, а в отчёт уходит всё для повтора', async () => {
@@ -149,7 +151,7 @@ test('реклама с файлом уходит в Threads самим файл
   const post = posted.find((p) => p.kind === 'video');
   assert.ok(post, 'в Threads ушёл ролик рекламодателя');
   assert.ok(social.adLine() && post.text.startsWith(social.adLine()));
-  assert.match(post.text, /шабашка\.com\/board#p9$/, 'ссылка на карточку сохранена целой');
+  assert.match(post.text, /шабашка\.com\/board\?s=t#p9$/, 'ссылка на карточку сохранена целой, с меткой Threads');
   let weight = 0;
   for (const ch of post.text) weight += ch.codePointAt(0) > 0xffff ? Buffer.byteLength(ch) : 1;
   assert.ok(weight <= 500, `вес подписи ${weight}`);
@@ -235,6 +237,7 @@ test('поднятие рекламы: файл — файлом, без фай�
   assert.equal(byCard.threads.posted, true);
   assert.equal(byCard.instagram.posted, true);
   assert.match(posted.find((p) => p.kind === 'image').text, /Нужен сантехник/, 'текст для Threads собран из рекламы');
+  assert.match(posted.find((p) => p.kind === 'image').text, /шабашка\.com\/orders\/3\?s=t$/, 'в Threads — с меткой');
   assert.match(posted.find((p) => p.kind === 'ig-image').text, /шабашка\.com\/orders\/3/);
 
   const onlyThreads = await social.raiseAd({ text: 'Текст', instagram: false });
@@ -286,7 +289,7 @@ test('каждый четвёртый пост-объявление зовёт �
   assert.equal(ordinary.length, 4);
   const withFollow = ordinary.filter((p) => p.text.includes('🔔 Подпишись'));
   assert.equal(withFollow.length, 1, 'ровно один из четырёх');
-  assert.match(withFollow[0].text, /🔔 Подпишись[^\n]*\nшабашка\.com\/vacancies\/\d+$/, 'строка — прямо перед ссылкой');
+  assert.match(withFollow[0].text, /🔔 Подпишись[^\n]*\nшабашка\.com\/vacancies\/\d+\?s=t$/, 'строка — прямо перед ссылкой');
   assert.ok(!ad.text.includes('🔔'), 'у рекламы строки нет');
 
   const long = video.threadsText(
@@ -312,8 +315,8 @@ test('пост-объявление зовёт ко всем объявлени�
     social.shareListing(parsed, 'vacancy', 'шабашка.com/vacancies/43', { chatId: 1 }, { priority: true });
     for (let i = 0; i < 50 && posted.length < 3; i += 1) await settle();
     const textOf = (n) => posted.find((p) => p.text.includes(`/${n}`)).text;
-    assert.match(textOf(41), /\nшабашка\.com\/vacancies\/41\n👉 Все 63 вакансии за сутки — шабашка\.com\/vacancies$/);
-    assert.match(textOf(42), /\n👉 Все 18 подработок за сутки — шабашка\.com\/orders$/);
+    assert.match(textOf(41), /\nшабашка\.com\/vacancies\/41\?s=t\n👉 Все 63 вакансии за сутки — шабашка\.com\/vacancies\?s=t$/);
+    assert.match(textOf(42), /\n👉 Все 18 подработок за сутки — шабашка\.com\/orders\?s=t$/);
     assert.ok(!textOf(43).includes('👉'), 'реклама зовёт только к себе');
 
     const long = video.threadsText(
@@ -330,6 +333,39 @@ test('пост-объявление зовёт ко всем объявлени�
     more.setCounts({ vacancy: 63 });
     assert.equal(more.line('board', 'шабашка.com/ads#p5'), '', 'у объявлений «сдам/продам» своего счёта нет');
     assert.equal(more.line('vacancy', ''), '', 'без ссылки звать некуда');
+  } finally {
+    more.setCounts({});
+  }
+});
+
+// Подписка в бота (см. src/social/subLine.js): у части постов-вакансий с
+// профессией — вместо «Все N за сутки», но не у рекламы и не рядом с «подпишись».
+test('часть постов-вакансий зовёт подписаться на профессию в боте', async () => {
+  const more = requireSrc('social/more.js');
+  more.setCounts({ vacancy: 63 });
+  try {
+    posted.length = 0;
+    const cafe = { ...parsed, category: 'Общепит' };
+    for (const n of [51, 52, 53, 54, 55, 56]) social.shareListing(cafe, 'vacancy', `шабашка.com/vacancies/${n}`, { chatId: 1 }, {});
+    social.shareListing(cafe, 'vacancy', 'шабашка.com/vacancies/57', { chatId: 1 }, { priority: true });
+    const mine = () => posted.filter((p) => /vacancies\/5[1-7]\b/.test(p.text));
+    for (let i = 0; i < 80 && mine().length < 7; i += 1) await settle();
+    const ad = mine().find((p) => /vacancies\/57/.test(p.text));
+    const ordinary = mine().filter((p) => p !== ad);
+    assert.equal(ordinary.length, 6);
+
+    const withSub = ordinary.filter((p) => p.text.includes('📲'));
+    assert.ok(withSub.length >= 2, `строка подписки у ${withSub.length} из 6`);
+    for (const p of withSub) {
+      assert.match(p.text, /\nшабашка\.com\/vacancies\/5\d\?s=t\n📲 Новые вакансии «Общепит» — в Telegram: шабашка\.com\/s\/obshchepit$/);
+      assert.ok(!p.text.includes('👉'), 'вместо «Все N за сутки», а не вдобавок');
+      assert.ok(!p.text.includes('🔔'), 'не рядом с «подпишись»: два зова в одном посте спорят');
+    }
+    assert.ok(
+      ordinary.filter((p) => !withSub.includes(p)).every((p) => p.text.includes('👉 Все 63 вакансии')),
+      'у остальных — «Все N за сутки», как раньше'
+    );
+    assert.ok(!ad.text.includes('📲'), 'у рекламы строки нет');
   } finally {
     more.setCounts({});
   }

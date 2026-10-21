@@ -10,6 +10,7 @@ import { useMeta } from '../useMeta';
 import { vacancyWord } from '../plural';
 import { StudentFilter } from '../components/StudentField';
 import WorkSwitcher from '../components/WorkSwitcher';
+import SubscribeButton from '../components/SubscribeButton';
 
 const SORTS = [
   { value: 'new', label: 'Сначала новые' },
@@ -211,6 +212,12 @@ export default function Vacancies() {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Сюда ведёт «Все N вакансий за сутки» из постов Threads — пусть
+              новые приходят сами. Выбрана одна профессия — подписка на неё. */}
+          <div className="list-subscribe">
+            <SubscribeButton category={selectedCategories.length === 1 ? selectedCategories[0] : null} />
           </div>
 
           {error && <p className="status-msg error">{error}</p>}

@@ -8,6 +8,7 @@
 // index.js). Числа — сколько вышло за сутки, их раз в час считает бот
 // (setCounts), так что базы этому модулю не нужно.
 const { plural } = require('../telegram/format');
+const { tag } = require('../sourceTag');
 
 // Меньше десяти за сутки — не хвалимся: «все 3 вакансии» скорее отпугнёт.
 const MIN_COUNT = 10;
@@ -31,7 +32,8 @@ function line(listingType, siteLink) {
   const words = WORDS[listingType];
   const list = String(siteLink || '').replace(/\/\d+$/, '');
   if (!words || !(n >= MIN_COUNT) || !list || list === siteLink) return '';
-  return `👉 Все ${n} ${plural(n, words)} за сутки — ${list}`;
+  // Строка — только для Threads, поэтому и метка его (см. sourceTag.js).
+  return `👉 Все ${n} ${plural(n, words)} за сутки — ${tag(list, 'threads')}`;
 }
 
 module.exports = { setCounts, line, MIN_COUNT };

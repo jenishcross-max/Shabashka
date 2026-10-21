@@ -11,6 +11,7 @@ const repo = require('../rubricsRepo');
 const social = require('../social');
 const { weight, THREADS_LIMIT } = require('../social/video');
 const { money } = require('../money');
+const { tag } = require('../sourceTag');
 const { clamp, plural } = require('./format');
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -139,14 +140,16 @@ const ENABLED = parseList(process.env.RUBRICS);
 // Текст для Threads и HTML для Telegram. Не влезает в 500 знаков Threads —
 // убираем строки с конца, но не меньше трёх. В Telegram строки «подпишись» нет
 // (его читают уже вступившие), а ссылка — тегом: кириллический адрес Telegram
-// сам не подсвечивает.
+// сам не подсвечивает. Метка площадки (см. sourceTag.js): в тексте — Threads
+// (в Instagram текст рубрики не уходит), в теге — Telegram.
 function render(post, pretty = (url) => url) {
   const url = post.more && post.more.url;
   const body = (n) => [post.head(n), '', ...post.lines.slice(0, n), ...(post.note ? [post.note] : [])];
-  const text = (n) => [...body(n), '', ...(url ? [`${post.more.label} — ${pretty(url)}`] : []), post.tail].join('\n');
+  const text = (n) =>
+    [...body(n), '', ...(url ? [`${post.more.label} — ${pretty(tag(url, 'threads'))}`] : []), post.tail].join('\n');
   let n = post.lines.length;
   while (n > MIN_ITEMS && weight(text(n)) > THREADS_LIMIT) n -= 1;
-  const link = url ? `\n\n<a href="${url}">${tg.esc(pretty(url))}</a>` : '';
+  const link = url ? `\n\n<a href="${tag(url, 'telegram')}">${tg.esc(pretty(url))}</a>` : '';
   return {
     text: text(n),
     html: `${tg.esc(body(n).join('\n'))}${link}`,

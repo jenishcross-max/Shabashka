@@ -6,14 +6,9 @@ const EMPLOYMENT_TYPES = require('./employmentTypes');
 const EXPERIENCE_LEVELS = require('./experienceLevels');
 const { money } = require('./money');
 const landings = require('./landings');
+const { BOT_UA_RE } = require('./bots');
 
 const router = express.Router();
-
-// Тот же список — в frontend/netlify/lib/bots.js: Netlify
-// отправляет сюда только тех, кого узнал он сам. Google-InspectionTool — это
-// «Проверка URL» в Search Console: пусть видит то же, что Googlebot.
-const BOT_UA_RE =
-  /facebookexternalhit|WhatsApp|Twitterbot|TelegramBot|Slackbot|LinkedInBot|Discordbot|vkShare|Googlebot|Google-InspectionTool|bingbot|YandexBot/i;
 
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, (c) => ({

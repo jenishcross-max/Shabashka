@@ -15,6 +15,14 @@
   to = "https://shabashka-zvkc.onrender.com/sitemap.xml"
   status = 200
 
+# Короткая ссылка на подписку в боте из постов Threads (см.
+# backend/src/social/subLine.js): шабашка.com/s/obshchepit → бэкенд считает
+# переход и отправляет в бота. Должно стоять выше SPA-правила.
+[[redirects]]
+  from = "/s/:slug"
+  to = "https://shabashka-zvkc.onrender.com/api/subscribe/:slug/threads"
+  status = 302
+
 # SPA-роутинг: любой путь отдаём index.html, React Router разбирается сам.
 [[redirects]]
   from = "/*"

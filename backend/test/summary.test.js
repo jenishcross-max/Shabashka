@@ -59,6 +59,20 @@ const requireSrc = install({
   [at('telegram/products.js')]: {
     summaryLines: async () => ['🛍 Мои продукты', '• Scroll Book — Threads 11:20 👁 340 · Instagram 11:21 ✅'],
   },
+  // Подписка в боте ходит в базу — сводке хватает её чисел.
+  [at('telegram/subscriptions.js')]: { stats: async () => botStats() },
+});
+
+let botStats = () => ({
+  chats: 45,
+  byCategory: [
+    { category: 'Общепит', n: 12 },
+    { category: 'Продажи', n: 8 },
+    { category: 'Задачи биржи', n: 3 },
+    { category: 'Охрана', n: 2 },
+    { category: 'Офис', n: 1 },
+    { category: 'Уборка', n: 1 },
+  ],
 });
 
 const summary = requireSrc('telegram/summary.js');
@@ -132,10 +146,10 @@ test('последняя сводка дня называется итогом',
 });
 
 test('подписчики площадок — с приростом от вчерашнего снимка', async () => {
-  settings.set('followers:2026-10-02', JSON.stringify({ threads: 1228, instagram: 831, channel: 405 }));
+  settings.set('followers:2026-10-02', JSON.stringify({ threads: 1228, instagram: 831, channel: 405, bot: 42 }));
   const { text } = await summary.build({ now: at1310 });
-  assert.match(text, /👥 Подписчики: Threads 1\s240 \(\+12\) · Instagram 830 \(−1\) · Telegram 410 \(\+5\)/);
-  assert.deepEqual(JSON.parse(settings.get('followers:2026-10-03')), { threads: 1240, instagram: 830, channel: 410 });
+  assert.match(text, /👥 Подписчики: Threads 1\s240 \(\+12\) · Instagram 830 \(−1\) · Telegram 410 \(\+5\) · Бот 45 \(\+3\)\n/);
+  assert.deepEqual(JSON.parse(settings.get('followers:2026-10-03')), { threads: 1240, instagram: 830, channel: 410, bot: 45 });
 
   // Площадка не ответила — её просто нет в строке, сводка не падает.
   settings.delete('followers:2026-10-03');
@@ -143,13 +157,42 @@ test('подписчики площадок — с приростом от вч�
     throw new Error('чат недоступен');
   };
   const { text: partial } = await summary.build({ now: at1310 });
-  assert.match(partial, /👥 Подписчики: Threads 1\s240 \(\+12\) · Instagram 830 \(−1\)\n/);
+  assert.match(partial, /👥 Подписчики: Threads 1\s240 \(\+12\) · Instagram 830 \(−1\) · Бот 45 \(\+3\)\n/);
 
   // Telegram ответил позже — его число дописывается в сегодняшний снимок, иначе
   // завтра у него не было бы прироста. Утренние числа остальных не трогаем.
   tg.api.call = async (method) => (method === 'getChatMemberCount' ? 412 : { ok: true });
   await summary.build({ now: at1310 + 4 * 3600 * 1000 });
-  assert.deepEqual(JSON.parse(settings.get('followers:2026-10-03')), { threads: 1240, instagram: 830, channel: 412 });
+  assert.deepEqual(JSON.parse(settings.get('followers:2026-10-03')), { threads: 1240, instagram: 830, channel: 412, bot: 45 });
+});
+
+// Подписка в боте (см. telegram/subscriptions.js): на что подписаны и сколько
+// людей пришло по ссылкам — из постов Threads (social/subLine.js) и с сайта.
+test('бот: профессии подписчиков и переходы за сегодня', async () => {
+  Object.assign(stats.counters, { 'sub.click.threads': 7, 'sub.click.site': 3 });
+  try {
+    const { text } = await summary.build();
+    assert.match(text, /\n🔔 В боте: Общепит 12 · Продажи 8 · Задачи биржи 3 · Охрана 2 · Офис 1 · …\n/);
+    assert.match(text, /\n↪️ Перешли в бота сегодня: из Threads 7 · с сайта 3\n/);
+
+    stats.counters['sub.click.other'] = 1;
+    assert.match((await summary.build()).text, /из Threads 7 · с сайта 3 · без метки 1\n/);
+  } finally {
+    for (const key of ['sub.click.threads', 'sub.click.site', 'sub.click.other']) delete stats.counters[key];
+  }
+
+  // Ни подписчиков, ни переходов — строк нет; база не ответила — сводка не падает.
+  const before = botStats;
+  try {
+    botStats = () => ({ chats: 0, byCategory: [] });
+    assert.doesNotMatch((await summary.build()).text, /В боте|Перешли в бота/);
+    botStats = () => {
+      throw new Error('база недоступна');
+    };
+    assert.doesNotMatch((await summary.build()).text, /В боте|Бот \d/);
+  } finally {
+    botStats = before;
+  }
 });
 
 test('рубрики — сколько вышло и почему нет', async () => {

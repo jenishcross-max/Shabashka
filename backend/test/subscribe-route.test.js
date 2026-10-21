@@ -8,9 +8,12 @@ const express = require('express');
 const { install, at } = require('./helpers/stub');
 
 let asked = 0;
+const bumps = [];
 const requireSrc = install({
   // Роут берёт у подписки только имя «birzha» — в базу он не ходит.
   [at('db/index.js')]: {},
+  // Переходы считаются счётчиком сводки — копилкой вместо базы.
+  [at('telegram/feedStats.js')]: { bump: async (key) => bumps.push(key) },
   [at('telegram/api.js')]: {
     hasToken: () => true,
     call: async (method) => {
@@ -33,7 +36,8 @@ test.before(async () => {
 });
 test.after(() => server.close());
 
-const go = async (slug) => (await fetch(`${base}/${slug}`, { redirect: 'manual' })).headers.get('location');
+const go = async (path, headers = {}) =>
+  (await fetch(`${base}/${path}`, { redirect: 'manual', headers })).headers.get('location');
 
 test('профессия — сразу в подписку, подборка — в меню бота', async () => {
   assert.equal(await go('obshchepit'), 'https://t.me/shabashka_test_bot?start=sub_obshchepit');
@@ -42,4 +46,17 @@ test('профессия — сразу в подписку, подборка �
   // Задачи биржи — кнопка «Новые задачи в Telegram» на странице биржи.
   assert.equal(await go('birzha'), 'https://t.me/shabashka_test_bot?start=sub_birzha');
   assert.equal(asked, 1, 'имя бота спрашиваем у Telegram один раз');
+});
+
+// Короткая ссылка из постов Threads (шабашка.com/s/<slug>, см. netlify.toml) и
+// кнопки сайта приходят с источником: переход считается для сводки бота.
+test('переход считается по источнику, а роботы превью — нет', async () => {
+  bumps.length = 0;
+  assert.equal(await go('obshchepit/threads'), 'https://t.me/shabashka_test_bot?start=sub_obshchepit');
+  assert.equal(await go('menu/site'), 'https://t.me/shabashka_test_bot?start');
+  assert.equal(await go('prodazhi/kuda-to'), 'https://t.me/shabashka_test_bot?start=sub_prodazhi');
+  await go('obshchepit');
+  // Threads, Telegram и WhatsApp сами открывают ссылку, чтобы нарисовать превью.
+  await go('obshchepit/threads', { 'user-agent': 'facebookexternalhit/1.1' });
+  assert.deepEqual(bumps, ['sub.click.threads', 'sub.click.site', 'sub.click.other', 'sub.click.other']);
 });

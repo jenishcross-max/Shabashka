@@ -9,6 +9,7 @@ import VacancyCard, { formatSalary } from '../components/VacancyCard';
 import FavoriteButton from '../components/FavoriteButton';
 import FormatIcon from '../components/FormatIcon';
 import SafetyNote from '../components/SafetyNote';
+import SubscribeButton from '../components/SubscribeButton';
 import { SkeletonOrderDetail } from '../components/Skeleton';
 import { useMeta, useJsonLd } from '../useMeta';
 import { viewWord } from '../plural';
@@ -263,6 +264,15 @@ export default function VacancyDetail() {
               </div>
             )}
           </>
+        )}
+
+        {/* Повод вернуться: с поста приходят на одну вакансию — следующие по
+            этой профессии пусть придут сами. У закрытой — тем более. */}
+        {!vacancy.is_example && (
+          <div className="detail-subscribe">
+            <SubscribeButton category={vacancy.category} />
+            <span>Раз в час днём и только когда есть новые. Без регистрации.</span>
+          </div>
         )}
 
         {!vacancy.is_example && <SafetyNote isImported={vacancy.is_imported} />}

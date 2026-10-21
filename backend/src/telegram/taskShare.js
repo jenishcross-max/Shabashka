@@ -14,6 +14,7 @@
 const db = require('../db');
 const { weight, THREADS_LIMIT } = require('../social/video');
 const { money } = require('../money');
+const { tag } = require('../sourceTag');
 const { esc } = require('./api');
 
 const where = (task) => (task.work_format === 'online' ? 'Удалённо' : task.city);
@@ -33,7 +34,11 @@ function fit(text, room) {
 function threadsText(task, deps) {
   const head = [`⚡ Задача на бирже: ${task.title}`, `📍 ${where(task)} · 💰 ${pay(task)}`];
   if (task.when_text) head.push(`🗓 ${task.when_text}`);
-  const tail = ['Исполнители — предложите цену и срок на сайте, заказчик выберет одного 👇', deps.pretty(link(task, deps))];
+  // Метка Threads (см. sourceTag.js): иначе Метрика пишет заход в «прямые».
+  const tail = [
+    'Исполнители — предложите цену и срок на сайте, заказчик выберет одного 👇',
+    deps.pretty(tag(link(task, deps), 'threads')),
+  ];
   const fixed = weight([...head, '', '', ...tail].join('\n'));
   const body = fit(task.description, THREADS_LIMIT - fixed - 1);
   return [...head, ...(body ? ['', body] : []), '', ...tail].join('\n');
@@ -49,7 +54,7 @@ function channelText(task, deps) {
     '',
     esc(fit(task.description, 600)),
     '',
-    `Исполнители — предложите цену и срок: <a href="${esc(url)}">${esc(deps.pretty(url))}</a>`,
+    `Исполнители — предложите цену и срок: <a href="${esc(tag(url, 'telegram'))}">${esc(deps.pretty(url))}</a>`,
   ].join('\n');
 }
 

@@ -127,8 +127,13 @@ test('рассылка: раз в час днём, по пять на профе
   assert.equal(chatId, 601);
   assert.match(text, /<b>Общепит<\/b>/);
   assert.equal((text.match(/Официант \d/g) || []).length, 5, 'пять на профессию');
-  assert.match(text, /Официант 7 — Бишкек, от 30 000 сом\nшабашка\.com\/vacancies\/\d+/, 'свежие — первыми');
-  assert.match(text, /Ещё 2 — шабашка\.com\/rabota\/obshchepit/);
+  // Ссылки — тегом с меткой бота (см. src/sourceTag.js), в тексте — чистый адрес.
+  assert.match(
+    text,
+    /Официант 7 — Бишкек, от 30 000 сом\n<a href="https:\/\/xn--80aaac0cyed\.com\/vacancies\/\d+\?s=b">шабашка\.com\/vacancies\/\d+<\/a>/,
+    'свежие — первыми'
+  );
+  assert.match(text, /Ещё 2 — <a href="https:\/\/xn--80aaac0cyed\.com\/rabota\/obshchepit\?s=b">шабашка\.com\/rabota\/obshchepit<\/a>/);
   assert.match(text, /<b>Продажи<\/b>\n• Кассир — Бишкек/);
   assert.doesNotMatch(text, /Закрытая|Старая/);
   assert.deepEqual(await subs.categoriesOf(602), [], 'заблокировал бота — подписку убрали');
@@ -159,7 +164,10 @@ test('подписка на задачи биржи: кнопкой с сайт�
   assert.equal(sent.length, 1);
   assert.equal(sent[0].chatId, 701, 'подписанным только на вакансии задачу не шлём');
   assert.match(sent[0].text, /<b>Собрать шкаф<\/b>\n📍 Бишкек · 💰 2 500 сом\n🗓 завтра/);
-  assert.match(sent[0].text, /Предложить цену и срок: шабашка\.com\/tasks\/15/);
+  assert.match(
+    sent[0].text,
+    /Предложить цену и срок: <a href="https:\/\/xn--80aaac0cyed\.com\/tasks\/15\?s=b">шабашка\.com\/tasks\/15<\/a>/
+  );
   assert.deepEqual(await subs.categoriesOf(703), [], 'заблокировал бота — подписку убрали');
 
   // В часовую подборку вакансий подписка на задачи не попадает.
@@ -167,4 +175,21 @@ test('подписка на задачи биржи: кнопкой с сайт�
   await vacancy('Ещё официант', 'Общепит');
   await subs.digest({ ...deps, now: AT_10 });
   assert.ok(sent.every((m) => m.chatId !== 701));
+});
+
+// Для сводки бота (см. summary.js): сколько человек подписано и на что.
+test('stats: люди — без повторов, профессии — по убыванию', async () => {
+  await db.query('DELETE FROM subscriptions');
+  await subs.onMessage(message('/start sub_obshchepit', 801), deps);
+  await subs.onMessage(message('/start sub_prodazhi', 801), deps);
+  await subs.onMessage(message('/start sub_obshchepit', 802), deps);
+  await subs.onMessage(message('/start sub_birzha', 803), deps);
+  assert.deepEqual(await subs.stats(), {
+    chats: 3,
+    byCategory: [
+      { category: 'Общепит', n: 2 },
+      { category: 'Задачи биржи', n: 1 },
+      { category: 'Продажи', n: 1 },
+    ],
+  });
 });
