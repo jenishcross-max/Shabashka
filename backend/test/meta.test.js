@@ -163,6 +163,12 @@ test('человек и чужие адреса идут дальше, на SPA'
   assert.equal((await get('/orders/new')).status, 418);
 });
 
+test('robots.txt не закрывает личные страницы — иначе Google не увидит их noindex', async () => {
+  const txt = await (await get('/robots.txt')).text();
+  assert.doesNotMatch(txt, /Disallow/, '«Проиндексировано, несмотря на блокировку в файле robots.txt»');
+  assert.match(txt, /^Sitemap: https:\/\/xn--80aaac0cyed\.com\/sitemap\.xml$/m);
+});
+
 test('«Проверка URL» в Search Console видит то же, что Googlebot', async () => {
   const res = await get('/vacancies/131', 'Mozilla/5.0 (compatible; Google-InspectionTool/1.0;)');
   assert.match(await res.text(), /<h1>Официантка и уборщица нужны<\/h1>/);

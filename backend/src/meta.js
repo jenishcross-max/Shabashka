@@ -313,12 +313,11 @@ listingPage({
   },
 });
 
+// Личные страницы здесь не закрываем: запрет на обход не убирает адрес из
+// индекса, а только не даёт Google увидеть noindex. Их noindex отдаёт Netlify
+// (frontend/netlify/edge-functions/private-noindex.js).
 router.get('/robots.txt', (req, res) => {
-  res.type('text/plain').send(
-    `User-agent: *\nAllow: /\nDisallow: /my-orders\nDisallow: /my-vacancies\nDisallow: /messages\nDisallow: /admin\nDisallow: /verify-email\nSitemap: ${baseUrl(
-      req
-    )}/sitemap.xml\n`
-  );
+  res.type('text/plain').send(`User-agent: *\nAllow: /\nSitemap: ${baseUrl(req)}/sitemap.xml\n`);
 });
 
 router.get(
