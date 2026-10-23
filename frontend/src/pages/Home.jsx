@@ -12,11 +12,21 @@ import { adWord, followerWord, orderWord, taskWord, vacancyWord } from '../plura
 import { SkeletonOrderCard, SkeletonCityPills } from '../components/Skeleton';
 import { SOCIALS, SocialIcon } from '../components/SocialLinks';
 
-// «Часто ищут» под поиском — слова, по которым на сайте точно есть заказы
-// (проверено на живом сайте 2026-10-18: уборка 17, грузчик 15, ремонт 12,
-// электрик 6, швея 4). Поиск ищет подстроку, поэтому «Грузчик» найдёт и
-// «грузчики».
-const POPULAR = ['Уборка', 'Грузчик', 'Ремонт', 'Электрик', 'Швея'];
+// «Часто ищут» под поиском — профессии, по которым на сайте точно есть работа
+// (живой сайт 2026-10-23: повар 248 вакансий, официант 228, продавец 154,
+// грузчик 102, швея 75, курьер 73). Поиск ищет подстроку, поэтому «Грузчик»
+// найдёт и «грузчики».
+const POPULAR = ['Официант', 'Продавец', 'Повар', 'Грузчик', 'Курьер', 'Швея'];
+
+// Поиск с главной — в вакансии, а разовая подработка по тому же слову выходит
+// под ними (см. CrossResults). Раньше он вёл только в заказы, а их вдевятеро
+// меньше: «продавец» — 0 заказов при 154 вакансиях, и человек уходил.
+const searchPath = (q, city = '') => {
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (city) params.set('city', city);
+  return `/vacancies${params.toString() ? `?${params}` : ''}`;
+};
 
 // Живая строка над заголовком: «+19 заказов и +73 вакансии за сутки». Нулевые
 // части пропускаем, а если за сутки не добавилось ничего — строки нет вовсе:
@@ -39,10 +49,12 @@ const TILES = [
   { to: '/ads', icon: '🏷', label: 'Объявления', count: 'ads', word: adWord, hint: 'сдам, продам, услуги' },
 ];
 
-// Пока счётчики не пришли или раздел пуст — подсказка вместо числа, а не «0 задач».
+// Пока счётчики не пришли или в разделе мало — подсказка вместо числа: «1
+// объявление» и «0 задач» выглядят заброшенным разделом, а не живым.
+const TILE_MIN = 10;
 function tileNote(tile, counts) {
   const n = counts && counts[tile.count];
-  return Number.isInteger(n) && n > 0 ? `${n.toLocaleString('ru-RU')} ${tile.word(n)}` : tile.hint;
+  return Number.isInteger(n) && n >= TILE_MIN ? `${n.toLocaleString('ru-RU')} ${tile.word(n)}` : tile.hint;
 }
 
 export default function Home() {
@@ -82,10 +94,7 @@ export default function Home() {
 
   function submitSearch(e) {
     e.preventDefault();
-    const params = new URLSearchParams();
-    if (qInput) params.set('q', qInput);
-    if (cityInput) params.set('city', cityInput);
-    navigate(`/orders${params.toString() ? `?${params}` : ''}`);
+    navigate(searchPath(qInput.trim(), cityInput));
   }
 
   const fresh = freshLine(counts);
@@ -114,7 +123,8 @@ export default function Home() {
         <form className="search-bar" onSubmit={submitSearch}>
           <input
             className="search-q"
-            placeholder="Что нужно сделать? Например: убрать квартиру"
+            type="search"
+            placeholder="Профессия: официант, повар…"
             value={qInput}
             onChange={(e) => setQInput(e.target.value)}
           />
@@ -131,7 +141,7 @@ export default function Home() {
         <div className="hero-popular">
           <span className="hero-popular-label">Часто ищут:</span>
           {POPULAR.map((word) => (
-            <Link key={word} to={`/orders?q=${encodeURIComponent(word.toLowerCase())}`} className="hero-popular-link">
+            <Link key={word} to={searchPath(word.toLowerCase())} className="hero-popular-link">
               {word}
             </Link>
           ))}

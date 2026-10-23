@@ -12,7 +12,7 @@ const asyncHandler = require('../asyncHandler');
 const tg = require('../telegram/api');
 const feedStats = require('../telegram/feedStats');
 const landings = require('../landings');
-const { TASKS } = require('../telegram/subscriptions');
+const { TASKS, STUDENTS } = require('../telegram/subscriptions');
 const { BOT_UA_RE } = require('../bots');
 
 const router = express.Router();
@@ -30,10 +30,11 @@ router.get(
   '/:slug/:from?',
   asyncHandler(async (req, res) => {
     if (!tg.hasToken()) return res.status(404).json({ error: 'Telegram-бот не настроен' });
-    // birzha — задачи биржи для исполнителей (см. subscriptions.js), остальное —
-    // профессии посадочных страниц.
+    // birzha — задачи биржи для исполнителей, studentam — вакансии для
+    // студентов (см. subscriptions.js), остальное — профессии посадочных страниц.
     const slug = req.params.slug;
-    const known = slug === TASKS.slug || landings.some((l) => l.slug === slug && l.category);
+    const known =
+      slug === TASKS.slug || slug === STUDENTS.slug || landings.some((l) => l.slug === slug && l.category);
     // Threads, Telegram и WhatsApp сами открывают ссылку, чтобы нарисовать
     // превью, — это не переход человека. Счётчик не ждём: редирект важнее, а
     // ошибку базы bump глотает сам.

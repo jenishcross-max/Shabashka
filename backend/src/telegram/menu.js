@@ -49,21 +49,36 @@ const COMMANDS = [
   { command: 'help', description: 'Справка' },
 ];
 
+// Сверху — то, чем админ пользуется каждый день: сводка, кому написать, пост
+// в группу, реклама. Остальное — за «⋯ Ещё»: семнадцать кнопок на одном экране
+// приходилось читать целиком, чтобы найти нужную.
 function homeView() {
   return {
     text: '☰ <b>Меню</b>\nЧто открыть?',
     extra: keyboard([
       [
-        { text: '📣 Реклама', callback_data: 'm:ads' },
         { text: '📊 Сводка', callback_data: 'm:stats' },
-      ],
-      [
-        { text: '🛍 Мои продукты', callback_data: 'm:products' },
-        { text: '🔁 Поднятия рекламы', callback_data: 'm:raise' },
+        { text: '📨 Кому написать', callback_data: 'or:more' },
       ],
       [{ text: '✍️ Написать в группу от Шабашки', callback_data: 'gp:start' }],
       [
+        { text: '📣 Реклама', callback_data: 'm:ads' },
+        { text: '🛍 Мои продукты', callback_data: 'm:products' },
+      ],
+      [
         { text: '📥 Опубликованное', callback_data: 'm:last' },
+        { text: '⋯ Ещё', callback_data: 'm:more' },
+      ],
+    ]),
+  };
+}
+
+function moreView() {
+  return {
+    text: '⋯ <b>Ещё</b>',
+    extra: keyboard([
+      [
+        { text: '🔁 Поднятия рекламы', callback_data: 'm:raise' },
         { text: '🧹 Отсеянное', callback_data: 'm:spam' },
       ],
       [
@@ -82,6 +97,7 @@ function homeView() {
         { text: '➕ Как дать рекламу', callback_data: 'm:adhow' },
         { text: '❓ Справка', callback_data: 'm:help' },
       ],
+      [BACK],
     ]),
   };
 }
@@ -520,6 +536,7 @@ module.exports = {
   PUBLISHED_TABS,
   BACK,
   homeView,
+  moreView,
   withBack,
   adsListView,
   publishedView,

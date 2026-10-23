@@ -2861,6 +2861,8 @@ async function sectionView(section) {
   switch (section) {
     case 'home':
       return menu.homeView();
+    case 'more':
+      return menu.moreView();
     case 'ads':
       return adsListView(0);
     case 'stats':

@@ -44,9 +44,14 @@ router.get('/experience-levels', (_req, res) => {
 
 router.get(
   '/category-counts',
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    // ?students=1 — числа у категорий только по объявлениям для студентов:
+    // с фильтром «Для студентов» у категорий стояли общие числа («Ремонт 66»),
+    // а в выдаче — ноль.
+    const onlyStudents = req.query.students === '1';
     const { rows } = await db.query(
-      "SELECT category, COUNT(*)::int AS count FROM vacancies WHERE status = 'open' GROUP BY category"
+      `SELECT category, COUNT(*)::int AS count FROM vacancies
+        WHERE status = 'open'${onlyStudents ? ' AND for_students' : ''} GROUP BY category`
     );
     const counts = Object.fromEntries(rows.map((r) => [r.category, r.count]));
     // Сколько открытых подходят студентам — число рядом с фильтром «Для студентов».

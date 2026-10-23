@@ -10,7 +10,7 @@ const { install, at } = require('./helpers/stub');
 let asked = 0;
 const bumps = [];
 const requireSrc = install({
-  // Роут берёт у подписки только имя «birzha» — в базу он не ходит.
+  // Роут берёт у подписки только имена «birzha» и «studentam» — в базу он не ходит.
   [at('db/index.js')]: {},
   // Переходы считаются счётчиком сводки — копилкой вместо базы.
   [at('telegram/feedStats.js')]: { bump: async (key) => bumps.push(key) },
@@ -39,9 +39,10 @@ test.after(() => server.close());
 const go = async (path, headers = {}) =>
   (await fetch(`${base}/${path}`, { redirect: 'manual', headers })).headers.get('location');
 
-test('профессия — сразу в подписку, подборка — в меню бота', async () => {
+test('профессия и «Студентам» — сразу в подписку, подборка — в меню бота', async () => {
   assert.equal(await go('obshchepit'), 'https://t.me/shabashka_test_bot?start=sub_obshchepit');
-  assert.equal(await go('studentam'), 'https://t.me/shabashka_test_bot?start');
+  assert.equal(await go('studentam'), 'https://t.me/shabashka_test_bot?start=sub_studentam');
+  assert.equal(await go('nochnaya'), 'https://t.me/shabashka_test_bot?start');
   assert.equal(await go('net-takoy'), 'https://t.me/shabashka_test_bot?start');
   // Задачи биржи — кнопка «Новые задачи в Telegram» на странице биржи.
   assert.equal(await go('birzha'), 'https://t.me/shabashka_test_bot?start=sub_birzha');

@@ -74,7 +74,8 @@ export const api = {
 
   home: () => request('/home'),
   categories: (format) => request(`/orders/categories${format ? `?format=${format}` : ''}`),
-  categoryCounts: () => request('/orders/category-counts'),
+  // students — числа у категорий только по объявлениям для студентов.
+  categoryCounts: (students = false) => request(`/orders/category-counts${students ? '?students=1' : ''}`),
   cityCounts: () => request('/orders/city-counts'),
   publicStats: () => request('/orders/public-stats'),
   cities: () => request('/orders/cities'),
@@ -93,7 +94,8 @@ export const api = {
 
   employmentTypes: () => request('/vacancies/employment-types'),
   experienceLevels: () => request('/vacancies/experience-levels'),
-  vacancyCategoryCounts: () => request('/vacancies/category-counts'),
+  vacancyCategoryCounts: (students = false) =>
+    request(`/vacancies/category-counts${students ? '?students=1' : ''}`),
   vacancies: (params = {}) => request(`/vacancies${toQueryString(params)}`),
   vacancy: (id) => request(`/vacancies/${id}`),
   similarVacancies: (id) => request(`/vacancies/${id}/similar`),

@@ -5,12 +5,15 @@ import VacancyCard from '../components/VacancyCard';
 import CityAutocomplete from '../components/CityAutocomplete';
 import { useCities } from '../useCities';
 import { pageList } from '../pagination';
-import { SkeletonBox, SkeletonOrderCard, SkeletonFilterList } from '../components/Skeleton';
+import { SkeletonBox, SkeletonOrderCard } from '../components/Skeleton';
 import { useMeta } from '../useMeta';
-import { vacancyWord } from '../plural';
-import { StudentFilter, StudentSection } from '../components/StudentField';
+import { orderWord, vacancyWord } from '../plural';
+import { StudentFilter } from '../components/StudentField';
+import CrossResults from '../components/CrossResults';
+import { CategoryFilter, FiltersButton, FiltersPanel } from '../components/ListFilters';
 import WorkSwitcher from '../components/WorkSwitcher';
 import SubscribeButton from '../components/SubscribeButton';
+import { PHONE, useMediaQuery } from '../useMediaQuery';
 
 const SORTS = [
   { value: 'new', label: 'Сначала новые' },
@@ -24,14 +27,16 @@ export default function Vacancies() {
     'Список актуальных вакансий и подработки в Кыргызстане: фильтры по городу, категории и зарплате.'
   );
   const cities = useCities();
+  const phone = useMediaQuery(PHONE);
   const [searchParams] = useSearchParams();
   const [categories, setCategories] = useState([]);
-  const [counts, setCounts] = useState({});
+  const [counts, setCounts] = useState(null);
   const [employmentTypes, setEmploymentTypes] = useState([]);
   const [vacancies, setVacancies] = useState([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, pages: 1 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [q, setQ] = useState('');
   const [city, setCity] = useState('');
@@ -39,23 +44,29 @@ export default function Vacancies() {
   const [employmentType, setEmploymentType] = useState('');
   const [students, setStudents] = useState(false);
   const [studentCount, setStudentCount] = useState(0);
-  // Число у фильтра — вместе с подработками: с ним выходят и они (StudentSection).
+  // Число у фильтра — вместе с подработками: с ним выходят и они (CrossResults).
   const [studentOrders, setStudentOrders] = useState(0);
+  // Сколько нашлось в подработке по тому же поиску — для строки над пустым списком.
+  const [crossTotal, setCrossTotal] = useState(null);
   const [sort, setSort] = useState('new');
   const [page, setPage] = useState(1);
 
   useEffect(() => {
     api.categories().then(({ categories }) => setCategories(categories));
-    api.vacancyCategoryCounts().then(({ counts, students }) => {
-      setCounts(counts);
-      setStudentCount(students || 0);
-    });
     api
       .categoryCounts()
       .then(({ students }) => setStudentOrders(students || 0))
       .catch(() => {});
     api.employmentTypes().then(({ employmentTypes }) => setEmploymentTypes(employmentTypes));
   }, []);
+
+  // С «Для студентов» числа у категорий — тоже только студенческие.
+  useEffect(() => {
+    api.vacancyCategoryCounts(students).then(({ counts, students: n }) => {
+      setCounts(counts);
+      setStudentCount(n || 0);
+    });
+  }, [students]);
 
   // Категория/город/поиск приходят через query-параметры — так работают
   // ссылки с главной и из навбара.
@@ -114,11 +125,39 @@ export default function Vacancies() {
     setPage(p);
   }
 
+  const activeFilters = selectedCategories.length + (employmentType ? 1 : 0);
+  function resetFilters() {
+    setPage(1);
+    setSelectedCategories([]);
+    setEmploymentType('');
+  }
+
+  const query = q.trim();
+  function emptyText() {
+    if (!query && !students) return 'Пока нет вакансий по этим фильтрам.';
+    const what = `Вакансий${students ? ' для студентов' : ''}${query ? ` по запросу «${query}»` : ''} сейчас нет`;
+    if (crossTotal > 0) return `${what} — зато есть ${crossTotal} ${orderWord(crossTotal)} на подработку:`;
+    if (crossTotal === 0) return `${what}. Попробуйте другое слово или уберите фильтры.`;
+    return `${what}.`;
+  }
+
+  const studentFilter = (
+    <StudentFilter
+      checked={students}
+      count={studentCount + studentOrders}
+      onChange={(v) => {
+        setPage(1);
+        setStudents(v);
+      }}
+    />
+  );
+
   return (
     <div>
       <WorkSwitcher />
       <section className="orders-search-strip">
         <input
+          type="search"
           placeholder="Поиск по вакансиям…"
           value={q}
           onChange={(e) => {
@@ -135,38 +174,33 @@ export default function Vacancies() {
             setCity(v);
           }}
         />
-        <button type="button" onClick={() => setPage(1)}>
-          Найти
-        </button>
+        {phone ? (
+          <FiltersButton active={activeFilters} onClick={() => setFiltersOpen(true)} />
+        ) : (
+          <button type="button" onClick={() => setPage(1)}>
+            Найти
+          </button>
+        )}
       </section>
+      {phone && studentFilter}
 
       <div className="orders-layout">
-        <aside className="orders-filters">
-          <StudentFilter
-            checked={students}
-            count={studentCount + studentOrders}
-            onChange={(v) => {
-              setPage(1);
-              setStudents(v);
-            }}
+        <FiltersPanel
+          phone={phone}
+          open={filtersOpen}
+          onClose={() => setFiltersOpen(false)}
+          onReset={resetFilters}
+          active={activeFilters}
+          total={meta.total}
+          word={vacancyWord}
+        >
+          {!phone && studentFilter}
+          <CategoryFilter
+            categories={categories}
+            counts={counts}
+            selected={selectedCategories}
+            onToggle={toggleCategory}
           />
-          <div className="admin-card">
-            <h3 className="filter-heading">Категория</h3>
-            {categories.length === 0 && <SkeletonFilterList rows={7} />}
-            <div className="filter-checkbox-list">
-              {categories.map((c) => (
-                <label key={c} className="filter-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={selectedCategories.includes(c)}
-                    onChange={() => toggleCategory(c)}
-                  />
-                  {c}
-                  <span className="filter-count">{counts[c] || 0}</span>
-                </label>
-              ))}
-            </div>
-          </div>
           <div className="admin-card">
             <h3 className="filter-heading">Занятость</h3>
             <div className="filter-checkbox-list">
@@ -198,27 +232,31 @@ export default function Vacancies() {
               ))}
             </div>
           </div>
-        </aside>
+        </FiltersPanel>
 
         <div>
-          <div className="orders-results-head">
-            <span>
-              {loading ? (
-                <SkeletonBox width={90} height={14} />
-              ) : (
-                <>
-                  <strong>{meta.total}</strong> {vacancyWord(meta.total)}
-                </>
-              )}
-            </span>
-            <select className="sort-select" value={sort} onChange={(e) => setSort(e.target.value)}>
-              {SORTS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* «0 вакансий» крупно наверху читался как «работы нет» — при пустом
+              списке вместо него строка ниже, с подсказкой, где искать. */}
+          {(loading || meta.total > 0) && (
+            <div className="orders-results-head">
+              <span>
+                {loading ? (
+                  <SkeletonBox width={90} height={14} />
+                ) : (
+                  <>
+                    <strong>{meta.total}</strong> {vacancyWord(meta.total)}
+                  </>
+                )}
+              </span>
+              <select className="sort-select" value={sort} onChange={(e) => setSort(e.target.value)}>
+                {SORTS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Сюда ведёт «Все N вакансий за сутки» из постов Threads — пусть
               новые приходят сами. Выбрана одна профессия — подписка на неё. */}
@@ -227,9 +265,7 @@ export default function Vacancies() {
           </div>
 
           {error && <p className="status-msg error">{error}</p>}
-          {!loading && !error && vacancies.length === 0 && (
-            <p className="status-msg">Пока нет вакансий по этим фильтрам.</p>
-          )}
+          {!loading && !error && vacancies.length === 0 && <p className="status-msg">{emptyText()}</p>}
 
           <div className="order-grid orders-grid-2col">
             {loading && Array.from({ length: 8 }).map((_, i) => <SkeletonOrderCard key={i} />)}
@@ -261,7 +297,14 @@ export default function Vacancies() {
             </div>
           )}
 
-          {students && <StudentSection kind="orders" />}
+          <CrossResults
+            kind="orders"
+            q={q}
+            city={city}
+            students={students}
+            alone={!loading && !error && vacancies.length === 0}
+            onTotal={setCrossTotal}
+          />
         </div>
       </div>
     </div>

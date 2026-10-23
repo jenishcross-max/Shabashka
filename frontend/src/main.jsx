@@ -6,7 +6,10 @@ import { AuthProvider } from './context/AuthContext.jsx';
 import { FavoritesProvider } from './context/FavoritesContext.jsx';
 import { UnreadProvider } from './context/UnreadContext.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
+import { markInApp } from './inApp.js';
 import './index.css';
+
+markInApp();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

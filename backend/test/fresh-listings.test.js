@@ -169,3 +169,23 @@ test('посадочные страницы — в sitemap', async () => {
   const xml = await (await fetch(`${base.replace(/\/api$/, '')}/sitemap.xml`)).text();
   for (const { slug } of landings) assert.match(xml, new RegExp(`/rabota/${slug}</loc>`), slug);
 });
+
+// С фильтром «Для студентов» у категорий стояли общие числа («Ремонт 66»), а в
+// выдаче — ноль. С ?students=1 числа — только по объявлениям для студентов.
+test('category-counts: ?students=1 считает только объявления для студентов', async () => {
+  await db.query("UPDATE vacancies SET status = 'closed'");
+  await db.query("UPDATE orders SET status = 'closed'");
+  await vacancy({ category: 'Охрана' });
+  const forStudents = await vacancy({ category: 'Продажи' });
+  await db.query('UPDATE vacancies SET for_students = true WHERE id = $1', [forStudents]);
+  await order();
+
+  const all = await (await fetch(`${base}/vacancies/category-counts`)).json();
+  assert.deepEqual(all.counts, { Охрана: 1, Продажи: 1 });
+  assert.equal(all.students, 1);
+  const students = await (await fetch(`${base}/vacancies/category-counts?students=1`)).json();
+  assert.deepEqual(students.counts, { Продажи: 1 });
+
+  assert.deepEqual((await (await fetch(`${base}/orders/category-counts`)).json()).counts, { Грузоперевозки: 1 });
+  assert.deepEqual((await (await fetch(`${base}/orders/category-counts?students=1`)).json()).counts, {});
+});

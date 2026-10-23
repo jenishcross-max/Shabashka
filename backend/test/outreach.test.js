@@ -53,9 +53,10 @@ const urls = (message) => (message.extra ? message.extra.reply_markup.inline_key
 
 test('текст для WhatsApp: ссылка на объявление и приглашение на биржу', () => {
   const text = outreach.messageFor({ type: 'order', id: 7, title: 'Шпаклёвка' }, deps);
-  assert.match(text, /^Саламатсызбы! Ваше объявление «Шпаклёвка» бесплатно опубликовано на сайте Шабашка: шабашка\.com\/orders\/7/);
+  assert.match(text, /^Саламатсызбы! Ваше объявление «Шпаклёвка» есть на нашем сайте Шабашка: шабашка\.com\/orders\/7/);
   assert.match(text, /шабашка\.com\/tasks\/new/);
-  assert.match(text, /ответьте, и мы его снимем/, 'есть как отказаться');
+  assert.match(text, /ответьте, уберём/, 'есть как отказаться');
+  assert.equal(text.split('\n').length, 3, 'три строки, не больше');
 
   const vac = outreach.messageFor({ type: 'vacancy', id: 9, title: 'Официант' }, deps);
   assert.match(vac, /Ваша вакансия «Официант».*шабашка\.com\/vacancies\/9/);
@@ -64,6 +65,26 @@ test('текст для WhatsApp: ссылка на объявление и пр
   const link = outreach.waLink({ type: 'order', id: 7, title: 'Шпаклёвка', phone: '+996 700 123-456' }, deps);
   assert.match(link, /^https:\/\/wa\.me\/996700123456\?text=/);
   assert.equal(decodeURIComponent(link.split('text=')[1]), text);
+});
+
+// Автору, который пишет по-кыргызски, — текст на кыргызском: русский от
+// незнакомца он читает как рассылку. Буквы ң, ө, ү решают сразу; без них —
+// два кыргызских слова.
+test('объявление на кыргызском — и текст на кыргызском', () => {
+  const ky = (title, description = '') => outreach.langOf({ title, description });
+  assert.equal(ky('Бишкекте жумушчу керек'), 'ky', 'без особых букв, по словам');
+  assert.equal(ky('Сатуучу', 'Дүкөнгө сатуучу кыз керек'), 'ky');
+  assert.equal(ky('Требуется официант', 'График 2/2, зарплата от 30 000'), 'ru');
+  assert.equal(ky('Бригада керек', 'Описание'), 'ru', 'одного слова мало');
+  assert.equal(ky('Бармен в бар', 'Ночные смены'), 'ru');
+
+  const order = outreach.messageFor({ type: 'order', id: 7, title: 'Үй тазалоо', description: '' }, deps);
+  assert.match(order, /^Саламатсызбы! Сиздин «Үй тазалоо» жарыяңыз Шабашка сайтында жарыяланды: шабашка\.com\/orders\/7/);
+  assert.match(order, /усталар өздөрү жазып.*шабашка\.com\/tasks\/new/);
+  assert.match(order, /алып салабыз/);
+  const vac = outreach.messageFor({ type: 'vacancy', id: 9, title: 'Сатуучу', description: 'Дүкөнгө кыз керек' }, deps);
+  assert.match(vac, /«Сатуучу» вакансияңыз.*шабашка\.com\/vacancies\/9/);
+  assert.match(vac, /талапкерлер сизге түз чалышат: шабашка\.com\/vacancies\/new/);
 });
 
 test('свежие из групп, подработки первыми, один раз на номер, без чёрного списка', async () => {

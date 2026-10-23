@@ -37,6 +37,8 @@ const AT_23 = new Date('2026-10-19T17:00:00Z');
 
 let userId;
 test.before(async () => {
+  // Пометку «для студентов» добавляет не schema.sql, а db/index.js при старте.
+  await db.query('ALTER TABLE vacancies ADD COLUMN IF NOT EXISTS for_students BOOLEAN NOT NULL DEFAULT false');
   const { rows } = await db.query(
     `INSERT INTO users (name, email, phone, password_hash, email_verified, role)
      VALUES ('Бот', 'subs@test.kg', '+996700006001', 'x', true, 'customer') RETURNING id`
@@ -192,4 +194,53 @@ test('stats: люди — без повторов, профессии — по �
       { category: 'Продажи', n: 1 },
     ],
   });
+});
+
+// «Студентам» — не профессия, а пометка «можно совмещать с учёбой»: в подборку
+// идут такие вакансии из любой категории. И сразу после подписки бот
+// показывает последние вакансии — чтобы было видно, что придёт.
+test('«Студентам»: подписка со страницы, сразу последние, в подборке без повторов', async () => {
+  await db.query('DELETE FROM subscriptions');
+  const student = async (title, category) => {
+    const id = await vacancy(title, category);
+    await db.query('UPDATE vacancies SET for_students = true WHERE id = $1', [id]);
+    return id;
+  };
+  await student('Бариста на вечер', 'Общепит');
+
+  sent.length = 0;
+  await subs.onMessage(message('/start sub_studentam', 901), deps);
+  assert.deepEqual(await subs.categoriesOf(901), ['Студентам']);
+  assert.match(sent[0].text, /✅ Подписал: Студентам/);
+  assert.equal(buttons(sent[0].extra)[1].text, '✅ 🎓 Студентам');
+  assert.match(sent[1].text, /Последние вакансии — <b>Студентам<\/b>:\n\n• Бариста на вечер — Бишкек/);
+
+  // Кнопкой — так же: подписал, и следом последние по профессии.
+  sent.length = 0;
+  await subs.onCallback(callback('sub:obshchepit', 902), deps);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].text, /Последние вакансии — <b>Общепит<\/b>/);
+  assert.equal((sent[0].text.match(/^• /gm) || []).length, 3, 'три, не больше');
+  await subs.onCallback(callback('sub:studentam', 902), deps);
+  sent.length = 0;
+  await subs.onCallback(callback('sub:studentam', 902), deps);
+  assert.equal(sent.length, 0, 'отписка — без вакансий');
+  await subs.onCallback(callback('sub:studentam', 902), deps);
+
+  await subs.digest({ ...deps, now: AT_10 });
+  sent.length = 0;
+  await student('Курьер после пар', 'Водители и курьеры');
+  await student('Официант-студент', 'Общепит');
+  await vacancy('Повар', 'Общепит');
+  await subs.digest({ ...deps, now: AT_10 });
+
+  const onlyStudents = sent.find((m) => m.chatId === 901).text;
+  assert.match(onlyStudents, /<b>Студентам<\/b>\n• Официант-студент — Бишкек/);
+  assert.match(onlyStudents, /Курьер после пар/);
+  assert.doesNotMatch(onlyStudents, /Повар/);
+
+  const both = sent.find((m) => m.chatId === 902).text;
+  assert.match(both, /<b>Общепит<\/b>\n• Повар[^]*Официант-студент/);
+  assert.equal((both.match(/Официант-студент/g) || []).length, 1, 'одна вакансия — один раз');
+  assert.match(both, /<b>Студентам<\/b>\n• Курьер после пар/, 'студенческое — последним, без повторов');
 });

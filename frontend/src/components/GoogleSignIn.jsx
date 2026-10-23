@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { isInApp } from '../inApp';
 
 // Вход через Google — на /login и /register. Ключ клиента сайт берёт у
 // бэкенда (GOOGLE_CLIENT_ID на Render); не задан — кнопки нет вовсе.
@@ -10,7 +11,6 @@ import { useAuth } from '../context/AuthContext';
 // вход не пускает (ошибка «disallowed_useragent»), а приходят к нам как раз
 // оттуда. Кнопку, которая не сработает, там не рисуем — подсказываем, как
 // открыть сайт в обычном браузере.
-const IN_APP_RE = /Barcelona|Instagram|FBAN|FBAV|FB_IAB/i;
 
 let scriptLoading = null;
 function loadGoogle() {
@@ -37,7 +37,7 @@ export default function GoogleSignIn() {
   const box = useRef(null);
   const [clientId, setClientId] = useState(null);
   const [error, setError] = useState('');
-  const inApp = IN_APP_RE.test(navigator.userAgent);
+  const inApp = isInApp();
   const back = location.state?.from?.pathname || '/';
 
   // Google вызывает колбэк, заданный один раз при initialize, — свежие login и

@@ -6,11 +6,14 @@ import FormatIcon from '../components/FormatIcon';
 import CityAutocomplete from '../components/CityAutocomplete';
 import { useCities } from '../useCities';
 import { pageList } from '../pagination';
-import { SkeletonBox, SkeletonOrderCard, SkeletonFilterList } from '../components/Skeleton';
+import { SkeletonBox, SkeletonOrderCard } from '../components/Skeleton';
 import { useMeta } from '../useMeta';
-import { orderWord } from '../plural';
-import { StudentFilter, StudentSection } from '../components/StudentField';
+import { orderWord, vacancyWord } from '../plural';
+import { StudentFilter } from '../components/StudentField';
+import CrossResults from '../components/CrossResults';
+import { CategoryFilter, FiltersButton, FiltersPanel } from '../components/ListFilters';
 import WorkSwitcher from '../components/WorkSwitcher';
+import { PHONE, useMediaQuery } from '../useMediaQuery';
 
 const SORTS = [
   { value: 'new', label: 'Сначала новые' },
@@ -24,13 +27,15 @@ export default function AllOrders() {
     'Список всех актуальных заказов на подработку в Кыргызстане: фильтры по городу, категории и бюджету.'
   );
   const cities = useCities();
+  const phone = useMediaQuery(PHONE);
   const [searchParams, setSearchParams] = useSearchParams();
   const [categories, setCategories] = useState([]);
-  const [counts, setCounts] = useState({});
+  const [counts, setCounts] = useState(null);
   const [orders, setOrders] = useState([]);
   const [meta, setMeta] = useState({ total: 0, page: 1, pages: 1 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [q, setQ] = useState('');
   const [city, setCity] = useState('');
@@ -42,8 +47,10 @@ export default function AllOrders() {
   const [students, setStudents] = useState(false);
   const [studentCount, setStudentCount] = useState(0);
   // Рядом с фильтром — сколько всего для студентов: с ним выходят и вакансии
-  // (см. StudentSection), а ноль у одних подработок читали как «работы нет».
+  // (см. CrossResults), а ноль у одних подработок читали как «работы нет».
   const [studentVacancies, setStudentVacancies] = useState(0);
+  // Сколько нашлось в вакансиях по тому же поиску — для строки над пустым списком.
+  const [crossTotal, setCrossTotal] = useState(null);
   const [sort, setSort] = useState('new');
   const [page, setPage] = useState(1);
 
@@ -68,23 +75,32 @@ export default function AllOrders() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams.get('category'), searchParams.get('city'), searchParams.get('q'), searchParams.get('students')]);
 
+  // Остальные параметры адреса не трогаем: раньше выбор формата стирал их все,
+  // и вместе с ним слетали поиск и «Для студентов».
   function setWorkFormat(value) {
     setPage(1);
     setWorkFormatState(value);
-    setSearchParams(value ? { workFormat: value } : {}, { replace: true });
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set('workFormat', value);
+    else next.delete('workFormat');
+    setSearchParams(next, { replace: true });
   }
 
   useEffect(() => {
     api.categories().then(({ categories }) => setCategories(categories));
-    api.categoryCounts().then(({ counts, students }) => {
-      setCounts(counts);
-      setStudentCount(students || 0);
-    });
     api
       .vacancyCategoryCounts()
       .then(({ students }) => setStudentVacancies(students || 0))
       .catch(() => {});
   }, []);
+
+  // С «Для студентов» числа у категорий — тоже только студенческие.
+  useEffect(() => {
+    api.categoryCounts(students).then(({ counts, students: n }) => {
+      setCounts(counts);
+      setStudentCount(n || 0);
+    });
+  }, [students]);
 
   useEffect(() => {
     setLoading(true);
@@ -125,11 +141,43 @@ export default function AllOrders() {
     setPage(p);
   }
 
+  const activeFilters =
+    selectedCategories.length + (workFormat ? 1 : 0) + (budgetMin || budgetMax ? 1 : 0) + (hasBudget ? 1 : 0);
+  function resetFilters() {
+    setPage(1);
+    setSelectedCategories([]);
+    setBudgetMin('');
+    setBudgetMax('');
+    setHasBudget(false);
+    setWorkFormat('');
+  }
+
+  const query = q.trim();
+  function emptyText() {
+    if (!query && !students) return 'Пока нет заказов по этим фильтрам.';
+    const what = `Подработок${students ? ' для студентов' : ''}${query ? ` по запросу «${query}»` : ''} сейчас нет`;
+    if (crossTotal > 0) return `${what} — зато есть ${crossTotal} ${vacancyWord(crossTotal)}:`;
+    if (crossTotal === 0) return `${what}. Попробуйте другое слово или уберите фильтры.`;
+    return `${what}.`;
+  }
+
+  const studentFilter = (
+    <StudentFilter
+      checked={students}
+      count={studentCount + studentVacancies}
+      onChange={(v) => {
+        setPage(1);
+        setStudents(v);
+      }}
+    />
+  );
+
   return (
     <div>
       <WorkSwitcher />
       <section className="orders-search-strip">
         <input
+          type="search"
           placeholder="Поиск по заказам…"
           value={q}
           onChange={(e) => {
@@ -146,21 +194,27 @@ export default function AllOrders() {
             setCity(v);
           }}
         />
-        <button type="button" onClick={() => setPage(1)}>
-          Найти
-        </button>
+        {phone ? (
+          <FiltersButton active={activeFilters} onClick={() => setFiltersOpen(true)} />
+        ) : (
+          <button type="button" onClick={() => setPage(1)}>
+            Найти
+          </button>
+        )}
       </section>
+      {phone && studentFilter}
 
       <div className="orders-layout">
-        <aside className="orders-filters">
-          <StudentFilter
-            checked={students}
-            count={studentCount + studentVacancies}
-            onChange={(v) => {
-              setPage(1);
-              setStudents(v);
-            }}
-          />
+        <FiltersPanel
+          phone={phone}
+          open={filtersOpen}
+          onClose={() => setFiltersOpen(false)}
+          onReset={resetFilters}
+          active={activeFilters}
+          total={meta.total}
+          word={orderWord}
+        >
+          {!phone && studentFilter}
           <div className="admin-card">
             <h3 className="filter-heading">Формат работы</h3>
             <div className="format-toggle">
@@ -191,23 +245,12 @@ export default function AllOrders() {
               </label>
             </div>
           </div>
-          <div className="admin-card">
-            <h3 className="filter-heading">Категория</h3>
-            {categories.length === 0 && <SkeletonFilterList rows={7} />}
-            <div className="filter-checkbox-list">
-              {categories.map((c) => (
-                <label key={c} className="filter-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={selectedCategories.includes(c)}
-                    onChange={() => toggleCategory(c)}
-                  />
-                  {c}
-                  <span className="filter-count">{counts[c] || 0}</span>
-                </label>
-              ))}
-            </div>
-          </div>
+          <CategoryFilter
+            categories={categories}
+            counts={counts}
+            selected={selectedCategories}
+            onToggle={toggleCategory}
+          />
           <div className="admin-card">
             <h3 className="filter-heading">Бюджет, сом</h3>
             <div className="filter-budget-row">
@@ -244,41 +287,38 @@ export default function AllOrders() {
               Только с бюджетом
             </label>
           </div>
-        </aside>
+        </FiltersPanel>
 
         <div>
-          <div className="orders-results-head">
-            <span>
-              {loading ? (
-                <SkeletonBox width={90} height={14} />
-              ) : (
-                <>
-                  <strong>{meta.total}</strong> {orderWord(meta.total)}
-                </>
-              )}
-            </span>
-            <select className="sort-select" value={sort} onChange={(e) => setSort(e.target.value)}>
-              {SORTS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* «0 заказов» крупно наверху читался как «работы нет» — при пустом
+              списке вместо него строка ниже, с подсказкой, где искать. */}
+          {(loading || meta.total > 0) && (
+            <div className="orders-results-head">
+              <span>
+                {loading ? (
+                  <SkeletonBox width={90} height={14} />
+                ) : (
+                  <>
+                    <strong>{meta.total}</strong> {orderWord(meta.total)}
+                  </>
+                )}
+              </span>
+              <select className="sort-select" value={sort} onChange={(e) => setSort(e.target.value)}>
+                {SORTS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {error && <p className="status-msg error">{error}</p>}
-          {!loading && !error && orders.length === 0 && (
-            <p className="status-msg">
-              {students
-                ? 'Подработок для студентов сейчас нет — ниже вакансии, которые можно совмещать с учёбой.'
-                : 'Пока нет заказов по этим фильтрам.'}
-            </p>
-          )}
+          {!loading && !error && orders.length === 0 && <p className="status-msg">{emptyText()}</p>}
 
           <div className="order-grid orders-grid-2col">
             {loading && Array.from({ length: 8 }).map((_, i) => <SkeletonOrderCard key={i} />)}
-            {!loading &&
-              orders.map((order) => <OrderCard key={order.id} order={order} />)}
+            {!loading && orders.map((order) => <OrderCard key={order.id} order={order} />)}
           </div>
 
           {meta.pages > 1 && (
@@ -292,11 +332,7 @@ export default function AllOrders() {
                     …
                   </span>
                 ) : (
-                  <button
-                    key={p}
-                    className={p === page ? 'active' : ''}
-                    onClick={() => goToPage(p)}
-                  >
+                  <button key={p} className={p === page ? 'active' : ''} onClick={() => goToPage(p)}>
                     {p}
                   </button>
                 )
@@ -307,7 +343,14 @@ export default function AllOrders() {
             </div>
           )}
 
-          {students && <StudentSection kind="vacancies" />}
+          <CrossResults
+            kind="vacancies"
+            q={q}
+            city={city}
+            students={students}
+            alone={!loading && !error && orders.length === 0}
+            onTotal={setCrossTotal}
+          />
         </div>
       </div>
     </div>

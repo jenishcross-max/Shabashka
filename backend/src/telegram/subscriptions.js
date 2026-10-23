@@ -23,8 +23,14 @@ const PROFESSIONS = landings.filter((l) => l.category);
 // того заказчик и видит первым. В таблице — та же строка категории; у вакансий
 // такой категории нет, и часовая подборка её не задевает.
 const TASKS = { slug: 'birzha', category: 'Задачи биржи' };
-const bySlug = (slug) => (slug === TASKS.slug ? TASKS : PROFESSIONS.find((p) => p.slug === slug) || null);
-const byCategory = (category) => PROFESSIONS.find((p) => p.category === category) || null;
+// «Студентам» — тоже не профессия, а пометка «можно совмещать с учёбой» (см.
+// students.js): в подборку идут вакансии с этой пометкой из любой категории.
+// Студенты — заметная часть подписчиков из Threads, а своей кнопки у них не было.
+const STUDENTS = { slug: 'studentam', category: 'Студентам' };
+const bySlug = (slug) =>
+  [TASKS, STUDENTS].find((s) => s.slug === slug) || PROFESSIONS.find((p) => p.slug === slug) || null;
+const byCategory = (category) =>
+  (category === STUDENTS.category ? STUDENTS : PROFESSIONS.find((p) => p.category === category)) || null;
 
 // Шлём днём: с 9:00 до 21:59 по Бишкеку (UTC+6). Ночные вакансии придут
 // утренней подборкой — курсор помнит, докуда дошли.
@@ -32,6 +38,7 @@ const HOUR_FROM = 9;
 const HOUR_TO = 21;
 const BISHKEK_OFFSET_H = 6;
 const PER_CATEGORY = 5;
+const SAMPLE = 3;
 const CURSOR_KEY = 'subs:last_vacancy_id';
 const EVERY_MS = 60 * 60 * 1000;
 // Telegram пускает около 30 сообщений в секунду на бота — держимся ниже.
@@ -58,6 +65,7 @@ function keyboard(chosen) {
   }));
   const rows = [
     [{ text: `${set.has(TASKS.category) ? '✅ ' : ''}⚡ Задачи биржи — сразу`, callback_data: `sub:${TASKS.slug}` }],
+    [{ text: `${set.has(STUDENTS.category) ? '✅ ' : ''}🎓 Студентам`, callback_data: `sub:${STUDENTS.slug}` }],
   ];
   for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
   if (set.size) rows.push([{ text: '🔕 Отписаться от всех', callback_data: 'sub:off' }]);
@@ -67,12 +75,13 @@ function keyboard(chosen) {
 function menuText(chosen, lead = '') {
   return [
     ...(lead ? [lead, ''] : []),
-    '🔔 Новые вакансии Шабашки — прямо сюда.',
-    `Отметьте профессии: раз в час, с ${HOUR_FROM}:00 до ${HOUR_TO}:00, пришлю свежие вакансии по ним. Одно сообщение и только когда есть новое.`,
+    '🔔 Новые вакансии — прямо сюда.',
+    `Нажмите на свою профессию: раз в час, с ${HOUR_FROM}:00 до ${HOUR_TO}:00, пришлю новые вакансии — и только когда они есть.`,
+    'Кесибиңизди тандаңыз — жаңы вакансияларды саат сайын ушул жерге жиберем.',
     '',
-    '⚡ Задачи биржи — пришлю сразу, как заказчик разместит задачу: предложите цену первым.',
+    '⚡ Задачи биржи — пришлю сразу, как появятся: предложите цену первым.',
     '',
-    chosen.length ? `Сейчас: ${chosen.join(', ')}` : 'Сейчас подписок нет.',
+    chosen.length ? `Сейчас: ${chosen.join(', ')}` : 'Пока ничего не выбрано.',
   ].join('\n');
 }
 
@@ -93,6 +102,7 @@ async function onMessage(message, deps, { admin = false } = {}) {
     const profession = bySlug(link[1]);
     if (profession) await subscribe(chatId, profession.category);
     await showMenu(chatId, deps, profession ? `✅ Подписал: ${profession.category}` : '');
+    if (profession) await sample(chatId, profession, deps);
     return true;
   }
   if (text === '/subs' || (!admin && text === '/start')) {
@@ -107,14 +117,35 @@ async function onMessage(message, deps, { admin = false } = {}) {
   return false;
 }
 
+// Сразу после подписки — несколько последних вакансий по ней. Иначе человек
+// нажимал кнопку и до следующего часа не видел ничего, кроме галочки, — и не
+// понимал, что именно будет приходить. Пусто — молчим: меню уже ответило.
+async function sample(chatId, profession, deps) {
+  if (profession === TASKS) return;
+  const students = profession === STUDENTS;
+  const { rows } = await db.query(
+    `SELECT id, title, city, salary_min FROM vacancies
+      WHERE status = 'open' AND ${students ? 'for_students' : 'category = $2'}
+      ORDER BY id DESC LIMIT $1`,
+    students ? [SAMPLE] : [SAMPLE, profession.category]
+  );
+  if (!rows.length) return;
+  await deps.send(
+    chatId,
+    [`Последние вакансии — <b>${esc(profession.category)}</b>:`, ...rows.map((v) => vacancyLine(v, deps))].join('\n\n')
+  );
+}
+
 // Кнопка под меню. true — наша.
-async function onCallback(query, { answer, edit }) {
+async function onCallback(query, deps) {
+  const { answer, edit } = deps;
   const data = String(query.data || '');
   if (!data.startsWith('sub:')) return false;
   const chatId = query.message.chat.id;
   const slug = data.slice(4);
 
   let note = '';
+  let added = null;
   if (slug === 'off') {
     await unsubscribeAll(chatId);
     note = 'Отписал от всех';
@@ -131,11 +162,13 @@ async function onCallback(query, { answer, edit }) {
     } else {
       await subscribe(chatId, profession.category);
       note = `Подписал: ${profession.category}`;
+      added = profession;
     }
   }
   await answer(query.id, note);
   const chosen = await categoriesOf(chatId);
   await edit(chatId, query.message.message_id, keyboard(chosen));
+  if (added) await sample(chatId, added, deps);
   return true;
 }
 
@@ -194,14 +227,19 @@ async function digest({ now = new Date(), pause = (ms) => new Promise((r) => set
   const { rows: subscriptions } = await db.query('SELECT chat_id, category FROM subscriptions');
   const categories = [...new Set(subscriptions.map((s) => s.category))];
   const fresh = new Map();
+  const add = (key, v) => fresh.set(key, [...(fresh.get(key) || []), v]);
+  const students = categories.includes(STUDENTS.category);
   if (categories.length) {
     const { rows } = await db.query(
-      `SELECT id, title, city, salary_min, category FROM vacancies
-        WHERE id > $1 AND id <= $2 AND status = 'open' AND category = ANY($3::text[])
+      `SELECT id, title, city, salary_min, category, for_students FROM vacancies
+        WHERE id > $1 AND id <= $2 AND status = 'open' AND (category = ANY($3::text[]) OR ($4 AND for_students))
         ORDER BY id DESC`,
-      [cursor, maxId, categories]
+      [cursor, maxId, categories, students]
     );
-    for (const v of rows) fresh.set(v.category, [...(fresh.get(v.category) || []), v]);
+    for (const v of rows) {
+      if (categories.includes(v.category)) add(v.category, v);
+      if (students && v.for_students) add(STUDENTS.category, v);
+    }
   }
 
   const chats = new Map();
@@ -212,7 +250,17 @@ async function digest({ now = new Date(), pause = (ms) => new Promise((r) => set
   let sent = 0;
   let removed = 0;
   for (const [chatId, list] of chats) {
-    const sections = list.map((category) => ({ category, items: fresh.get(category) }));
+    // «Студентам» — последним и без вакансий, которые уже есть выше по
+    // профессии: подписанный на «Общепит» и «Студентам» не получит одну
+    // вакансию дважды в одном сообщении.
+    const seen = new Set();
+    const sections = [];
+    for (const category of [...list].sort((a, b) => (a === STUDENTS.category) - (b === STUDENTS.category))) {
+      const items = fresh.get(category).filter((v) => !seen.has(v.id));
+      items.forEach((v) => seen.add(v.id));
+      if (items.length) sections.push({ category, items });
+    }
+    if (!sections.length) continue;
     try {
       await deps.send(chatId, digestText(sections, deps));
       sent += 1;
@@ -305,4 +353,5 @@ module.exports = {
   categoriesOf,
   PROFESSIONS,
   TASKS,
+  STUDENTS,
 };

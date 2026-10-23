@@ -29,7 +29,7 @@ const PATHS = { order: 'orders', vacancy: 'vacancies' };
 async function pick(limit) {
   const { rows } = await db.query(
     `WITH fresh AS (
-       SELECT 'order' AS type, o.id, o.title, o.city, o.whatsapp_phone AS phone, o.created_at,
+       SELECT 'order' AS type, o.id, o.title, o.description, o.city, o.whatsapp_phone AS phone, o.created_at,
               src.author_username AS username, src.source_link
          FROM orders o
          LEFT JOIN LATERAL (SELECT author_username, source_link FROM imported_listings
@@ -37,7 +37,7 @@ async function pick(limit) {
         WHERE o.is_imported AND o.status = 'open' AND o.whatsapp_phone <> ''
           AND o.created_at > NOW() - make_interval(days => $2)
        UNION ALL
-       SELECT 'vacancy', v.id, v.title, v.city, v.whatsapp_phone, v.created_at,
+       SELECT 'vacancy', v.id, v.title, v.description, v.city, v.whatsapp_phone, v.created_at,
               src.author_username, src.source_link
          FROM vacancies v
          LEFT JOIN LATERAL (SELECT author_username, source_link FROM imported_listings
@@ -75,22 +75,55 @@ async function offeredToday() {
   return rows[0].n;
 }
 
-// Текст, который откроется в WhatsApp. Коротко: длинное сообщение от
-// незнакомца читают как рекламу, а ссылка в кнопке Telegram не бесконечна.
+// На каком языке объявление. Буквы ң, ө, ү есть только в кыргызском; без них
+// (их часто не набирают) — по словам, которых в русском нет: двух хватает.
+const KY_LETTERS = /[ңөүҢӨҮ]/;
+const KY_WORDS =
+  /(?<![\p{L}])(керек|жумуш\p{L}*|иште\p{L}*|айлык\p{L}*|кызмат\p{L}*|чакыр\p{L}*|тажрыйба\p{L}*|байланыш\p{L}*|жигит\p{L}*|бар|жок|саат|менен|үчүн|учун)(?![\p{L}])/giu;
+
+function langOf(item) {
+  const text = `${item.title || ''} ${item.description || ''}`;
+  if (KY_LETTERS.test(text)) return 'ky';
+  return (text.match(KY_WORDS) || []).length >= 2 ? 'ky' : 'ru';
+}
+
+// Текст, который откроется в Telegram или WhatsApp. На языке объявления:
+// автору, который пишет по-кыргызски, русский текст от незнакомца читается как
+// рассылка. Коротко и простыми словами — три строки: что сделали, что можно
+// дальше, как отказаться. Длинное сообщение от незнакомца читают как рекламу,
+// а ссылка в кнопке Telegram не бесконечна.
+const TEXTS = {
+  ru: {
+    order: (title, url, next) => [
+      `Саламатсызбы! Ваше объявление «${title}» есть на нашем сайте Шабашка: ${url}`,
+      `Следующее можете разместить сами, бесплатно — мастера сами напишут и предложат цену, а вы выберете: ${next}`,
+      'Если уже не нужно — ответьте, уберём.',
+    ],
+    vacancy: (title, url, next) => [
+      `Саламатсызбы! Ваша вакансия «${title}» есть на нашем сайте Шабашка: ${url}`,
+      `Следующие можете размещать сами, бесплатно — кандидаты будут звонить вам напрямую: ${next}`,
+      'Если вакансия уже закрыта — ответьте, уберём.',
+    ],
+  },
+  ky: {
+    order: (title, url, next) => [
+      `Саламатсызбы! Сиздин «${title}» жарыяңыз Шабашка сайтында жарыяланды: ${url}`,
+      `Кийинкисин өзүңүз акысыз жайгаштыра аласыз — усталар өздөрү жазып, баасын айтышат, сиз тандайсыз: ${next}`,
+      'Эгер жарыя керек болбой калса — жазыңыз, алып салабыз.',
+    ],
+    vacancy: (title, url, next) => [
+      `Саламатсызбы! Сиздин «${title}» вакансияңыз Шабашка сайтында жарыяланды: ${url}`,
+      `Кийинкилерин өзүңүз акысыз жайгаштыра аласыз — талапкерлер сизге түз чалышат: ${next}`,
+      'Эгер вакансия жабылса — жазыңыз, алып салабыз.',
+    ],
+  },
+};
+const NEXT = { order: 'tasks/new', vacancy: 'vacancies/new' };
+
 function messageFor(item, { siteUrl, pretty }) {
   const url = pretty(`${siteUrl}/${PATHS[item.type]}/${item.id}`);
-  if (item.type === 'vacancy') {
-    return [
-      `Саламатсызбы! Ваша вакансия «${item.title}» бесплатно опубликована на сайте Шабашка: ${url}`,
-      `Следующие можно размещать самим, бесплатно — кандидаты будут писать вам напрямую: ${pretty(`${siteUrl}/vacancies/new`)}`,
-      'Если вакансия уже закрыта — ответьте, и мы её снимем.',
-    ].join('\n');
-  }
-  return [
-    `Саламатсызбы! Ваше объявление «${item.title}» бесплатно опубликовано на сайте Шабашка: ${url}`,
-    `В следующий раз разместите задачу на бирже: исполнители сами напишут вам и предложат цену, а вы выберете, кому отдать работу. Бесплатно: ${pretty(`${siteUrl}/tasks/new`)}`,
-    'Если объявление уже не нужно — ответьте, и мы его снимем.',
-  ].join('\n');
+  const next = pretty(`${siteUrl}/${NEXT[item.type]}`);
+  return TEXTS[langOf(item)][item.type](item.title, url, next).join('\n');
 }
 
 const digits = (phone) => String(phone).replace(/\D/g, '');
@@ -133,10 +166,10 @@ async function batch(deps, { quiet = false } = {}) {
 
   const head = {
     text: [
-      `📨 <b>Кому написать</b> — ${items.length} из объявлений из групп`,
+      `📨 <b>Кому написать</b> — ${items.length}`,
       '',
-      'Кнопки открывают Telegram или WhatsApp с готовым текстом: «ваше объявление на Шабашке, вот ссылка» и приглашение на биржу. Отправляете вы сами — проверьте текст перед отправкой.',
-      `Не больше ${DAILY} в день: WhatsApp блокирует номера, которые пачками пишут незнакомым. Попросят снять — снимите из /last.`,
+      'Нажмите Telegram или WhatsApp — откроется чат с готовым текстом на языке объявления. Проверьте и отправьте сами.',
+      `Не больше ${DAILY} в день, чтобы номер не заблокировали. Попросят убрать — снимите в /last.`,
     ].join('\n'),
   };
   const cards = items.map((item, i) => {
@@ -152,6 +185,7 @@ async function batch(deps, { quiet = false } = {}) {
       text: [
         `${i + 1}. <b>${esc(item.title)}</b>`,
         `${KIND[item.type]} · ${esc(item.city)} · ${esc(item.phone)}${item.username ? ` · @${esc(item.username)}` : ''}`,
+        ...(langOf(item) === 'ky' ? ['текст — на кыргызском'] : []),
         esc(deps.pretty(`${deps.siteUrl}/${PATHS[item.type]}/${item.id}`)),
       ].join('\n'),
       extra: { reply_markup: { inline_keyboard: rows }, disable_web_page_preview: true },
@@ -172,4 +206,4 @@ async function onCallback(query, deps) {
   return true;
 }
 
-module.exports = { batch, send, onCallback, messageFor, waLink, tgLink, BATCH, DAILY };
+module.exports = { batch, send, onCallback, messageFor, langOf, waLink, tgLink, BATCH, DAILY };

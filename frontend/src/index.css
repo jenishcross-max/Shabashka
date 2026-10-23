@@ -929,6 +929,11 @@ a:hover {
 .status-msg.error {
   color: var(--red-status-text);
 }
+/* В списках строка «ничего не нашли» стоит сразу под фильтрами — без лишней
+   пустоты над ней. */
+.orders-layout .status-msg {
+  padding: 4px 0 16px;
+}
 
 /* ---------- how it works ---------- */
 .how-it-works {
@@ -2066,6 +2071,101 @@ a:hover {
     width: 100%;
     padding: 13px 16px;
   }
+  /* Поиск — во всю ширину, под ним город и «Фильтры» одной строкой: «Найти»
+     на телефоне нет — список и так обновляется по мере набора. */
+  .orders-search-strip input {
+    flex-basis: 100%;
+  }
+  .orders-search-strip .city-autocomplete {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+  .orders-search-strip .filters-button {
+    width: auto;
+  }
+}
+
+/* «Фильтры» — белая, как поля рядом: красная здесь спорила бы с «+» внизу. */
+.orders-search-strip .filters-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: none;
+  padding: 0 16px;
+  border: 1px solid #e3d6d4;
+  background: #fff;
+  color: var(--text);
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 15px;
+}
+.orders-search-strip .filters-button:hover {
+  background: var(--red-tint);
+}
+.orders-search-strip .filters-button.has-active {
+  border-color: var(--red);
+  color: var(--red-dark);
+}
+.filters-button-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 12px;
+}
+
+/* Фильтры в панели на телефоне — те же карточки, только без рамок: панель
+   сама белая. Кнопка «Показать» прилипает к низу панели. */
+.sheet-filters .admin-card {
+  margin: 0;
+  padding: 14px 4px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+}
+.sheet-filters .admin-card:last-child {
+  border-bottom: none;
+}
+.sheet-filters-actions {
+  position: sticky;
+  bottom: -16px;
+  display: flex;
+  gap: 10px;
+  margin: 0 -16px -16px;
+  padding: 12px 16px 16px;
+  background: #fff;
+  border-top: 1px solid var(--border);
+}
+.sheet-filters-actions button {
+  padding: 14px 16px;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sheet-filters-reset {
+  flex: none;
+  border: 1px solid #e3d6d4;
+  background: #fff;
+  color: var(--text);
+}
+.sheet-filters-show {
+  flex: 1;
+  border: none;
+  background: var(--red);
+  color: #fff;
+}
+.sheet-filters-show:active {
+  background: var(--red-dark);
 }
 
 .city-autocomplete {
@@ -2166,34 +2266,54 @@ a:hover {
 .student-check input {
   accent-color: #1d4ed8;
 }
-/* Соседний список для студентов (вакансии под подработками и наоборот) — под
-   основным, через синий разделитель и со своим заголовком. */
-.student-section {
+/* Соседний список (вакансии под подработкой и наоборот, см. CrossResults.jsx) —
+   под основным, через пунктирный разделитель и со своим заголовком. Для
+   студентов — синий, как их плашка. */
+.cross-section {
   margin-top: 28px;
   padding-top: 22px;
-  border-top: 2px dashed #c7d2fe;
+  border-top: 2px dashed var(--red-border);
 }
-.student-section-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* Когда основной список пуст, соседний встаёт сразу под строкой «зато есть»:
+   разделитель там лишний. */
+.cross-section.is-alone {
+  margin-top: 0;
+  padding-top: 4px;
+  border-top: none;
+}
+.cross-section-head {
   margin: 0 0 14px;
   font-size: 19px;
-  color: #1e3a8a;
+  line-height: 1.3;
 }
-.student-section-head span {
+.cross-section-head span {
+  display: inline-block;
+  margin-left: 4px;
+  vertical-align: 2px;
   padding: 2px 9px;
   border-radius: 999px;
-  background: #eef2ff;
+  background: var(--red-tint);
+  color: var(--red-dark);
   font-size: 13px;
   font-weight: 600;
 }
-.student-section-all {
+.cross-section-all {
   display: inline-block;
   margin-top: 14px;
   font-weight: 600;
+}
+.cross-section.is-students {
+  border-top-color: #c7d2fe;
+}
+.cross-section.is-students .cross-section-head {
+  color: #1e3a8a;
+}
+.cross-section.is-students .cross-section-head span {
+  background: #eef2ff;
+  color: #1e3a8a;
+}
+.cross-section.is-students .cross-section-all {
   color: #1d4ed8;
-  text-decoration: none;
 }
 .hero-students-link {
   display: inline-flex;
@@ -3516,6 +3636,54 @@ label.admin-table-spam {
   }
 }
 
+/* Встроенный браузер Threads и Instagram на Android сдвигает страницу целиком,
+   пряча свою верхнюю полосу, — низ страницы то за краем экрана, то нет, и
+   панель у низа ездила вместе с ним. Верх страницы всегда на месте: там панель
+   и стоит (класс ставит inApp.js). */
+@media (max-width: 900px) {
+  .in-app-android body {
+    padding-top: 58px;
+    padding-bottom: 0;
+  }
+  .in-app-android .bottom-nav {
+    top: 0;
+    bottom: auto;
+    height: 58px;
+    border-top: none;
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 6px 18px rgba(36, 26, 25, 0.06);
+  }
+  .in-app-android .bottom-nav-item {
+    padding: 4px 0;
+  }
+  .in-app-android .bottom-nav-post {
+    width: 44px;
+    height: 44px;
+    border-radius: 13px;
+  }
+  /* Панели выезжают оттуда же, где кнопки, — сверху: снизу их край уходил бы
+     за экран вместе с низом страницы. */
+  .in-app-android .sheet-backdrop {
+    align-items: flex-start;
+  }
+  .in-app-android .sheet {
+    padding-top: 18px;
+    border-radius: 0 0 18px 18px;
+    animation-name: sheet-down;
+  }
+  .in-app-android .sheet-handle {
+    display: none;
+  }
+}
+@keyframes sheet-down {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
 .bottom-nav-item {
   position: relative;
   display: flex;
@@ -4031,4 +4199,11 @@ label.admin-table-spam {
   .tasks-empty h2 {
     font-size: 19px;
   }
+}
+
+/* Поля поиска — type="search": телефон показывает на клавиатуре «Найти». А
+   Safari рисовал бы их своими, со скруглением, — отключаем. */
+input[type='search'] {
+  -webkit-appearance: none;
+  appearance: none;
 }
