@@ -30,6 +30,7 @@ const rubrics = require('./rubrics');
 const adRaises = require('./adRaises');
 const taskShare = require('./taskShare');
 const outreach = require('./outreach');
+const groupPost = require('./groupPost');
 const taskEvents = require('../taskEvents');
 const tasksRepo = require('../tasksRepo');
 const { tag } = require('../sourceTag');
@@ -105,6 +106,15 @@ const taskShareDeps = {
     count: () => subscriptions.taskSubscribers(),
     notify: (task) => subscriptions.notifyTask(task, subscriptionDeps),
   },
+};
+
+// «✍️ Написать в группу» (см. groupPost.js): пост админа от имени бота.
+const groupPostDeps = {
+  ...subscriptionDeps,
+  channelId: CHANNEL_ID,
+  copy: (to, from, messageId) => tg.copyMessage(to, from, messageId),
+  edit: (chatId, messageId, text) => tg.editMessageText(chatId, messageId, text),
+  esc: tg.esc,
 };
 
 function publicText(parsed, listingType, siteLink) {
@@ -1107,7 +1117,7 @@ function bannedText(reason) {
   return `🚫 Не публикую: ${tg.esc(reason)}.\nТакое Шабашка не выкладывает и за деньги.`;
 }
 
-async function handleParsed(chatId, listings, { source, rawText, priority = false, ad = false }) {
+async function handleParsed(chatId, listings, { source, rawText, priority = false, ad = false, author = null }) {
   const quiet = isQuiet(source);
   const real = listings.filter((p) => p.is_listing && p.listing_type !== 'other');
   if (real.length === 0) {
@@ -1150,7 +1160,7 @@ async function handleParsed(chatId, listings, { source, rawText, priority = fals
   let published = 0;
   let firstId = null;
   for (const parsed of real) {
-    const id = await imports.create({ source, rawText, parsed, chatId, ad: priority });
+    const id = await imports.create({ source, rawText, parsed, chatId, ad: priority, author });
     if (id === null && quiet) {
       feedStats.bump('grp.dup');
       continue;
@@ -1657,10 +1667,16 @@ async function sendHelp(chatId) {
       'Подписаться на задачи можно кнопкой на странице биржи или в /start у бота.',
       '',
       `/outreach — кому написать: по ${outreach.BATCH} авторов свежих объявлений из групп,`,
-      'у каждого кнопка WhatsApp с готовым текстом: «ваше объявление на Шабашке,',
-      'вот ссылка» и приглашение на биржу. Отправляете вы сами, проверив текст.',
+      'у каждого кнопки Telegram (по нику автора из группы, иначе по номеру) и WhatsApp',
+      'с готовым текстом: «ваше объявление на Шабашке, вот ссылка» и приглашение',
+      'на биржу, а ниже — сам пост в группе. Отправляете вы сами, проверив текст.',
       `Не больше ${outreach.DAILY} в день — WhatsApp блокирует номера, которые пачками`,
       'пишут незнакомым. Одному номеру предлагаю написать только раз.',
+      `Пачки приходят и сами — следом за сводкой, пока за день не набралось ${outreach.DAILY}.`,
+      '',
+      '/post (или «☰ Меню → ✍️ Написать в группу») — ваше сообщение в группу',
+      'с объявлениями от имени бота Шабашки, а не с вашего аккаунта. Текст, фото',
+      'или видео с подписью; перед отправкой переспрошу.',
     ],
   ];
   for (const [i, part] of help.entries()) {
@@ -1695,6 +1711,8 @@ async function onMessage(message) {
   // Ждём тексты и фото для своего продукта (см. products.js) — присланное
   // идёт туда, а не на разбор как объявление.
   if (await products.onMessage(message, { isMenuKey: (t) => Boolean(menu.KEYS[t]) })) return;
+  // Ждём пост для группы (см. groupPost.js) — тоже не объявление.
+  if (await groupPost.onMessage(message, groupPostDeps, { isMenuKey: (t) => Boolean(menu.KEYS[t]) })) return;
 
   const raw = (message.text || message.caption || '').trim();
 
@@ -1745,6 +1763,11 @@ async function onMessage(message) {
   if (text === '/menu' || section) {
     await openSection(chatId, section || 'home');
     if (text === '/menu') await offerKeyboard(chatId);
+    return;
+  }
+
+  if (text === '/post') {
+    await groupPost.prompt(chatId, groupPostDeps);
     return;
   }
 
@@ -1942,6 +1965,7 @@ async function onCallback(query) {
   // Биржа: «Раздать» под новой задачей и «Ещё» в списке «Кому написать».
   if (await taskShare.onCallback(query, taskShareDeps)) return;
   if (await outreach.onCallback(query, subscriptionDeps)) return;
+  if (await groupPost.onCallback(query, groupPostDeps)) return;
 
   const [action, rawId, arg2, arg3] = String(query.data || '').split(':');
   const chatId = query.message.chat.id;
@@ -2727,8 +2751,13 @@ function startWatchers() {
   social.adTracker.start({ onReport: onAdReport, onWarn: onAdWarn, onDenied: onAdStatsDenied });
   social.leads.start({ onLead, onDenied: onLeadsDenied });
   dm.start({ publish: publishFromDm, admin: onDmEvent });
-  summary.start((text) => tg.sendMessage(process.env.SOURCE_REPORT_CHAT_ID || adminChat(), text), {
+  // Следом за сводкой — «Кому написать»: админ открывает её и так, а помнить
+  // про /outreach не нужно. Пять авторов за раз и десять в день (outreach.js) —
+  // значит, в первых двух сводках дня.
+  const reportChat = () => process.env.SOURCE_REPORT_CHAT_ID || adminChat();
+  summary.start((text) => tg.sendMessage(reportChat(), text), {
     extra: pendingLines,
+    after: () => outreach.send(reportChat(), subscriptionDeps, { quiet: true }),
   });
   // Рассылка новых вакансий подписчикам — раз в час днём.
   subscriptions.start(subscriptionDeps);

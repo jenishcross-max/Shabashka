@@ -9,7 +9,7 @@ import { pageList } from '../pagination';
 import { SkeletonBox, SkeletonOrderCard, SkeletonFilterList } from '../components/Skeleton';
 import { useMeta } from '../useMeta';
 import { orderWord } from '../plural';
-import { StudentFilter } from '../components/StudentField';
+import { StudentFilter, StudentSection } from '../components/StudentField';
 import WorkSwitcher from '../components/WorkSwitcher';
 
 const SORTS = [
@@ -41,6 +41,9 @@ export default function AllOrders() {
   const [workFormat, setWorkFormatState] = useState('');
   const [students, setStudents] = useState(false);
   const [studentCount, setStudentCount] = useState(0);
+  // Рядом с фильтром — сколько всего для студентов: с ним выходят и вакансии
+  // (см. StudentSection), а ноль у одних подработок читали как «работы нет».
+  const [studentVacancies, setStudentVacancies] = useState(0);
   const [sort, setSort] = useState('new');
   const [page, setPage] = useState(1);
 
@@ -77,6 +80,10 @@ export default function AllOrders() {
       setCounts(counts);
       setStudentCount(students || 0);
     });
+    api
+      .vacancyCategoryCounts()
+      .then(({ students }) => setStudentVacancies(students || 0))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -148,7 +155,7 @@ export default function AllOrders() {
         <aside className="orders-filters">
           <StudentFilter
             checked={students}
-            count={studentCount}
+            count={studentCount + studentVacancies}
             onChange={(v) => {
               setPage(1);
               setStudents(v);
@@ -261,7 +268,11 @@ export default function AllOrders() {
 
           {error && <p className="status-msg error">{error}</p>}
           {!loading && !error && orders.length === 0 && (
-            <p className="status-msg">Пока нет заказов по этим фильтрам.</p>
+            <p className="status-msg">
+              {students
+                ? 'Подработок для студентов сейчас нет — ниже вакансии, которые можно совмещать с учёбой.'
+                : 'Пока нет заказов по этим фильтрам.'}
+            </p>
           )}
 
           <div className="order-grid orders-grid-2col">
@@ -295,6 +306,8 @@ export default function AllOrders() {
               </button>
             </div>
           )}
+
+          {students && <StudentSection kind="vacancies" />}
         </div>
       </div>
     </div>

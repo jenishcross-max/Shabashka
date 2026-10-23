@@ -36,6 +36,7 @@ const COMMANDS = [
   { command: 'ad_fast', description: 'Реклама сразу, без разбора' },
   { command: 'ads', description: 'Вся реклама и её просмотры' },
   { command: 'products', description: 'Мои продукты: свои посты по расписанию' },
+  { command: 'post', description: 'Написать в группу от имени Шабашки' },
   { command: 'stats', description: 'Сводка за сегодня' },
   { command: 'last', description: 'Всё опубликованное: из групп и ваше' },
   { command: 'spam', description: 'Что отсеяно как мусор' },
@@ -60,6 +61,7 @@ function homeView() {
         { text: '🛍 Мои продукты', callback_data: 'm:products' },
         { text: '🔁 Поднятия рекламы', callback_data: 'm:raise' },
       ],
+      [{ text: '✍️ Написать в группу от Шабашки', callback_data: 'gp:start' }],
       [
         { text: '📥 Опубликованное', callback_data: 'm:last' },
         { text: '🧹 Отсеянное', callback_data: 'm:spam' },

@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import Logo from '../components/Logo';
 import PasswordField from '../components/PasswordField';
+import GoogleSignIn from '../components/GoogleSignIn';
 
 export default function Login() {
   const { login } = useAuth();
@@ -60,6 +61,7 @@ export default function Login() {
             {submitting ? 'Входим…' : 'Войти'}
           </button>
         </form>
+        <GoogleSignIn />
         <p className="switch-line">
           Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
         </p>

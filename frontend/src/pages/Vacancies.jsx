@@ -8,7 +8,7 @@ import { pageList } from '../pagination';
 import { SkeletonBox, SkeletonOrderCard, SkeletonFilterList } from '../components/Skeleton';
 import { useMeta } from '../useMeta';
 import { vacancyWord } from '../plural';
-import { StudentFilter } from '../components/StudentField';
+import { StudentFilter, StudentSection } from '../components/StudentField';
 import WorkSwitcher from '../components/WorkSwitcher';
 import SubscribeButton from '../components/SubscribeButton';
 
@@ -39,6 +39,8 @@ export default function Vacancies() {
   const [employmentType, setEmploymentType] = useState('');
   const [students, setStudents] = useState(false);
   const [studentCount, setStudentCount] = useState(0);
+  // Число у фильтра — вместе с подработками: с ним выходят и они (StudentSection).
+  const [studentOrders, setStudentOrders] = useState(0);
   const [sort, setSort] = useState('new');
   const [page, setPage] = useState(1);
 
@@ -48,6 +50,10 @@ export default function Vacancies() {
       setCounts(counts);
       setStudentCount(students || 0);
     });
+    api
+      .categoryCounts()
+      .then(({ students }) => setStudentOrders(students || 0))
+      .catch(() => {});
     api.employmentTypes().then(({ employmentTypes }) => setEmploymentTypes(employmentTypes));
   }, []);
 
@@ -138,7 +144,7 @@ export default function Vacancies() {
         <aside className="orders-filters">
           <StudentFilter
             checked={students}
-            count={studentCount}
+            count={studentCount + studentOrders}
             onChange={(v) => {
               setPage(1);
               setStudents(v);
@@ -254,6 +260,8 @@ export default function Vacancies() {
               </button>
             </div>
           )}
+
+          {students && <StudentSection kind="orders" />}
         </div>
       </div>
     </div>

@@ -33,7 +33,8 @@ const DEDUP_WINDOW = '1 hour';
 
 // Возвращает null, если такое объявление уже приходило в последний час.
 // ad — платная реклама: она попадёт в список «📣 Реклама» в меню бота.
-async function create({ source, rawText, parsed, chatId, ad = false }) {
+// author — кто написал пост в группе: { username, link } (см. sourceWatcher.js).
+async function create({ source, rawText, parsed, chatId, ad = false, author = null }) {
   const hash = dedupHash(parsed);
   if (hash) {
     const { rows: dup } = await db.query(
@@ -45,10 +46,10 @@ async function create({ source, rawText, parsed, chatId, ad = false }) {
     if (dup.length) return null;
   }
   const { rows } = await db.query(
-    `INSERT INTO imported_listings (source, raw_text, parsed, dedup_hash, tg_chat_id, is_ad)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO imported_listings (source, raw_text, parsed, dedup_hash, tg_chat_id, is_ad, author_username, source_link)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING id`,
-    [source, rawText || null, parsed, hash, chatId, Boolean(ad)]
+    [source, rawText || null, parsed, hash, chatId, Boolean(ad), (author && author.username) || null, (author && author.link) || null]
   );
   return rows[0].id;
 }

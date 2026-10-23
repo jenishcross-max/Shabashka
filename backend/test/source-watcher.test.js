@@ -16,6 +16,7 @@ const tg = chat();
 const stats = statsStub();
 const parsed = [];
 const ingested = [];
+const ingestOpts = [];
 let answer = () => [];
 
 const groups = adGroupsStub();
@@ -34,8 +35,9 @@ const requireSrc = install({
     },
   },
   [at('telegram/bot.js')]: {
-    ingestFromSource: async (chatId, listings) => {
+    ingestFromSource: async (chatId, listings, opts) => {
       ingested.push(listings);
+      ingestOpts.push(opts);
       return listings.length;
     },
   },
@@ -145,4 +147,29 @@ test('наша же реклама в группе не разбирается �
   await wait(10);
   assert.equal(parsed.length, before, 'к модели не ходили');
   assert.ok(!stats.blocked.has('+996500160633'), 'и номер рекламодателя не в чёрном списке');
+});
+
+test('автор поста — ник и ссылка на пост: «Кому написать» предложит Telegram', async () => {
+  const fromGroup = (sender, group, text) => {
+    seq += 1;
+    return {
+      id: seq,
+      message: text,
+      date: Math.floor(Date.now() / 1000),
+      getSender: async () => sender,
+      getChat: async () => group,
+    };
+  };
+
+  answer = () => [{ is_listing: true, listing_type: 'order', title: 'Плиточник', phone: '+996700333444' }];
+  const first = fromGroup({ className: 'User', username: 'aibek_master' }, { username: 'bishkek_rabota' }, 'Нужен плиточник, ванная 6 м², Джал. 0700 333 444');
+  await watcher.handleMessage(first);
+  await wait(20);
+  assert.deepEqual(ingestOpts.at(-1).author, { username: 'aibek_master', link: `https://t.me/bishkek_rabota/${first.id}` });
+
+  // Пост от имени канала — не человек, ника нет; закрытая группа — без ссылки.
+  answer = () => [{ is_listing: true, listing_type: 'order', title: 'Электрик', phone: '+996700555666' }];
+  await watcher.handleMessage(fromGroup({ className: 'Channel', username: 'some_channel' }, {}, 'Нужен электрик, розетки, Асанбай. 0700 555 666'));
+  await wait(20);
+  assert.deepEqual(ingestOpts.at(-1).author, { username: null, link: null });
 });

@@ -69,6 +69,8 @@ export const api = {
   me: (token) => request('/auth/me', { token }),
   verifyEmail: (verifyToken) => request('/auth/verify-email', { method: 'POST', body: { token: verifyToken } }),
   resendVerification: (token) => request('/auth/resend-verification', { method: 'POST', token }),
+  googleConfig: () => request('/auth/google/config'),
+  googleLogin: (credential) => request('/auth/google', { method: 'POST', body: { credential } }),
 
   home: () => request('/home'),
   categories: (format) => request(`/orders/categories${format ? `?format=${format}` : ''}`),

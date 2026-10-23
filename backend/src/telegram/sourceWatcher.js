@@ -200,6 +200,23 @@ async function noteFailure(err) {
     .catch(() => {});
 }
 
+// Кто написал пост и где он лежит — для «Кому написать» (см. outreach.js):
+// автору удобнее написать в Telegram, чем засорять WhatsApp. Ник есть не у
+// всех, ссылка на пост — только у групп с открытым адресом. Пишет не человек
+// (канал от имени группы, бот) — ника не берём. Не вышло — просто без них.
+async function authorOf(message) {
+  try {
+    const [sender, chat] = await Promise.all([message.getSender(), message.getChat()]);
+    const person = sender && sender.className === 'User' && !sender.bot;
+    return {
+      username: person && sender.username ? sender.username : null,
+      link: chat && chat.username ? `https://t.me/${chat.username}/${message.id}` : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function handleMessage(message) {
   const text = String(message.message || '').trim();
   console.log(
@@ -323,6 +340,7 @@ async function handleMessage(message) {
       await bot.ingestFromSource(REPORT_CHAT_ID, filtered, {
         source: 'channel',
         rawText: text || null,
+        author: await authorOf(message),
       });
     } catch (err) {
       console.error('Автоимпорт из канала:', err.message);

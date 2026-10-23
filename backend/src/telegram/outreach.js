@@ -8,7 +8,8 @@
 // заказчиков: руками, по одному, пока не заработало само.
 //
 // Пишет админ сам, со своего телефона, — бот только готовит список и текст:
-// кнопка открывает WhatsApp с уже набранным сообщением. Рассылать это
+// кнопки открывают Telegram или WhatsApp с уже набранным сообщением. Telegram
+// первым: в нём админу привычнее, и WhatsApp не засоряется. Рассылать это
 // автоматически нельзя: WhatsApp и Telegram блокируют номера, которые пишут
 // незнакомым пачками, а аккаунт, которым бот читает группы, нам нужен живым.
 // Отсюда и потолок — DAILY в день, — и один раз на номер (outreach_contacts).
@@ -23,17 +24,26 @@ const PATHS = { order: 'orders', vacancy: 'vacancies' };
 
 // Свежие объявления из групп с номером, которым ещё не предлагали написать.
 // Один номер — одна строка: автор с пятью объявлениями получит одно сообщение.
-// Подработки первыми — их авторы и есть будущие заказчики биржи.
+// Подработки первыми — их авторы и есть будущие заказчики биржи. Ник автора и
+// ссылка на пост — из imported_listings (см. sourceWatcher.js), если есть.
 async function pick(limit) {
   const { rows } = await db.query(
     `WITH fresh AS (
-       SELECT 'order' AS type, id, title, city, whatsapp_phone AS phone, created_at FROM orders
-        WHERE is_imported AND status = 'open' AND whatsapp_phone <> ''
-          AND created_at > NOW() - make_interval(days => $2)
+       SELECT 'order' AS type, o.id, o.title, o.city, o.whatsapp_phone AS phone, o.created_at,
+              src.author_username AS username, src.source_link
+         FROM orders o
+         LEFT JOIN LATERAL (SELECT author_username, source_link FROM imported_listings
+                             WHERE order_id = o.id ORDER BY id DESC LIMIT 1) src ON true
+        WHERE o.is_imported AND o.status = 'open' AND o.whatsapp_phone <> ''
+          AND o.created_at > NOW() - make_interval(days => $2)
        UNION ALL
-       SELECT 'vacancy', id, title, city, whatsapp_phone, created_at FROM vacancies
-        WHERE is_imported AND status = 'open' AND whatsapp_phone <> ''
-          AND created_at > NOW() - make_interval(days => $2)
+       SELECT 'vacancy', v.id, v.title, v.city, v.whatsapp_phone, v.created_at,
+              src.author_username, src.source_link
+         FROM vacancies v
+         LEFT JOIN LATERAL (SELECT author_username, source_link FROM imported_listings
+                             WHERE vacancy_id = v.id ORDER BY id DESC LIMIT 1) src ON true
+        WHERE v.is_imported AND v.status = 'open' AND v.whatsapp_phone <> ''
+          AND v.created_at > NOW() - make_interval(days => $2)
      ),
      one AS (
        SELECT DISTINCT ON (phone) * FROM fresh
@@ -72,19 +82,28 @@ function messageFor(item, { siteUrl, pretty }) {
   if (item.type === 'vacancy') {
     return [
       `Саламатсызбы! Ваша вакансия «${item.title}» бесплатно опубликована на сайте Шабашка: ${url}`,
-      `Следующие вакансии можно размещать самим — бесплатно и без посредников: ${pretty(`${siteUrl}/vacancies/new`)}`,
+      `Следующие можно размещать самим, бесплатно — кандидаты будут писать вам напрямую: ${pretty(`${siteUrl}/vacancies/new`)}`,
       'Если вакансия уже закрыта — ответьте, и мы её снимем.',
     ].join('\n');
   }
   return [
     `Саламатсызбы! Ваше объявление «${item.title}» бесплатно опубликовано на сайте Шабашка: ${url}`,
-    `Нужны мастера? Разместите задачу на бирже — исполнители сами предложат цену и срок: ${pretty(`${siteUrl}/tasks/new`)}`,
+    `В следующий раз разместите задачу на бирже: исполнители сами напишут вам и предложат цену, а вы выберете, кому отдать работу. Бесплатно: ${pretty(`${siteUrl}/tasks/new`)}`,
     'Если объявление уже не нужно — ответьте, и мы его снимем.',
   ].join('\n');
 }
 
-const waLink = (item, deps) =>
-  `https://wa.me/${String(item.phone).replace(/\D/g, '')}?text=${encodeURIComponent(messageFor(item, deps))}`;
+const digits = (phone) => String(phone).replace(/\D/g, '');
+
+const waLink = (item, deps) => `https://wa.me/${digits(item.phone)}?text=${encodeURIComponent(messageFor(item, deps))}`;
+
+// Telegram открывает чат с набранным текстом и по нику, и по номеру
+// (t.me/<ник>?text=, t.me/+<номер>?text=). Ник надёжнее: по номеру найдётся
+// только тот, кто не закрыл поиск по номеру в настройках.
+const tgLink = (item, deps) => {
+  const text = encodeURIComponent(messageFor(item, deps));
+  return item.username ? `https://t.me/${item.username}?text=${text}` : `https://t.me/+${digits(item.phone)}?text=${text}`;
+};
 
 const KIND = { order: 'подработка', vacancy: 'вакансия' };
 
@@ -92,9 +111,13 @@ const KIND = { order: 'подработка', vacancy: 'вакансия' };
 // кнопкой. Текст для WhatsApp едет в адресе кнопки, а кириллица в адресе
 // занимает вшестеро больше места — пять таких кнопок в одном сообщении уже
 // рискуют не пройти. Возвращает [{ text, extra }] — что отправить по порядку.
-async function batch(deps) {
+//
+// quiet — список едет следом за сводкой (см. summary.js), а не по кнопке:
+// «на сегодня хватит» и «новых нет» там лишние, такая сводка просто без него.
+async function batch(deps, { quiet = false } = {}) {
   const today = await offeredToday();
   if (today >= DAILY) {
+    if (quiet) return [];
     return [
       {
         text: `📨 На сегодня уже ${today} — новых пришлю завтра.\nWhatsApp блокирует номера, которые пачками пишут незнакомым, поэтому не больше ${DAILY} в день.`,
@@ -103,6 +126,7 @@ async function batch(deps) {
   }
   const items = await pick(Math.min(BATCH, DAILY - today));
   if (!items.length) {
+    if (quiet) return [];
     return [{ text: `📨 Новых авторов с номером за ${DAYS} дня нет — всем уже предлагал написать.` }];
   }
   await remember(items);
@@ -111,17 +135,23 @@ async function batch(deps) {
     text: [
       `📨 <b>Кому написать</b> — ${items.length} из объявлений из групп`,
       '',
-      'Кнопка открывает WhatsApp с готовым текстом: «ваше объявление на Шабашке, вот ссылка» и приглашение на биржу. Отправляете вы сами — проверьте текст перед отправкой.',
+      'Кнопки открывают Telegram или WhatsApp с готовым текстом: «ваше объявление на Шабашке, вот ссылка» и приглашение на биржу. Отправляете вы сами — проверьте текст перед отправкой.',
       `Не больше ${DAILY} в день: WhatsApp блокирует номера, которые пачками пишут незнакомым. Попросят снять — снимите из /last.`,
     ].join('\n'),
   };
   const cards = items.map((item, i) => {
-    const rows = [[{ text: '💬 Написать в WhatsApp', url: waLink(item, deps) }]];
+    const rows = [
+      [
+        { text: item.username ? `✈️ Telegram @${item.username}` : '✈️ Telegram по номеру', url: tgLink(item, deps) },
+        { text: '💬 WhatsApp', url: waLink(item, deps) },
+      ],
+    ];
+    if (item.source_link) rows.push([{ text: '📄 Пост в группе', url: item.source_link }]);
     if (i === items.length - 1) rows.push([{ text: '➡️ Ещё', callback_data: 'or:more' }]);
     return {
       text: [
         `${i + 1}. <b>${esc(item.title)}</b>`,
-        `${KIND[item.type]} · ${esc(item.city)} · ${esc(item.phone)}`,
+        `${KIND[item.type]} · ${esc(item.city)} · ${esc(item.phone)}${item.username ? ` · @${esc(item.username)}` : ''}`,
         esc(deps.pretty(`${deps.siteUrl}/${PATHS[item.type]}/${item.id}`)),
       ].join('\n'),
       extra: { reply_markup: { inline_keyboard: rows }, disable_web_page_preview: true },
@@ -130,8 +160,8 @@ async function batch(deps) {
   return [head, ...cards];
 }
 
-async function send(chatId, deps) {
-  for (const { text, extra } of await batch(deps)) await deps.send(chatId, text, extra);
+async function send(chatId, deps, opts) {
+  for (const { text, extra } of await batch(deps, opts)) await deps.send(chatId, text, extra);
 }
 
 // Кнопка «Ещё». true — наша.
@@ -142,4 +172,4 @@ async function onCallback(query, deps) {
   return true;
 }
 
-module.exports = { batch, send, onCallback, messageFor, waLink, BATCH, DAILY };
+module.exports = { batch, send, onCallback, messageFor, waLink, tgLink, BATCH, DAILY };

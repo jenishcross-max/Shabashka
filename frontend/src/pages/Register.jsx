@@ -6,6 +6,7 @@ import { useCities } from '../useCities';
 import Logo from '../components/Logo';
 import CityAutocomplete from '../components/CityAutocomplete';
 import PasswordField from '../components/PasswordField';
+import GoogleSignIn from '../components/GoogleSignIn';
 
 export default function Register() {
   const { login } = useAuth();
@@ -98,6 +99,7 @@ export default function Register() {
             <Link to="/privacy">политикой конфиденциальности</Link>.
           </p>
         </form>
+        <GoogleSignIn />
         <p className="switch-line">
           Уже есть аккаунт? <Link to="/login">Войти</Link>
         </p>

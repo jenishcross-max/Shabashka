@@ -212,6 +212,9 @@ function init() {
       // Threads: её кампании знают свою карточку.
       await pool.query('ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS is_ad BOOLEAN NOT NULL DEFAULT false');
       await pool.query('CREATE INDEX IF NOT EXISTS idx_imported_ads ON imported_listings(created_at) WHERE is_ad');
+      // Автор поста в группе — для «Кому написать» в Telegram (см. outreach.js).
+      await pool.query('ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS author_username TEXT');
+      await pool.query('ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS source_link TEXT');
       await pool.query(
         `UPDATE imported_listings SET is_ad = true WHERE NOT is_ad AND id IN
            (SELECT import_id FROM ad_campaigns WHERE import_id IS NOT NULL)`

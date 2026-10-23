@@ -170,7 +170,11 @@ CREATE TABLE IF NOT EXISTS imported_listings (
   instagram_media_id TEXT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   published_at  TIMESTAMPTZ, -- когда ушло на сайт; по нему считается счётчик за день
-  is_ad         BOOLEAN NOT NULL DEFAULT false -- платная реклама: по ней список «📣 Реклама» в меню бота
+  is_ad         BOOLEAN NOT NULL DEFAULT false, -- платная реклама: по ней список «📣 Реклама» в меню бота
+  -- Кто написал пост в группе и где он лежит (см. sourceWatcher.js): «Кому
+  -- написать» даёт админу написать автору в Telegram, а не засорять WhatsApp.
+  author_username TEXT,
+  source_link   TEXT
 );
 
 -- «Доска» — быстрые объявления, которые живут сутки и пропадают сами. Шесть

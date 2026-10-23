@@ -209,3 +209,25 @@ test('часы сводки: off выключает, мусор отбрасыв
   assert.deepEqual(summary.parseHours('21, 9,x,25,9'), [9, 21]);
   assert.deepEqual(summary.parseHours(undefined), [9, 13, 17, 21]);
 });
+
+test('следом за сводкой — «Кому написать»; его сбой сводку не ломает', async () => {
+  const sent = [];
+  // 13:05 по Бишкеку, на другой день: этот час в тот уже занят.
+  await summary.tick(async (text) => sent.push(text), {
+    now: Date.UTC(2026, 9, 5, 7, 5),
+    after: async () => sent.push('кому написать'),
+  });
+  assert.equal(sent.length, 2);
+  assert.match(sent[0], /Сводка за сегодня, 13:05/);
+  assert.equal(sent[1], 'кому написать', 'после сводки, а не до');
+
+  const quiet = [];
+  const ok = await summary.tick(async (text) => quiet.push(text), {
+    now: Date.UTC(2026, 9, 6, 3, 5),
+    after: async () => {
+      throw new Error('нет сети');
+    },
+  });
+  assert.equal(ok, true, 'сводка ушла — значит, отправлена');
+  assert.equal(quiet.length, 1);
+});

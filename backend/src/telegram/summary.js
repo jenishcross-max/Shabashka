@@ -324,7 +324,9 @@ async function build({ now = Date.now(), previous = null, tech = false, title = 
 let sentKey = null;
 const SETTING = 'summary:last';
 
-async function tick(send, { now = Date.now(), extra = () => [] } = {}) {
+// after — что прислать следом за сводкой (бот шлёт «Кому написать»). Его сбой
+// сводку не отменяет: она уже ушла, и второй раз её слать незачем.
+async function tick(send, { now = Date.now(), extra = () => [], after = null } = {}) {
   const hour = bishkekHour(now);
   if (!HOURS.includes(hour)) return false;
   const day = feedStats.today(now);
@@ -361,6 +363,7 @@ async function tick(send, { now = Date.now(), extra = () => [] } = {}) {
     sentKey = null;
     throw err;
   }
+  if (after) await after().catch((err) => console.error('[сводка] следом не ушло:', err.message));
   return true;
 }
 

@@ -142,6 +142,74 @@ router.post(
   })
 );
 
+// Вход через Google. Ключ клиента публичный, и сайт берёт его отсюда: вторая
+// переменная на Netlify не нужна. Пустой GOOGLE_CLIENT_ID — кнопки на сайте нет.
+router.get('/google/config', (_req, res) => {
+  res.json({ clientId: process.env.GOOGLE_CLIENT_ID || null });
+});
+
+const GOOGLE_ISSUERS = ['accounts.google.com', 'https://accounts.google.com'];
+
+// Кнопка Google отдаёт сайту подписанный токен. Что он настоящий, не истёк и
+// выписан нашему клиенту, проверяет сам Google (tokeninfo) — без своей
+// криптографии и новой зависимости. null — Google входа не подтвердил.
+async function googleProfile(credential, clientId) {
+  try {
+    const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const info = await res.json();
+    const verified = info.email_verified === true || info.email_verified === 'true';
+    if (info.aud !== clientId || !GOOGLE_ISSUERS.includes(info.iss) || !verified || !info.email) return null;
+    return info;
+  } catch {
+    return null;
+  }
+}
+
+// Почту Google уже подтвердил, поэтому аккаунт с ней — тот же человек: входим в
+// него. Нет такого — заводим. Пароль случайный: войти можно снова через Google.
+// Телефона Google не даёт, его спросит форма объявления.
+router.post(
+  '/google',
+  authLimiter,
+  asyncHandler(async (req, res) => {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) return res.status(404).json({ error: 'Вход через Google не настроен' });
+    const { credential } = req.body || {};
+    if (!credential) return res.status(400).json({ error: 'Google не прислал данных для входа' });
+
+    const profile = await googleProfile(String(credential), clientId);
+    if (!profile) return res.status(401).json({ error: 'Google не подтвердил вход. Попробуйте ещё раз' });
+
+    const email = normalizeEmail(profile.email);
+    let { rows } = await db.query('SELECT * FROM users WHERE email = $1', [email]);
+    let user = rows[0];
+    if (user && user.is_blocked) return res.status(403).json({ error: 'Ваш аккаунт заблокирован' });
+
+    if (user && !user.email_verified) {
+      await db.query(
+        'UPDATE users SET email_verified = true, verify_token = NULL, verify_token_expires = NULL WHERE id = $1',
+        [user.id]
+      );
+      user.email_verified = true;
+    }
+    if (!user) {
+      const name = String(profile.name || profile.given_name || email.split('@')[0]).trim().slice(0, 80);
+      const passwordHash = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10);
+      ({ rows } = await db.query(
+        `INSERT INTO users (name, email, phone, password_hash, email_verified)
+         VALUES ($1, $2, '', $3, true) RETURNING *`,
+        [name, email, passwordHash]
+      ));
+      user = rows[0];
+    }
+
+    res.json({ token: signToken(user), user: toPublicUser(user) });
+  })
+);
+
 router.get('/me', requireAuth, (req, res) => {
   res.json({ user: toPublicUser(req.user) });
 });

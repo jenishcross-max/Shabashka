@@ -78,6 +78,9 @@ services:
         sync: false
       - key: SMTP_FROM
         sync: false
+      # Вход через Google: Client ID из Google Cloud Console. Пусто — кнопки нет.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
       # От чьего имени бот публикует объявления. Пусто — первый админ сайта.
       - key: BOT_OWNER_EMAIL
         sync: false

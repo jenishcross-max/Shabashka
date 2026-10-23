@@ -68,6 +68,12 @@ test('текст для WhatsApp: ссылка на объявление и пр
 
 test('свежие из групп, подработки первыми, один раз на номер, без чёрного списка', async () => {
   const keep = await order('Бригада керек', '+996700000001');
+  // Автор поста в группе (см. sourceWatcher.js): ник и ссылка на сам пост.
+  await db.query(
+    `INSERT INTO imported_listings (source, status, order_id, author_username, source_link)
+     VALUES ('channel', 'published', $1, 'aibek_master', 'https://t.me/bishkek_rabota/77')`,
+    [keep]
+  );
   await order('Ещё от того же', '+996700000001', { ago: '2 hours' });
   const vac = await vacancy('Повар', '+996700000002');
   await vacancy('Повар — от того же, что и заказ', '+996700000001');
@@ -83,9 +89,17 @@ test('свежие из групп, подработки первыми, оди�
   assert.equal(sent.length, 3, 'шапка и два автора');
   assert.match(sent[0].text, /Кому написать<\/b> — 2/);
   assert.match(sent[0].text, /Не больше 10 в день/);
-  assert.match(sent[1].text, new RegExp(`1\\. <b>Бригада керек</b>\\nподработка · Бишкек · \\+996700000001\\nшабашка\\.com/orders/${keep}`));
+  assert.match(sent[1].text, new RegExp(`1\\. <b>Бригада керек</b>\\nподработка · Бишкек · \\+996700000001 · @aibek_master\\nшабашка\\.com/orders/${keep}`));
   assert.match(sent[2].text, new RegExp(`2\\. <b>Повар</b>\\nвакансия · Бишкек · \\+996700000002\\nшабашка\\.com/vacancies/${vac}`));
-  assert.match(urls(sent[1])[0], /^https:\/\/wa\.me\/996700000001\?text=/);
+  // Telegram первым — по нику автора, если он есть; WhatsApp — рядом; пост в группе — ниже.
+  const [byNick, wa, postLink] = urls(sent[1]);
+  assert.match(byNick, /^https:\/\/t\.me\/aibek_master\?text=/);
+  assert.equal(decodeURIComponent(byNick.split('text=')[1]), decodeURIComponent(wa.split('text=')[1]), 'текст тот же');
+  assert.match(wa, /^https:\/\/wa\.me\/996700000001\?text=/);
+  assert.equal(postLink, 'https://t.me/bishkek_rabota/77');
+  const [byPhone, ...rest] = urls(sent[2]);
+  assert.match(byPhone, /^https:\/\/t\.me\/\+996700000002\?text=/, 'ника нет — Telegram по номеру');
+  assert.equal(rest.length, 1, 'ссылки на пост нет — и кнопки нет');
   const lastButtons = sent[2].extra.reply_markup.inline_keyboard.flat();
   assert.equal(lastButtons.at(-1).callback_data, 'or:more', '«Ещё» — под последним');
 
@@ -112,4 +126,10 @@ test('больше десяти в день не предлагает', async ()
   answers.length = 0;
   assert.equal(await outreach.onCallback({ id: 'q', data: 'or:more', message: { chat: { id: 42 } } }, deps), true);
   assert.equal(await outreach.onCallback({ id: 'q', data: 'tk:share:1', message: { chat: { id: 42 } } }, deps), false);
+});
+
+test('следом за сводкой — молча: без «на сегодня хватит» и «новых нет»', async () => {
+  sent.length = 0;
+  await outreach.send(42, deps, { quiet: true });
+  assert.equal(sent.length, 0, 'десять за день уже предложены — сводка просто без списка');
 });
