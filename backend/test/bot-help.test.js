@@ -111,6 +111,21 @@ test('справка называет то, что бот делает на са
   assert.match(text, /⚡ Биржа/, 'про раздачу задач биржи');
   assert.match(text, /\/outreach/, '«кому написать»');
   assert.match(text, /Не больше 10 в день/);
+  assert.match(text, /\/find 6683/, 'найти и снять объявление');
+});
+
+// «🔎 Найти и снять» (см. src/telegram/findListing.js) — только админу: снять
+// чужое объявление с сайта постороннему нельзя.
+test('/find — админу, постороннему — нет', async () => {
+  exchangeCalls.length = 0;
+  await say('/find 6683');
+  assert.deepEqual(exchangeCalls, [{ find: '/find 6683' }]);
+
+  exchangeCalls.length = 0;
+  await bot.handleUpdate({
+    message: { chat: { id: 99, type: 'private' }, from: { id: 779 }, message_id: 6, text: '/find 6683' },
+  });
+  assert.deepEqual(exchangeCalls, [], 'постороннему поиск не даём');
 });
 
 // Биржа (см. src/telegram/taskShare.js и outreach.js): /outreach и кнопки

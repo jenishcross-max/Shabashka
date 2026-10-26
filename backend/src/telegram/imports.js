@@ -451,7 +451,21 @@ async function remove(id) {
   invalidate('home:');
 }
 
+// Сколько ещё опубликованных объявлений в том же ролике Instagram: id ролика
+// получают все объявления из пачки (см. onReel в bot.js). Удалить ролик —
+// убрать из Instagram и их.
+async function othersInReel(mediaId, exceptId) {
+  if (!mediaId) return 0;
+  const { rows } = await db.query(
+    `SELECT COUNT(*)::int AS n FROM imported_listings
+      WHERE instagram_media_id = $1 AND id <> $2 AND status = 'published'`,
+    [String(mediaId), exceptId]
+  );
+  return rows[0].n;
+}
+
 module.exports = {
+  othersInReel,
   bump,
   create,
   get,

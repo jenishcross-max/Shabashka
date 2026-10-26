@@ -31,6 +31,7 @@ const adRaises = require('./adRaises');
 const taskShare = require('./taskShare');
 const outreach = require('./outreach');
 const groupPost = require('./groupPost');
+const findListing = require('./findListing');
 const taskEvents = require('../taskEvents');
 const tasksRepo = require('../tasksRepo');
 const { tag } = require('../sourceTag');
@@ -115,6 +116,14 @@ const groupPostDeps = {
   copy: (to, from, messageId) => tg.copyMessage(to, from, messageId),
   edit: (chatId, messageId, text) => tg.editMessageText(chatId, messageId, text),
   esc: tg.esc,
+};
+
+// «🔎 Найти и снять» (см. findListing.js): объявление по номеру, ссылке,
+// телефону или словам. Ссылка на «объявление» — та же, что у записки доски.
+const findDeps = {
+  ...subscriptionDeps,
+  esc: tg.esc,
+  url: (type, id) => listingUrl(type === 'ad' ? 'board' : type, id),
 };
 
 function publicText(parsed, listingType, siteLink) {
@@ -586,6 +595,16 @@ function digestMenu() {
 }
 
 // Адрес объявления на сайте — тот же, что и в карточке после публикации.
+// Ссылка на пост в канале — для «уберите вручную»: у публичного канала по
+// имени, у закрытого (-100…) — t.me/c/…, она открывается у его участников.
+function channelPostLink(messageId) {
+  const channel = String(CHANNEL_ID);
+  if (!messageId || !channel) return '';
+  if (channel.startsWith('@')) return `https://t.me/${channel.slice(1)}/${messageId}`;
+  if (/^-100\d+$/.test(channel)) return `https://t.me/c/${channel.slice(4)}/${messageId}`;
+  return '';
+}
+
 function listingUrl(listingType, id) {
   if (!SITE_URL) return '';
   return `${SITE_URL}/${LISTING_PATHS[listingType]}/${id}`;
@@ -1677,6 +1696,10 @@ async function sendHelp(chatId) {
       '/post (или «☰ Меню → ✍️ Написать в группу») — ваше сообщение в группу',
       'с объявлениями от имени бота Шабашки, а не с вашего аккаунта. Текст, фото',
       'или видео с подписью; перед отправкой переспрошу.',
+      '',
+      '/find 6683 (или «☰ Меню → 🔎 Найти и снять») — найти объявление по номеру,',
+      'ссылке, телефону или словам из заголовка и снять кнопкой 🗑: с сайта, из канала',
+      'и из Threads; на ролик в Instagram дам ссылку — удалить его через API нельзя.',
     ],
   ];
   for (const [i, part] of help.entries()) {
@@ -1713,6 +1736,8 @@ async function onMessage(message) {
   if (await products.onMessage(message, { isMenuKey: (t) => Boolean(menu.KEYS[t]) })) return;
   // Ждём пост для группы (см. groupPost.js) — тоже не объявление.
   if (await groupPost.onMessage(message, groupPostDeps, { isMenuKey: (t) => Boolean(menu.KEYS[t]) })) return;
+  // /find и запрос следом за «🔎 Найти и снять» (см. findListing.js).
+  if (await findListing.onMessage(message, findDeps, { isMenuKey: (t) => Boolean(menu.KEYS[t]) })) return;
 
   const raw = (message.text || message.caption || '').trim();
 
@@ -1966,6 +1991,7 @@ async function onCallback(query) {
   if (await taskShare.onCallback(query, taskShareDeps)) return;
   if (await outreach.onCallback(query, subscriptionDeps)) return;
   if (await groupPost.onCallback(query, groupPostDeps)) return;
+  if (await findListing.onCallback(query, findDeps)) return;
 
   const [action, rawId, arg2, arg3] = String(query.data || '').split(':');
   const chatId = query.message.chat.id;
@@ -2338,8 +2364,13 @@ async function unpublishLines(row) {
       lines.push('📢 Пост в Telegram-канале удалён.');
     } catch (err) {
       // Телеграм не даёт боту удалять свои сообщения старше 48 часов — а
-      // объявления снимают и через неделю. Тогда только руками.
-      lines.push(`⚠️ Пост в канале не удалить (${tg.esc(err.message)}) — уберите вручную.`);
+      // объявления снимают и через неделю. Тогда только руками — по ссылке.
+      const link = channelPostLink(row.channel_message_id);
+      lines.push(
+        `⚠️ Пост в канале не удалить (${tg.esc(err.message)}) — уберите вручную${
+          link ? `: <a href="${link}">открыть пост</a>` : ''
+        }.`
+      );
     }
   }
 
@@ -2364,6 +2395,14 @@ async function unpublishLines(row) {
         ? `📸 Instagram: <a href="${away.instagram.link}">откройте пост</a> и удалите — через API Meta нам этого не даёт.`
         : '📸 Instagram: пост остался, удалите его в приложении — через API Meta нам этого не даёт.'
     );
+    // В ролике обычно три объявления (см. video.js): удалить его — снять из
+    // Instagram и соседей, которых никто не просил убирать.
+    const others = await imports.othersInReel(row.instagram_media_id, row.id).catch(() => 0);
+    if (others) {
+      lines.push(
+        `   В этом ролике ещё ${others} ${plural(others, ['объявление', 'объявления', 'объявлений'])} — удаляйте, только если и они уже не нужны.`
+      );
+    }
   }
 
   // Поднятия рекламы: ждущие отменяем, а их посты в Threads (и повторы

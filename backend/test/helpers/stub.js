@@ -312,6 +312,15 @@ function exchangeStubs() {
       send: async (chatId) => calls.push({ outreach: chatId }),
       onCallback: async (query) => query.data === 'or:more',
     },
+    // «🔎 Найти и снять» (findListing.js) тоже ходит в базу — у него свой тест.
+    [at('telegram/findListing.js')]: {
+      onMessage: async (message) => {
+        if (!/^\/find\b/.test(message.text || '')) return false;
+        calls.push({ find: message.text });
+        return true;
+      },
+      onCallback: async (query) => String(query.data || '').startsWith('fd:'),
+    },
     [at('tasksRepo.js')]: { get: async () => null },
   };
 }

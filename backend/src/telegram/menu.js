@@ -37,6 +37,7 @@ const COMMANDS = [
   { command: 'ads', description: 'Вся реклама и её просмотры' },
   { command: 'products', description: 'Мои продукты: свои посты по расписанию' },
   { command: 'post', description: 'Написать в группу от имени Шабашки' },
+  { command: 'find', description: 'Найти объявление и снять отовсюду' },
   { command: 'stats', description: 'Сводка за сегодня' },
   { command: 'last', description: 'Всё опубликованное: из групп и ваше' },
   { command: 'spam', description: 'Что отсеяно как мусор' },
@@ -50,7 +51,7 @@ const COMMANDS = [
 ];
 
 // Сверху — то, чем админ пользуется каждый день: сводка, кому написать, пост
-// в группу, реклама. Остальное — за «⋯ Ещё»: семнадцать кнопок на одном экране
+// в группу, реклама, найти и снять объявление. Остальное — за «⋯ Ещё»: семнадцать кнопок на одном экране
 // приходилось читать целиком, чтобы найти нужную.
 function homeView() {
   return {
@@ -67,8 +68,9 @@ function homeView() {
       ],
       [
         { text: '📥 Опубликованное', callback_data: 'm:last' },
-        { text: '⋯ Ещё', callback_data: 'm:more' },
+        { text: '🔎 Найти и снять', callback_data: 'fd:start' },
       ],
+      [{ text: '⋯ Ещё', callback_data: 'm:more' }],
     ]),
   };
 }
