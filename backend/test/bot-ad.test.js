@@ -33,6 +33,7 @@ let rowSeq = 0;
 let parse = async () => [];
 const KG_PHONE = () => '+996500160633';
 let phoneOf = KG_PHONE;
+let createId = () => 7;
 
 const groups = adGroupsStub();
 const raises = adRaisesStub();
@@ -55,10 +56,12 @@ const requireSrc = install({
     fromText: (...args) => parse(...args),
   },
   [at('telegram/imports.js')]: {
+    // null — такое уже приходило в этот час (см. imports.create).
     create: async ({ parsed }) => {
-      published.push(parsed.title);
+      const id = createId(parsed);
+      if (id) published.push(parsed.title);
       created.push(parsed);
-      return 7;
+      return id;
     },
     get: async () => null,
     reject: async () => {},
@@ -323,4 +326,36 @@ test('реклама «как есть» берёт и номер +7', async () 
   }
   assert.equal(created.at(-1).phone, '+79827124863', tg.dump());
   assert.ok(!tg.has(/Номера в тексте нет/), tg.dump());
+});
+
+// 26 октября: MICHELLE сняли и прислали снова, повтор за час её отсёк, и бот,
+// приняв это за провал разбора, выложил её «как есть» — запиской на доске.
+test('повтор рекламы за час не выходит второй раз «как есть»', async () => {
+  reset();
+  created.length = 0;
+  parse = async () => [
+    { is_listing: true, listing_type: 'vacancy', title: 'Официанты в MICHELLE', phone: '+79827124863', city: 'Бишкек', note: '' },
+  ];
+  createId = () => null;
+  try {
+    await say('/ad ОФИЦИАНТЫ с опытом — общий сбор! Ищем: от 18 лет. Гибкий график. Ватсапп: +79827124863');
+    await realWait(60);
+  } finally {
+    createId = () => 7;
+  }
+  assert.ok(tg.has(/«Официанты в MICHELLE» уже вышла в этот час — второй раз не публикую/), tg.dump());
+  assert.ok(tg.has(/🔁 Поднять сейчас/), 'и куда идти, если надо поднять');
+  assert.ok(!tg.has(/Реклама, контент выложен как есть/), tg.dump());
+  assert.equal(created.length, 1, 'на доску вторым заходом не пошла');
+});
+
+test('«Ищем:» с графиком или доходом — вакансия, и «как есть» тоже', async () => {
+  reset();
+  created.length = 0;
+  groups.enqueue = async () => ({ queued: 0, silent: true });
+  await say(
+    ['/ad_fast ОФИЦИАНТЫ с опытом — общий сбор!', '', 'Ищем:', '• от 18 лет', '', 'Гибкий график', 'Дневные и вечерние смены', 'Ватсапп: +79827124863'].join('\n')
+  );
+  await realWait(60);
+  assert.equal(created.at(-1).listing_type, 'vacancy', tg.dump());
 });

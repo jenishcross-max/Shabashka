@@ -891,9 +891,10 @@ function mediaOf(message) {
 // «Требуются:» с ценой «договорная». Признаки нужны оба сразу — и «требуются»,
 // и разговор про деньги или график: ошибиться типом у оплаченной рекламы так же
 // некрасиво, как свалить её на доску. Не сошлось — доска, она принимает что
-// угодно.
-const VACANCY_HINTS = /требуе(тся|мся)|требуются|вакансия|ищем сотрудник|на постоянную работу|жумуш(чу)? керек|кызматкер керек/i;
-const PAY_HINTS = /зарплат|оклад|оплата|график|смена|айлык|төлө/i;
+// угодно. «Ищем:» — не только «ищем сотрудника»: «ОФИЦИАНТЫ — общий сбор!
+// Ищем: от 18 лет…» с графиком и доходом — та же вакансия.
+const VACANCY_HINTS = /требуе(тся|мся)|требуются|вакансия|ищем|на постоянную работу|жумуш(чу)? керек|кызматкер керек/i;
+const PAY_HINTS = /зарплат|оклад|оплата|доход|график|смен|айлык|төлө/i;
 
 function guessType(text) {
   return VACANCY_HINTS.test(text) && PAY_HINTS.test(text) ? 'vacancy' : 'board';
@@ -1153,7 +1154,7 @@ async function handleParsed(chatId, listings, { source, rawText, priority = fals
   const real = listings.filter((p) => p.is_listing && p.listing_type !== 'other');
   if (real.length === 0) {
     // Пост из группы: почему не вышел, уже посчитано в sourceWatcher.
-    if (quiet) return 0;
+    if (quiet) return { published: 0, duplicates: 0 };
     const abroad = listings.find((p) => p.abroad);
     const banned = listings.find((p) => p.forbidden);
     if (abroad || banned) {
@@ -1166,7 +1167,7 @@ async function handleParsed(chatId, listings, { source, rawText, priority = fals
       const note = listings[0] && listings[0].note;
       await tg.sendMessage(chatId, `🚫 Не похоже на объявление.${note ? `\n${tg.esc(note)}` : ''}`);
     }
-    return 0;
+    return { published: 0, duplicates: 0 };
   }
 
   // По самим карточкам не видно, сколько объявлений было в сообщении: одна
@@ -1189,6 +1190,7 @@ async function handleParsed(chatId, listings, { source, rawText, priority = fals
   }
 
   let published = 0;
+  let duplicates = 0;
   let firstId = null;
   for (const parsed of real) {
     const id = await imports.create({ source, rawText, parsed, chatId, ad: priority, author });
@@ -1197,9 +1199,12 @@ async function handleParsed(chatId, listings, { source, rawText, priority = fals
       continue;
     }
     if (id === null) {
+      duplicates += 1;
       await tg.sendMessage(
         chatId,
-        `♻️ «${tg.esc(parsed.title || 'без названия')}» уже приходило в этот час — пропускаю. Через час можно опубликовать заново.`
+        priority
+          ? `♻️ «${tg.esc(parsed.title || 'без названия')}» уже вышла в этот час — второй раз не публикую. Поднять её — «🔁 Поднять сейчас» в 📣 Реклама.`
+          : `♻️ «${tg.esc(parsed.title || 'без названия')}» уже приходило в этот час — пропускаю. Через час можно опубликовать заново.`
       );
       continue;
     }
@@ -1250,8 +1255,10 @@ async function handleParsed(chatId, listings, { source, rawText, priority = fals
     if (line) await tg.sendMessage(chatId, line).catch(() => {});
   }
   // Сколько объявлений вышло — по этому числу реклама решает, не пора ли
-  // выкладывать как есть (см. adJob в onMessage).
-  return published;
+  // выкладывать как есть (см. parseJob). Но повтор — не провал разбора: та же
+  // реклама уже висит, и «как есть» она вышла бы второй раз, да ещё на доску —
+  // тип там угадывается по словам.
+  return { published, duplicates };
 }
 
 // «через 40 секунд» / «через 3 минуты» — прикидка, а не обещание: сколько
@@ -1420,14 +1427,15 @@ function parseJob(chatId, message, text, isAd, { trusted = false } = {}) {
       if (!isAd || err.retryAt) throw err;
       await tg.sendMessage(chatId, `⚠️ Разобрать не вышло: ${tg.esc(err.message)}`);
     }
-    const published = parsed
+    const { published, duplicates } = parsed
       ? await handleParsed(chatId, parsed, { source: 'telegram', rawText: text, priority: isAd, ad: isAd })
-      : 0;
+      : { published: 0, duplicates: 0 };
     // classify: false — этот же текст модель только что не осилила, второй
     // заход кончится тем же и лишь потратит суточный лимит. Работу за
     // границей «как есть» не выкладываем: это не сбой разбора, а отказ.
+    // Повтор — тоже: та же реклама уже вышла (см. handleParsed).
     const refused = parsed && parsed.some((p) => p.abroad || p.forbidden);
-    if (isAd && !published && !refused) {
+    if (isAd && !published && !refused && !duplicates) {
       await publishRawAd(chatId, message, text, null, true, { classify: false });
     }
   };
@@ -3173,5 +3181,5 @@ module.exports = {
   // Тот же путь публикации, которым идут скриншоты из личных сообщений —
   // используется автоимпортом из чужого канала (см. sourceWatcher.js), чтобы
   // не заводить вторую копию логики очереди/дедупа/публикации/отчётов.
-  ingestFromSource: handleParsed,
+  ingestFromSource: async (...args) => (await handleParsed(...args)).published,
 };

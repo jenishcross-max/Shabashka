@@ -32,7 +32,9 @@ function dedupHash(parsed) {
 const DEDUP_WINDOW = '1 hour';
 
 // Возвращает null, если такое объявление уже приходило в последний час.
-// ad — платная реклама: она попадёт в список «📣 Реклама» в меню бота.
+// ad — платная реклама: она попадёт в список «📣 Реклама» в меню бота. Снятую
+// рекламу повтором не считаем: сняли и прислали снова — это админ выкладывает
+// её заново, а не та же реклама из второго чата.
 // author — кто написал пост в группе: { username, link } (см. sourceWatcher.js).
 async function create({ source, rawText, parsed, chatId, ad = false, author = null }) {
   const hash = dedupHash(parsed);
@@ -40,6 +42,7 @@ async function create({ source, rawText, parsed, chatId, ad = false, author = nu
     const { rows: dup } = await db.query(
       `SELECT 1 FROM imported_listings
        WHERE dedup_hash = $1 AND created_at > NOW() - INTERVAL '${DEDUP_WINDOW}'
+         ${ad ? "AND status <> 'rejected'" : ''}
        LIMIT 1`,
       [hash]
     );

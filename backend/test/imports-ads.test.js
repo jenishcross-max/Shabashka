@@ -80,3 +80,21 @@ test('вид и рубрика по умолчанию, если в разбор
   const ad = await one('SELECT kind, category, price, price_unit FROM ads WHERE id = $1', [adId]);
   assert.deepEqual(ad, { kind: 'service', category: 'other', price: null, price_unit: null });
 });
+
+// Повтор за час режется: одно объявление попадает в несколько чатов сразу. Но
+// снятую рекламу админ присылает заново осознанно — 26 октября MICHELLE сняли и
+// прислали снова, повтор её отсёк, и она вышла «как есть» запиской на доске.
+test('снятая реклама повтором не считается, а пост из группы — считается', async () => {
+  const parsed = { ...PARSED, listing_type: 'vacancy', title: 'Официанты в кофейню MICHELLE', budget: 65000 };
+  const first = await imports.create({ source: 'telegram', rawText: 'MICHELLE', parsed, chatId: 1, ad: true });
+  assert.equal(await imports.create({ source: 'telegram', rawText: 'MICHELLE', parsed, chatId: 1, ad: true }), null, 'висит — повтор');
+
+  await imports.reject(first);
+  const again = await imports.create({ source: 'telegram', rawText: 'MICHELLE', parsed, chatId: 1, ad: true });
+  assert.ok(again, 'сняли и прислали снова — выходит');
+
+  const post = { ...PARSED, listing_type: 'vacancy', title: 'Повар в столовую' };
+  const fromGroup = await imports.create({ source: 'channel', rawText: 'повар', parsed: post, chatId: 1 });
+  await imports.reject(fromGroup);
+  assert.equal(await imports.create({ source: 'channel', rawText: 'повар', parsed: post, chatId: 1 }), null, 'из группы — по-прежнему повтор');
+});
