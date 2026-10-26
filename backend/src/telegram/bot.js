@@ -2363,14 +2363,19 @@ async function unpublishLines(row) {
       await tg.call('deleteMessage', { chat_id: CHANNEL_ID, message_id: row.channel_message_id });
       lines.push('📢 Пост в Telegram-канале удалён.');
     } catch (err) {
-      // Телеграм не даёт боту удалять свои сообщения старше 48 часов — а
-      // объявления снимают и через неделю. Тогда только руками — по ссылке.
-      const link = channelPostLink(row.channel_message_id);
-      lines.push(
-        `⚠️ Пост в канале не удалить (${tg.esc(err.message)}) — уберите вручную${
-          link ? `: <a href="${link}">открыть пост</a>` : ''
-        }.`
-      );
+      if (/message to delete not found/i.test(err.message)) {
+        // Пост уже убрали руками — снимать нечего, и это не ошибка.
+        lines.push('📢 Пост в Telegram-канале уже удалён.');
+      } else {
+        // Телеграм не даёт боту удалять свои сообщения старше 48 часов — а
+        // объявления снимают и через неделю. Тогда только руками — по ссылке.
+        const link = channelPostLink(row.channel_message_id);
+        lines.push(
+          `⚠️ Пост в канале не удалить (${tg.esc(err.message)}) — уберите вручную${
+            link ? `: <a href="${link}">открыть пост</a>` : ''
+          }.`
+        );
+      }
     }
   }
 
@@ -2380,11 +2385,16 @@ async function unpublishLines(row) {
   });
 
   if (away.threads) {
-    lines.push(
-      away.threads.removed
-        ? '🧵 Пост в Threads удалён.'
-        : `⚠️ Threads не отдал пост (${tg.esc(away.threads.reason)}) — уберите вручную.`
-    );
+    const t = away.threads;
+    const open = t.link ? `<a href="${t.link}">откройте пост</a>` : 'найдите пост в профиле';
+    if (t.removed) lines.push('🧵 Пост в Threads удалён.');
+    // Отказ по правам — не сбой: у токена нет threads_delete. Говорим, что
+    // сделать с постом сейчас и как сделать, чтобы дальше бот удалял сам.
+    else if (t.permission) {
+      lines.push(
+        `🧵 Threads: ${open} и удалите. Сам удалить не могу — у ключа Threads нет разрешения threads_delete (как его добавить — в README, «Снятие объявления»).`
+      );
+    } else lines.push(`⚠️ Threads не отдал пост (${tg.esc(t.reason)}) — ${open} и удалите вручную.`);
   }
 
   if (away.instagram) {

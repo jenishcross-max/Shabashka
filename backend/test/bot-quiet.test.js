@@ -31,6 +31,8 @@ const shared = [];
 const removed = [];
 let rows = new Map();
 let importSeq = 0;
+// Что ответили площадки на снятие (см. social.unpublish) — тест про отчёт меняет.
+let unpublished = { threads: { removed: true }, instagram: null };
 
 // Как imports.listPublished: вкладка «из групп», «мои» или всё, сначала новое.
 const published = (from) =>
@@ -87,6 +89,7 @@ const requireSrc = install({
     },
     listPublished: async ({ from }) => published(from),
     countPublished: async (from) => published(from).length,
+    othersInReel: async () => 2,
   },
   [at('telegram/deferred.js')]: { add: async () => 1, remove: async () => {}, restorable: async () => [] },
   [at('dm/index.js')]: dmStub(),
@@ -112,7 +115,7 @@ const requireSrc = install({
       shared.push({ parsed, ctx });
       return { skipped: [], threadsQueued: true, threadsWaiting: 1, queued: true, collection: 'Объявления дня', waiting: 1, releaseInMin: 150 };
     },
-    unpublish: async () => ({ threads: { removed: true }, instagram: null }),
+    unpublish: async () => unpublished,
     adTracker: {
       WARN_AFTER_MS: 6 * 3600 * 1000,
       REPORT_AFTER_MS: 24 * 3600 * 1000,
@@ -299,4 +302,48 @@ test('/spam показывает отсеянное, а «✅ Не спам» с
   assert.ok(parse, 'пост ушёл на разбор');
   assert.equal(parse.opts.trusted, true, 'без повторной проверки на сетевое');
   assert.equal(rejected.list().length, 0, 'из списка убран — второй раз не нажать');
+});
+
+// Отчёт о снятии: пост в канале уже убрали руками — «уже удалён», а не
+// ошибка; Threads без разрешения threads_delete — ссылка на пост и что
+// сделать; ролик Instagram — ссылка и сколько в нём ещё объявлений.
+test('снятие: уже удалённый пост в канале, Threads без права удалять, соседи по ролику', async () => {
+  const id = (importSeq += 1);
+  rows.set(id, {
+    id,
+    parsed: { title: 'Требуется подсобник' },
+    source: 'channel',
+    status: 'published',
+    published_at: new Date(),
+    vacancy_id: 6683,
+    channel_message_id: 77,
+    threads_post_id: '1790',
+    instagram_media_id: '1801',
+  });
+  const call = tg.api.call;
+  tg.api.call = async (method) => {
+    if (method === 'deleteMessage') throw new Error('Telegram deleteMessage: Bad Request: message to delete not found');
+    return { ok: true };
+  };
+  unpublished = {
+    threads: { removed: false, permission: true, reason: 'нет прав', link: 'https://www.threads.com/@shabashka.com_/post/AbC' },
+    instagram: { link: 'https://www.instagram.com/reel/XyZ/' },
+  };
+  byChat.length = 0;
+  await bot.handleUpdate({
+    callback_query: { id: 'q', data: `ldel:${id}`, from: { id: 1 }, message: { chat: { id: 1 }, message_id: 7 } },
+  });
+  tg.api.call = call;
+  unpublished = { threads: { removed: true }, instagram: null };
+
+  const report = toAdmin().find((m) => /Требуется подсобник/.test(m.text)).text;
+  assert.match(report, /Снято с сайта\./);
+  assert.match(report, /📢 Пост в Telegram-канале уже удалён\./);
+  assert.doesNotMatch(report, /уберите вручную/);
+  assert.match(
+    report,
+    /🧵 Threads: <a href="https:\/\/www\.threads\.com\/@shabashka\.com_\/post\/AbC">откройте пост<\/a> и удалите\. Сам удалить не могу — у ключа Threads нет разрешения threads_delete/
+  );
+  assert.match(report, /📸 Instagram: <a href="https:\/\/www\.instagram\.com\/reel\/XyZ\/">откройте пост<\/a>/);
+  assert.match(report, /В этом ролике ещё 2 объявления/);
 });

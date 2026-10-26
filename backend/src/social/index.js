@@ -1022,7 +1022,16 @@ async function unpublish({ threadsPostId, instagramMediaId }) {
       await threads.remove(threadsPostId);
       result.threads = { removed: true };
     } catch (err) {
-      result.threads = { removed: false, reason: err.message };
+      // Не удалили — даём ссылку, чтобы удалить руками. Чаще всего это отказ по
+      // правам: удаление требует разрешения threads_delete, которого у старых
+      // токенов нет, а ссылку отдаёт и токен без него.
+      const link = await threads.permalink(threadsPostId).catch(() => '');
+      result.threads = {
+        removed: false,
+        reason: err.message,
+        permission: threads.isPermissionError(err),
+        link,
+      };
     }
   }
 
