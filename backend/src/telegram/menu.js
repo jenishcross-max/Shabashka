@@ -188,7 +188,7 @@ function adInfoView({
   siteLink = '',
   siteLabel = '',
   page = 0,
-  boostable = false,
+  raise = null, // что сделает «🔁 Поднять сейчас» — см. adRaises.nowMode
   goal = 1000,
   reportAfterMs = 24 * HOUR_MS,
   raises = null,
@@ -207,6 +207,7 @@ function adInfoView({
   lines.push('', '🧵 <b>Threads</b>');
   if (!campaign) {
     lines.push('Ещё не вышла: пост ждёт очереди или Threads не настроен.');
+    if (raise && raise.mode === 'resend') lines.push('Ждёт дольше получаса — «🔁 Поднять сейчас» выложит её заново.');
   } else {
     const target = Number(campaign.goal) || goal;
     const t = totals || { views: 0, likes: 0, replies: 0, reposts: 0, quotes: 0, shares: 0 };
@@ -242,9 +243,12 @@ function adInfoView({
   }
 
   lines.push('', `🔁 <b>Поднятия</b>: ${raiseSummaryText(raises)}`);
+  if (raise && raise.mode === 'soon') lines.push(`Поднять вручную можно через ${raise.waitMin} мин.`);
 
   const top = [{ text: '🔄 Обновить', callback_data: `ai:${ad.id}:${page}:f` }];
-  if (boostable && campaign) top.push({ text: '🔁 Поднять в Threads', callback_data: `ib:${campaign.id}:${ad.id}:${page}` });
+  if (raise && (raise.mode === 'raise' || raise.mode === 'resend')) {
+    top.push({ text: '🔁 Поднять сейчас', callback_data: `rn:${ad.id}:${page}` });
+  }
   const mid = [{ text: '🔁 Поднятия', callback_data: `rz:v:${ad.id}:${page}` }];
   if (campaign) mid.push({ text: '📄 Отчёт для рекламодателя', callback_data: `ar:${campaign.id}` });
   if (ad.status === 'published') mid.push({ text: '🗑 Снять', callback_data: `ax:${ad.id}:${page}` });

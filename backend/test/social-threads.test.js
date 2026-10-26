@@ -238,6 +238,7 @@ test('поднятие рекламы: файл — файлом, без фай�
   assert.equal(byCard.instagram.posted, true);
   assert.match(posted.find((p) => p.kind === 'image').text, /Нужен сантехник/, 'текст для Threads собран из рекламы');
   assert.match(posted.find((p) => p.kind === 'image').text, /шабашка\.com\/orders\/3\?s=t$/, 'в Threads — с меткой');
+  assert.equal(byCard.threads.text, posted.find((p) => p.kind === 'image').text, 'текст поста — наверх, для кампании');
   assert.match(posted.find((p) => p.kind === 'ig-image').text, /шабашка\.com\/orders\/3/);
 
   const onlyThreads = await social.raiseAd({ text: 'Текст', instagram: false });

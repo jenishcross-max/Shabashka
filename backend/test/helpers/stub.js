@@ -265,15 +265,23 @@ function productStoreStub() {
 }
 
 // Поднятия рекламы (см. src/telegram/adRaises.js) живут в базе. Тестам бота
-// хватает копилки: какие рекламы поставили на поднятия и какие сняли с них.
+// хватает копилки: какие рекламы поставили на поднятия, какие сняли с них и
+// какие подняли кнопкой «🔁 Поднять сейчас».
 function adRaisesStub(extra = {}) {
   const planned = [];
   const cancelled = [];
+  const raisedNow = [];
   const plan = { days: 3, times: ['09:00', '13:00'], to: { site: true, threads: true, instagram: true, groups: true } };
   return {
     planned,
     cancelled,
+    raisedNow,
     start: () => {},
+    nowMode: async (listing) => ({ mode: !listing || listing.status !== 'published' ? 'gone' : 'raise' }),
+    raiseNow: async (importId, chatId) => {
+      raisedNow.push({ importId, chatId });
+      return 'raise';
+    },
     settings: async () => plan,
     active: () => true,
     plan: async (importId, chatId) => {

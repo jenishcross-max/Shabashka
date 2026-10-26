@@ -311,21 +311,39 @@ test('список листается, «ℹ️» открывает рекла�
   assert.match(info.text, /⏳ Вакансии · ≈/);
   assert.match(info.text, /Просмотры в группах Telegram не считает/);
   const buttons = buttonsOf(info);
-  for (const data of ['ai:5:0:f', 'ib:8:5:0', 'ar:8', 'ax:5:0', 'al:0', 'm:home']) {
+  for (const data of ['ai:5:0:f', 'rn:5:0', 'ar:8', 'ax:5:0', 'al:0', 'm:home']) {
     assert.ok(buttons.includes(data), `кнопка ${data}: ${buttons.join(', ')}`);
   }
 });
 
-test('«Поднять» из карточки поднимает один раз и прячет кнопку', async () => {
+test('«🔁 Поднять сейчас» поднимает один раз и прячет кнопку; рано — говорит, когда можно', async () => {
+  raises.raisedNow.length = 0;
+  edits.length = 0;
+  await press('rn:5:0');
+  await settle();
+  assert.deepEqual(raises.raisedNow, [{ importId: 5, chatId: 1 }]);
+  assert.ok(!buttonsOf(edits.at(-1)).includes('rn:5:0'), 'второй раз нажать нечего');
+
+  const nowMode = raises.nowMode;
+  raises.nowMode = async () => ({ mode: 'soon', waitMin: 25 });
+  await press('ai:5:0:f');
+  assert.ok(!buttonsOf(edits.at(-1)).includes('rn:5:0'));
+  assert.match(edits.at(-1).text, /Поднять вручную можно через 25 мин/);
+  await press('rn:5:0');
+  await settle();
+  assert.equal(raises.raisedNow.length, 1, 'рано — не поднимаем');
+  raises.nowMode = nowMode;
+});
+
+test('«Поднять в Threads» из карточек, выданных раньше, по-прежнему поднимает', async () => {
   boosted.length = 0;
   edits.length = 0;
   await press('ib:8:5:0');
   await settle();
   assert.equal(boosted.length, 1);
-  assert.ok(!buttonsOf(edits.at(-1)).includes('ib:8:5:0'), 'второй раз нажать нечего');
-  // И «Обновить», пока повтор ждёт очереди Threads, кнопку не возвращает.
+  // И «Обновить», пока повтор ждёт очереди Threads, «Поднять сейчас» не возвращает.
   await press('ai:5:0:f');
-  assert.ok(!buttonsOf(edits.at(-1)).includes('ib:8:5:0'));
+  assert.ok(!buttonsOf(edits.at(-1)).includes('rn:5:0'));
 });
 
 test('«Снять» сначала спрашивает', async () => {

@@ -774,21 +774,22 @@ async function raiseAd({
   let still = null;
   const image = () => (still = still || card.renderStill(cardData, {}));
 
+  // Текст поста отдаём наверх: если кампании у рекламы ещё нет, этот пост для
+  // неё первый, и по его тексту выйдут следующие (см. adRaises.share).
+  const caption = threadsText || video.threadsCaption(text, tag(siteLink, 'threads'), { ad: true });
   const toThreadsDone = async () => {
     if (!toThreads) return null;
     if (!threads.isConfigured()) return { posted: false, reason: 'Threads не подключён' };
-    return paceThreads(
+    const result = await paceThreads(
       () =>
         post('threads', async () => {
           // Карточка не нарисовалась — пост уйдёт текстом, как в publishToThreads.
           const buffer = !media && cardData ? await image().catch(() => null) : null;
-          return publishToThreads({
-            text: threadsText || video.threadsCaption(text, tag(siteLink, 'threads'), { ad: true }),
-            media: media || (buffer && { kind: 'image', buffer }),
-          });
+          return publishToThreads({ text: caption, media: media || (buffer && { kind: 'image', buffer }) });
         }),
       { priority: true }
     );
+    return { ...result, text: caption };
   };
 
   const toInstagramDone = async () => {

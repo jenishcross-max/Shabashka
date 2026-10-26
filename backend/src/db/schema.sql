@@ -511,6 +511,11 @@ CREATE INDEX IF NOT EXISTS idx_ads_user ON ads(user_id);
 ALTER TABLE ads ADD COLUMN IF NOT EXISTS is_imported BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS ad_id INTEGER;
 
+-- Реклама, которую после перезапуска выложили в Threads заново: очередь Threads
+-- живёт в памяти и перезапуск её теряет (см. telegram/adRaises.js). Метка —
+-- чтобы повторить один раз, а не на каждом перезапуске.
+ALTER TABLE imported_listings ADD COLUMN IF NOT EXISTS resent_at TIMESTAMPTZ;
+
 -- Видео у своих продуктов (см. telegram/products.js): { file_id, kind } из
 -- Telegram. Ролик выходит Reels в Instagram и видео в Threads; видео и фото
 -- чередуются по выходам. Колонкой отдельно: на проде таблица уже есть.

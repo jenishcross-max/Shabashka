@@ -126,6 +126,13 @@ const findDeps = {
   url: (type, id) => listingUrl(type === 'ad' ? 'board' : type, id),
 };
 
+// Поднятия рекламы (см. adRaises.js): по расписанию, кнопкой «🔁 Поднять
+// сейчас» и повтор застрявшей после перезапуска.
+const raiseDeps = {
+  report: (chatId, text) => tg.sendMessage(chatId || adminChat(), text),
+  siteLink: (ad) => prettyLink(adSiteUrl(ad)),
+};
+
 function publicText(parsed, listingType, siteLink) {
   const isVacancy = listingType === 'vacancy';
   const isBoard = listingType === 'board';
@@ -1034,7 +1041,12 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
           .then((posted) => {
             if (!posted) return null;
             feedStats.bump(!posted.posted ? 'ig.fail' : media.kind === 'video' ? 'ig.reel' : 'ig.image');
-            if (posted.posted) return tg.sendMessage(chatId, '📸 Instagram: реклама опубликована');
+            if (posted.posted) {
+              // Для снятия и чтобы после перезапуска не выложить её туда второй
+              // раз (см. adRaises.resend).
+              imports.setPosts(id, { instagramMediaId: posted.id }).catch(() => {});
+              return tg.sendMessage(chatId, '📸 Instagram: реклама опубликована');
+            }
             // Файл у админа уже есть — он сам его и прислал, — а вот подписи
             // нет: в ней ссылка на карточку и хештеги, которые собирали мы.
             // Отдаём её отдельным сообщением, чтобы выложить руками можно было
@@ -1613,7 +1625,10 @@ async function sendHelp(chatId) {
       '',
       '/ads — вся реклама, сначала новая. Нажмите на любую — просмотры и лайки',
       'в Threads, где она вышла, что с группами, отчёт для рекламодателя,',
-      'кнопки «Поднять» и «Снять».',
+      'кнопки «🔁 Поднять сейчас» (туда же, куда поднятия по плану, не чаще',
+      'раза в полчаса) и «Снять».',
+      'Сервер перезапустился, пока реклама ждала очереди Threads, — через',
+      'пять минут после старта выложу её туда сам и напишу.',
       '/threads — статистика аккаунта за сутки и неделю, в среднем на пост:',
       'этими числами удобно отвечать тем, кто спрашивает про рекламу.',
       '',
@@ -2069,8 +2084,29 @@ async function onCallback(query) {
     return;
   }
 
-  // «Поднять» из карточки рекламы: rawId — кампания, arg2 — реклама, arg3 —
-  // страница. Кнопку убираем сразу: второе нажатие подняло бы рекламу дважды.
+  // «🔁 Поднять сейчас» из карточки рекламы: rawId — реклама, arg2 — страница.
+  // Ждать площадки нельзя, поднятие уходит своим ходом и отчитывается в чат.
+  // Кнопку убираем сразу: второе нажатие подняло бы рекламу дважды.
+  if (action === 'rn') {
+    const { mode, waitMin } = await adRaises.nowMode(await imports.get(Number(rawId)));
+    if (mode === 'gone' || mode === 'soon') {
+      await tg.answerCallbackQuery(
+        query.id,
+        mode === 'gone' ? 'Реклама уже снята' : `Только что выходила — поднять можно через ${waitMin} мин`
+      );
+      return;
+    }
+    await tg.answerCallbackQuery(query.id, mode === 'resend' ? 'Выкладываю в Threads' : 'Поднимаю рекламу');
+    await show(chatId, await adInfoView(rawId, arg2, { noBoost: true }), messageId);
+    adRaises.raiseNow(Number(rawId), chatId, raiseDeps).catch(async (err) => {
+      console.error('Поднять сейчас:', err);
+      await tg.sendMessage(chatId, `⚠️ Поднять не вышло: ${tg.esc(err.message)}`).catch(() => {});
+    });
+    return;
+  }
+
+  // «Поднять в Threads» из карточек, выданных до «🔁 Поднять сейчас»: rawId —
+  // кампания, arg2 — реклама, arg3 — страница.
   if (action === 'ib') {
     await tg.answerCallbackQuery(query.id, 'Поднимаю рекламу в Threads');
     await show(chatId, await adInfoView(arg2, arg3, { noBoost: true }), messageId);
@@ -2815,10 +2851,7 @@ function startWatchers() {
   products.start({
     report: (view) => tg.sendMessage(process.env.SOURCE_REPORT_CHAT_ID || adminChat(), view.text, view.extra),
   });
-  adRaises.start({
-    report: (chatId, text) => tg.sendMessage(chatId || adminChat(), text),
-    siteLink: (ad) => prettyLink(adSiteUrl(ad)),
-  });
+  adRaises.start(raiseDeps);
   // Числа за сутки для строк «подпишись» и «все N за сутки» (см.
   // social/follow.js и social/more.js).
   const countDaily = () =>
@@ -2971,7 +3004,8 @@ async function offerKeyboard(chatId) {
 }
 
 // Только что поднятая реклама: пока повтор ждёт очереди Threads, постов у
-// кампании столько же, сколько было, и кнопка «Поднять» вернулась бы на месте.
+// кампании столько же, сколько было, и «🔁 Поднять сейчас» вернулась бы на
+// месте — adRaises.nowMode видит только то, что уже вышло.
 const boostedAt = new Map();
 const BOOST_GUARD_MS = 30 * 60 * 1000;
 const justBoosted = (campaignId) => Date.now() - (boostedAt.get(String(campaignId)) || 0) < BOOST_GUARD_MS;
@@ -3004,7 +3038,6 @@ async function adInfoView(importId, page = 0, { force = false, noBoost = false }
   let posts = [];
   let totals = null;
   let denied = false;
-  let boostable = false;
   if (campaign) {
     try {
       ({ posts, totals } = await social.adTracker.refresh(campaign, { force }));
@@ -3013,9 +3046,10 @@ async function adInfoView(importId, page = 0, { force = false, noBoost = false }
       posts = await social.adTracker.postsOf(campaign.id);
       totals = social.adTracker.totalsOf(posts);
     }
-    boostable =
-      !noBoost && ad.status === 'published' && !justBoosted(campaign.id) && (await social.adTracker.canBoost(campaign));
   }
+  // Что сделает «🔁 Поднять сейчас» (см. adRaises.nowMode). Только что
+  // нажатую кнопку не возвращаем: поднятие ещё ждёт очереди площадок.
+  const raise = noBoost || (campaign && justBoosted(campaign.id)) ? null : await adRaises.nowMode(ad).catch(() => null);
   const [groups, channel] = await Promise.all([
     adGroups.forImport(ad.id, { views: true }).catch(() => []),
     ad.channel_message_id ? adGroups.channelViews(CHANNEL_ID, ad.channel_message_id).catch(() => null) : null,
@@ -3033,7 +3067,7 @@ async function adInfoView(importId, page = 0, { force = false, noBoost = false }
     siteLink,
     siteLabel: prettyLink(siteLink),
     page: Number(page) || 0,
-    boostable,
+    raise,
     goal: social.adTracker.GOAL,
     reportAfterMs: social.adTracker.REPORT_AFTER_MS,
     raises,

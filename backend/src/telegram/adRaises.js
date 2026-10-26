@@ -10,7 +10,8 @@
 //
 // Сколько дней, во сколько и куда — настраивается в «☰ Меню → 🔁 Поднятия
 // рекламы» и применяется к новой рекламе; у каждой рекламы план можно
-// остановить, продлить на день или построить заново («📣 Реклама» → «ℹ️»).
+// остановить, продлить на день или построить заново («📣 Реклама» → «ℹ️»), а
+// саму рекламу — поднять сразу, кнопкой «🔁 Поднять сейчас».
 //
 // План лежит в базе (ad_raises): три дня на бесплатном Render без перезапуска
 // не проживает ничто.
@@ -194,12 +195,54 @@ async function payload(listing) {
       card = { parsed: listing.parsed, listingType: listing.parsed.listing_type || 'board' };
     }
   }
-  return { campaign, media, card, notes };
+  return { campaign, media, file: fileId ? { kind, fileId } : null, card, notes };
+}
+
+const titleOf = (listing) => (listing.parsed && listing.parsed.title) || 'реклама';
+
+// Пост рекламы в Threads и Instagram — при поднятии и при повторе застрявшей.
+// Кампании нет — реклама в Threads ещё не выходила: этот пост для неё первый,
+// по нему и заводим кампанию, как onThreads в bot.js заводит её по обычному
+// первому посту. Есть — пост в ту же кампанию, просмотры сложатся в отчёте.
+async function share(listing, chatId, to, deps) {
+  const { campaign, media, file, card, notes } = await payload(listing);
+  const shared = await social.raiseAd({
+    text: listing.raw_text || '',
+    threadsText: campaign ? campaign.threads_text : '',
+    media,
+    card,
+    siteLink: deps.siteLink(listing),
+    threads: to.threads,
+    instagram: to.instagram,
+  });
+  const posted = shared.threads && shared.threads.posted;
+  if (posted && campaign) await social.adTracker.addPost(campaign.id, shared.threads.id).catch(() => {});
+  if (posted && !campaign) {
+    // Снимают рекламу по первому посту — его id не затираем.
+    if (!listing.threads_post_id) await imports.setPosts(listing.id, { threadsPostId: shared.threads.id }).catch(() => {});
+    await social.adTracker
+      .track({
+        chatId,
+        importId: listing.id,
+        title: titleOf(listing),
+        threadsText: shared.threads.text,
+        media: file,
+        card,
+        postId: shared.threads.id,
+      })
+      .catch((err) => console.error('[поднятия] кампания не заведена:', err.message));
+  }
+  if (shared.instagram && shared.instagram.posted && !listing.instagram_media_id) {
+    await imports.setPosts(listing.id, { instagramMediaId: shared.instagram.id }).catch(() => {});
+  }
+  return { threads: brief(shared.threads), instagram: brief(shared.instagram), note: notes.join('; ') || null };
 }
 
 // deps: { report(chatId, text), siteLink(listing) } — из bot.js; to — куда
 // поднимать, из настроек (читает их заход, один раз на все поднятия).
-async function raiseOne(row, deps, to) {
+// manual — «🔁 Поднять сейчас» из карточки: об удачном поднятии пишем сразу,
+// итог плана — нет, он придёт после последнего поднятия по расписанию.
+async function raiseOne(row, deps, to, { manual = false } = {}) {
   const listing = await imports.get(row.import_id);
   if (!listing || listing.status !== 'published') {
     await cancel(row.import_id);
@@ -213,23 +256,8 @@ async function raiseOne(row, deps, to) {
   if (to.site) result.site = await imports.bump(listing).catch(() => false);
 
   if (to.threads || to.instagram) {
-    const { campaign, media, card, notes } = await payload(listing);
-    if (notes.length) result.note = notes.join('; ');
-    const shared = await social.raiseAd({
-      text,
-      threadsText: campaign ? campaign.threads_text : '',
-      media,
-      card,
-      siteLink: deps.siteLink(listing),
-      threads: to.threads,
-      instagram: to.instagram,
-    });
-    result.threads = brief(shared.threads);
-    result.instagram = brief(shared.instagram);
-    // Пост поднятия — в ту же кампанию: просмотры сложатся в отчёте.
-    if (shared.threads && shared.threads.posted && campaign) {
-      await social.adTracker.addPost(campaign.id, shared.threads.id).catch(() => {});
-    }
+    const shared = await share(listing, row.chat_id, to, deps);
+    Object.assign(result, { threads: shared.threads, instagram: shared.instagram, note: shared.note });
   }
 
   if (to.groups) {
@@ -248,11 +276,26 @@ async function raiseOne(row, deps, to) {
   await finish(row, ok ? 'done' : 'failed', result);
   feedStats.bump(ok ? 'raise.ok' : 'raise.fail');
 
-  const title = tg.esc(clamp((listing.parsed && listing.parsed.title) || 'реклама', 60));
+  const title = tg.esc(clamp(titleOf(listing), 60));
   if (!ok) {
     await deps.report(row.chat_id, [`⚠️ Поднятие «${title}» не вышло нигде:`, ...failLines(result)].join('\n'));
+  } else if (manual) {
+    const failed = failLines(result);
+    await deps.report(
+      row.chat_id,
+      [`🔁 Поднял «${title}»: ${doneParts(result).join(' · ')}`, ...(failed.length ? ['Не вышло:', ...failed] : [])].join('\n')
+    );
   }
-  await reportIfLast(row, listing, title, deps);
+  if (!manual) await reportIfLast(row, listing, title, deps);
+}
+
+function doneParts(result) {
+  const parts = [];
+  if (result.site === true) parts.push('🌐 сайт');
+  if (result.threads && result.threads.posted) parts.push('🧵 Threads');
+  if (result.instagram && result.instagram.posted) parts.push('📸 Instagram');
+  if (result.groups && result.groups.queued) parts.push(`👥 группы Telegram: ${result.groups.queued}`);
+  return parts;
 }
 
 function failLines(result) {
@@ -324,6 +367,120 @@ async function recover() {
   );
 }
 
+// ─── Застрявшая реклама
+//
+// Очередь Threads живёт в памяти процесса, и перезапуск Render — новая
+// переменная окружения, выкладка кода — стирает её вместе с рекламой, которая
+// ждала своей минуты. На сайте, в канале и в группах реклама есть (это пишется
+// в базу сразу), а в Threads, а то и в Instagram, — нет. И кнопки «Поднять» у
+// неё не было: кампания заводится только с первым постом. Такую рекламу за
+// последние сутки бот после старта находит и выкладывает сам, один раз
+// (resent_at).
+
+// Старый процесс Render гасит не сразу, а когда новый уже поднялся: пусть
+// доделает свою очередь, прежде чем мы решим, что она пропала.
+const RESEND_DELAY_MS = 5 * 60 * 1000;
+// Вышедшее после старта стоит в очереди этого процесса — оно не застряло.
+const STARTED_AT = new Date();
+
+async function stuck(startedAt = STARTED_AT) {
+  const { rows: list } = await db.query(
+    `SELECT l.* FROM imported_listings l
+      WHERE l.is_ad AND l.status = 'published' AND l.threads_post_id IS NULL AND l.resent_at IS NULL
+        AND COALESCE(l.published_at, l.created_at) BETWEEN NOW() - INTERVAL '24 hours' AND $1
+        AND NOT EXISTS (SELECT 1 FROM ad_campaigns c WHERE c.import_id = l.id)
+      ORDER BY l.id`,
+    [startedAt]
+  );
+  return list;
+}
+
+// В Threads — заново; в Instagram — если и туда не дошло.
+async function resend(listing, chatId, deps) {
+  await db.query('UPDATE imported_listings SET resent_at = NOW() WHERE id = $1', [listing.id]);
+  return share(listing, chatId, { threads: true, instagram: !listing.instagram_media_id }, deps);
+}
+
+function resendText(listing, result, { restarted = false } = {}) {
+  const title = tg.esc(clamp(titleOf(listing), 60));
+  const lines = [
+    restarted
+      ? `♻️ «${title}» так и не вышла в Threads: сервер перезапускался, и очередь пропала. Выложил заново:`
+      : `🧵 «${title}» в Threads ещё не выходила — выложил заново:`,
+  ];
+  const { threads, instagram } = result;
+  if (threads && threads.posted) {
+    const hours = Math.round(social.adTracker.WARN_AFTER_MS / HOUR_MS);
+    lines.push(`🧵 Threads — опубликовано. Слежу за просмотрами: через ${hours} ч скажу, если реклама отстаёт, через сутки пришлю отчёт.`);
+  } else if (threads) {
+    lines.push(`⚠️ Threads: ${tg.esc(threads.reason || 'не вышло')}`);
+  }
+  if (instagram) lines.push(instagram.posted ? '📸 Instagram — опубликовано' : `⚠️ Instagram: ${tg.esc(instagram.reason || 'не вышло')}`);
+  if (result.note) lines.push(`⚠️ ${tg.esc(result.note)}`);
+  if (threads && !threads.posted) lines.push('Ещё раз — «🔁 Поднять сейчас» в карточке рекламы (📣 Реклама → ℹ️).');
+  return lines.join('\n');
+}
+
+async function resendStuck(deps, startedAt = STARTED_AT) {
+  if (!social.threadsConfigured()) return 0;
+  const list = await stuck(startedAt);
+  for (const listing of list) {
+    try {
+      const result = await resend(listing, listing.tg_chat_id, deps);
+      await deps.report(listing.tg_chat_id, resendText(listing, result, { restarted: true }));
+    } catch (err) {
+      console.error('[поднятия] застрявшая реклама:', err.message);
+    }
+  }
+  return list.length;
+}
+
+// ─── «🔁 Поднять сейчас» из карточки рекламы
+
+// Чаще раза в полчаса не поднимаем: одинаковые посты подряд Threads принимает
+// за спам. Отсчёт — от последнего выхода: на сайт, в Threads, поднятия или
+// повтора застрявшей.
+const NOW_GAP_MS = 30 * 60 * 1000;
+
+// Что сделает кнопка: gone — рекламу сняли; soon — выходила только что,
+// waitMin — сколько ждать; resend — в Threads ещё не выходила, выложим заново;
+// raise — поднимем, как по плану.
+async function nowMode(listing, now = Date.now()) {
+  if (!listing || listing.status !== 'published') return { mode: 'gone' };
+  const { rows: last } = await db.query(
+    `SELECT GREATEST(
+              (SELECT MAX(COALESCE(done_at, due_at)) FROM ad_raises WHERE import_id = $1 AND status IN ('done', 'running')),
+              (SELECT MAX(p.posted_at) FROM ad_posts p JOIN ad_campaigns c ON c.id = p.campaign_id WHERE c.import_id = $1),
+              (SELECT GREATEST(resent_at, COALESCE(published_at, created_at)) FROM imported_listings WHERE id = $1)
+            ) AS at`,
+    [listing.id]
+  );
+  const at = last[0] && last[0].at ? new Date(last[0].at).getTime() : 0;
+  const wait = at + NOW_GAP_MS - now;
+  if (wait > 0) return { mode: 'soon', waitMin: Math.ceil(wait / 60000) };
+  const campaign = await social.adTracker.byImport(listing.id).catch(() => null);
+  return { mode: campaign || listing.threads_post_id ? 'raise' : 'resend' };
+}
+
+// Одно поднятие сразу, мимо расписания, — туда же, куда и по плану, и в план
+// же записывается. Отчёт — в чат, когда площадки ответят.
+async function raiseNow(importId, chatId, deps) {
+  const listing = await imports.get(importId);
+  const { mode } = await nowMode(listing);
+  if (mode === 'resend') {
+    await deps.report(chatId, resendText(listing, await resend(listing, chatId, deps)));
+  } else if (mode === 'raise') {
+    const { rows: started } = await db.query(
+      `INSERT INTO ad_raises (import_id, chat_id, due_at, status) VALUES ($1, $2, NOW(), 'running') RETURNING *`,
+      [importId, chatId]
+    );
+    // Все площадки в настройках выключены — это про план, а кнопку нажали руками.
+    const { to } = await settings();
+    await raiseOne(started[0], deps, PLATFORMS.some((k) => to[k]) ? to : DEFAULT_PLAN.to, { manual: true });
+  }
+  return mode;
+}
+
 function start(deps) {
   let busy = false;
   const run = async () => {
@@ -343,6 +500,9 @@ function start(deps) {
       setInterval(run, TICK_MS).unref();
       run();
     });
+  setTimeout(() => {
+    resendStuck(deps).catch((err) => console.error('[поднятия] застрявшая реклама:', err.message));
+  }, RESEND_DELAY_MS).unref();
 }
 
 module.exports = {
@@ -360,6 +520,10 @@ module.exports = {
   restart,
   tick,
   start,
+  stuck,
+  resendStuck,
+  nowMode,
+  raiseNow,
   DAY_OPTIONS,
   TIME_PRESETS,
   DEFAULT_PLAN,

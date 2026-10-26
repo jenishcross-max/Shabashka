@@ -71,6 +71,7 @@ const requireSrc = install({
       bumped.push(row.id);
       return true;
     },
+    setPosts: async () => {},
   },
   [at('telegram/adGroups.js')]: {
     firstPost: async () => null,
