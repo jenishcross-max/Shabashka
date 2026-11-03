@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Шабашка — «Она как будто сериал»</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+@font-face{font-family:'Rubik';font-weight:500;font-style:normal;src:url(assets/fonts/rubik-cyrillic-500-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:500;font-style:normal;src:url(assets/fonts/rubik-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:700;font-style:normal;src:url(assets/fonts/rubik-cyrillic-700-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:700;font-style:normal;src:url(assets/fonts/rubik-latin-700-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:800;font-style:normal;src:url(assets/fonts/rubik-cyrillic-800-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:800;font-style:normal;src:url(assets/fonts/rubik-latin-800-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:900;font-style:normal;src:url(assets/fonts/rubik-cyrillic-900-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:900;font-style:normal;src:url(assets/fonts/rubik-latin-900-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:400;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-400-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:400;font-style:normal;src:url(assets/fonts/golos-text-latin-400-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:500;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-500-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:500;font-style:normal;src:url(assets/fonts/golos-text-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:600;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-600-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:600;font-style:normal;src:url(assets/fonts/golos-text-latin-600-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:700;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-700-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:700;font-style:normal;src:url(assets/fonts/golos-text-latin-700-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #241a19;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: 'Golos Text', sans-serif;
+        background: #241a19;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      .cam {
+        position: absolute;
+        inset: -30px;
+      }
+      .shot {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      /* Рука с листом: картинка 640×1152, бумага в ней — четырёхугольник,
+         текст кладём на неё через matrix3d (рассчитан по углам листа). */
+      .sign {
+        position: absolute;
+        left: 57px;
+        top: 673px;
+        width: 640px;
+        height: 1152px;
+        transform-origin: 300px 900px;
+      }
+      .sign-wrap {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 640px;
+        height: 1152px;
+        transform: scale(1.4);
+        transform-origin: 0 0;
+      }
+      .hand {
+        position: absolute;
+        inset: 0;
+        width: 640px;
+        height: 1152px;
+      }
+      .paper {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1000px;
+        height: 1414px;
+        transform-origin: 0 0;
+        transform: matrix3d(0.395794, -0.0330984, 0, 2.62476e-05, 0.0363494, 0.335548, 0, -7.59337e-05, 0, 0, 1, 0, 96.6, 365.5, 0, 1);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding-top: 170px;
+      }
+      .print {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 700;
+        font-size: 200px;
+        line-height: 1.08;
+        letter-spacing: -0.01em;
+        color: #1f1b1a;
+        opacity: 0.92;
+      }
+      .print-small {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 700;
+        font-size: 92px;
+        color: #1f1b1a;
+        opacity: 0.85;
+      }
+      .print-url {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 120px;
+        letter-spacing: -0.03em;
+        color: #f0433e;
+        margin-top: 30px;
+      }
+      .print-handle {
+        font-family: 'Golos Text', sans-serif;
+        font-weight: 600;
+        font-size: 74px;
+        color: #5b4d4b;
+        margin-top: 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Тренд «Ууу, она как будто сериал»: девушка танцует, перед камерой — лист с причиной.
+         Песня assets/song.wav — только для проверки таймингов; в Instagram/TikTok её
+         добавляют из библиотеки звуков, а в файл для публикации песня не идёт. -->
+    <div id="root" data-composition-id="main" data-start="0" data-duration="12.33" data-width="1080" data-height="1920" data-fps="30">
+      <!-- Видео девушки (Wan 2.2 на Hugging Face, из assets/img/girl.jpg): три куска,
+           каждый начат с последнего кадра предыдущего; склейки на сильных долях. -->
+      <video id="v1" class="scene clip shot" src="assets/clips/clip1.mp4" data-start="0" data-duration="4.66" data-track-index="0" muted playsinline></video>
+      <video id="v2" class="scene clip shot" src="assets/clips/clip2.mp4" data-start="4.66" data-duration="3.96" data-track-index="0" muted playsinline></video>
+      <video id="v3" class="scene clip shot" src="assets/clips/clip3.mp4" data-start="8.62" data-duration="3.71" data-track-index="0" muted playsinline></video>
+
+      <!-- Лист в руке поверх всего ролика -->
+      <section id="signs" class="scene clip" data-start="0" data-duration="12.33" data-track-index="1">
+        <div id="sign" class="sign" data-layout-allow-overflow>
+          <div class="sign-wrap" data-layout-allow-overflow>
+            <img class="hand" src="assets/img/hand.png" alt="" />
+            <div id="paper1" class="paper" data-layout-allow-overflow data-layout-allow-overlap>
+              <div class="print">Зарплата<br />каждый<br />день</div>
+            </div>
+            <div id="paper2" class="paper" style="opacity: 0" data-layout-allow-overflow data-layout-allow-overlap>
+              <div class="print-small">Работа тут:</div>
+              <div class="print-url">шабашка.com</div>
+              <div class="print-handle">@shabashka.com_</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <audio id="song" src="assets/song.wav" data-start="0" data-duration="12.33" data-volume="1" data-track-index="10"></audio>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      const later = { immediateRender: false };
+
+      // Сильные доли песни (по анализу звука); на них лист «кивает», как в руке.
+      const BEATS = [0.62, 1.4, 2.16, 3.06, 3.86, 4.66, 5.48, 6.26, 7.06, 7.86, 8.66, 9.48, 10.26, 11.06, 11.88];
+      let rot = 0;
+      BEATS.forEach((t, i) => {
+        if (t > 10.6) return; // дальше лист меняют, последнюю долю добавим после смены
+        const extra = i === 0 ? {} : later;
+        const next = i % 2 === 0 ? 1.6 : -1.2;
+        tl.fromTo('#sign', { y: 0, rotation: rot }, { y: 22, rotation: next, duration: 0.1, ease: 'power2.out', ...extra }, t - 0.02);
+        tl.fromTo('#sign', { y: 22 }, { y: 0, duration: 0.35, ease: 'sine.out', ...later }, t + 0.08);
+        rot = next;
+      });
+
+      // Пауза в песне на 10,8 с: лист уходит вниз и возвращается уже с адресом.
+      tl.fromTo('#sign', { y: 0 }, { y: 1100, duration: 0.14, ease: 'power2.in', ...later }, 10.7);
+      tl.fromTo('#paper1', { opacity: 1 }, { opacity: 0, duration: 0.01, ...later }, 10.85);
+      tl.fromTo('#paper2', { opacity: 0 }, { opacity: 1, duration: 0.01, ...later }, 10.85);
+      tl.fromTo('#sign', { y: 1100, rotation: rot }, { y: 0, rotation: -2, duration: 0.3, ease: 'back.out(1.6)', ...later }, 10.86);
+      tl.fromTo('#sign', { rotation: -2 }, { rotation: 1, duration: 0.55, ease: 'sine.inOut', ...later }, 11.25);
+      tl.fromTo('#sign', { y: 0, rotation: 1 }, { y: 22, rotation: -1, duration: 0.1, ease: 'power2.out', ...later }, 11.86);
+      tl.fromTo('#sign', { y: 22 }, { y: 0, duration: 0.35, ease: 'sine.out', ...later }, 11.96);
+
+      window.__timelines['main'] = tl;
+    </script>
+  </body>
+</html>

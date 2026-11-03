@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Шабашка — ДЕНЬГИ!</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+@font-face{font-family:'Rubik';font-weight:500;font-style:normal;src:url(assets/fonts/rubik-cyrillic-500-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:500;font-style:normal;src:url(assets/fonts/rubik-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:700;font-style:normal;src:url(assets/fonts/rubik-cyrillic-700-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:700;font-style:normal;src:url(assets/fonts/rubik-latin-700-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:800;font-style:normal;src:url(assets/fonts/rubik-cyrillic-800-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:800;font-style:normal;src:url(assets/fonts/rubik-latin-800-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:900;font-style:normal;src:url(assets/fonts/rubik-cyrillic-900-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:900;font-style:normal;src:url(assets/fonts/rubik-latin-900-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:400;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-400-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:400;font-style:normal;src:url(assets/fonts/golos-text-latin-400-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:500;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-500-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:500;font-style:normal;src:url(assets/fonts/golos-text-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:600;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-600-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:600;font-style:normal;src:url(assets/fonts/golos-text-latin-600-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:700;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-700-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:700;font-style:normal;src:url(assets/fonts/golos-text-latin-700-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #241a19;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: 'Golos Text', sans-serif;
+        color: #fff;
+        background: #241a19;
+      }
+      /* Пародия на дешёвую рекламу казино, но в цветах сайта:
+         красный #f0433e, тёмный #241a19, светлый #fbf7f6 + золото для «ДЕНЕГ». */
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #241a19;
+      }
+      .cam {
+        position: absolute;
+        inset: -40px;
+      }
+      .photo {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      /* Затемнение сверху и снизу, чтобы текст читался поверх фото */
+      .shade {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(20, 12, 11, 0.92) 0%, rgba(20, 12, 11, 0.82) 25%, rgba(20, 12, 11, 0.25) 40%, rgba(20, 12, 11, 0) 50%, rgba(20, 12, 11, 0.3) 68%, rgba(20, 12, 11, 0.85) 100%);
+      }
+      .top {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 230px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+      /* «ШАБАШКА» неоном */
+      .neon {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 150px;
+        line-height: 1;
+        letter-spacing: 0.02em;
+        color: #fff;
+        text-shadow: 0 0 10px #fff, 0 0 30px #f0433e, 0 0 70px #f0433e, 0 8px 0 #9e1d19;
+      }
+      /* Раздел сайта — глянцевая кнопка, как в рекламе */
+      .chip {
+        margin-top: 40px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 76px;
+        letter-spacing: 0.03em;
+        color: #fff;
+        background: linear-gradient(180deg, #ff8a84 0%, #f0433e 48%, #c42621 52%, #e23a35 100%);
+        border: 6px solid #fff;
+        border-radius: 999px;
+        padding: 10px 56px 18px;
+        box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45), 0 0 40px rgba(240, 67, 62, 0.6);
+        transform: rotate(-3deg);
+      }
+      .star {
+        position: absolute;
+        width: 70px;
+        height: 70px;
+      }
+      /* Карточка с настоящим примером с сайта */
+      .card {
+        position: absolute;
+        left: 70px;
+        right: 70px;
+        bottom: 330px;
+        background: #fbf7f6;
+        color: #241a19;
+        border-radius: 40px;
+        padding: 34px 46px 40px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+      }
+      .card-label {
+        font-family: 'Golos Text', sans-serif;
+        font-weight: 600;
+        font-size: 34px;
+        color: #7a6b69;
+      }
+      .card-title {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 800;
+        font-size: 58px;
+        line-height: 1.1;
+        margin-top: 8px;
+      }
+      .card-price {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 66px;
+        color: #f0433e;
+        margin-top: 10px;
+      }
+      /* «ДЕНЬГИ!» золотом */
+      .gold {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 200px;
+        line-height: 1;
+        letter-spacing: -0.01em;
+        color: #ffd23f;
+        background: linear-gradient(180deg, #fffbe0 0%, #ffe066 30%, #ffc21a 50%, #e08600 56%, #ffd84a 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        filter: drop-shadow(0 8px 0 #7a3b00) drop-shadow(0 0 40px rgba(255, 190, 0, 0.75));
+      }
+      .gold-long {
+        font-size: 136px;
+      }
+      .rays {
+        position: absolute;
+        left: 50%;
+        top: 360px;
+        width: 2800px;
+        height: 2800px;
+        margin-left: -1400px;
+        margin-top: -1400px;
+        background: repeating-conic-gradient(from 0deg, rgba(255, 214, 80, 0) 0deg 8deg, rgba(255, 214, 80, 0.32) 8deg 16deg);
+        mix-blend-mode: screen;
+      }
+      .flash {
+        position: absolute;
+        inset: 0;
+        background: #fff;
+      }
+      .coin {
+        position: absolute;
+        top: 0;
+        width: 110px;
+        height: 110px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 30%, #fff6c2 0%, #ffd23f 35%, #e09a00 75%, #a86400 100%);
+        border: 6px solid #c98200;
+        box-shadow: inset 0 0 0 12px rgba(255, 240, 170, 0.45), 0 8px 18px rgba(0, 0, 0, 0.35);
+      }
+      /* Финал */
+      .final-tint {
+        position: absolute;
+        inset: 0;
+        background: rgba(36, 26, 25, 0.45);
+      }
+      .pad {
+        position: absolute;
+        inset: 0;
+        padding: 230px 80px 300px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+      }
+      .logo {
+        display: block;
+        width: 170px;
+        height: 170px;
+        margin-bottom: 36px;
+      }
+      .cta-url {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 124px;
+        letter-spacing: -0.035em;
+        background: #fff;
+        color: #f0433e;
+        padding: 16px 48px 24px;
+        border-radius: 40px;
+        box-shadow: 0 0 60px rgba(240, 67, 62, 0.55);
+      }
+      .cta-small {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 700;
+        font-size: 56px;
+        line-height: 1.15;
+        margin-top: 44px;
+      }
+      .handle {
+        font-size: 46px;
+        font-weight: 600;
+        margin-top: 18px;
+      }
+      .play {
+        margin-top: 60px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 72px;
+        letter-spacing: 0.03em;
+        color: #fff;
+        background: linear-gradient(180deg, #ff8a84 0%, #f0433e 48%, #c42621 52%, #e23a35 100%);
+        border: 6px solid #fff;
+        border-radius: 999px;
+        padding: 14px 70px 22px;
+        box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45), 0 0 50px rgba(240, 67, 62, 0.7);
+      }
+      .arrow {
+        display: block;
+        width: 110px;
+        height: 110px;
+        margin-top: 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- «Шабашка… ДЕНЬГИ!» — пародия на мем «Вулкан, вулкан…». Голос: assets/voice.wav (ElevenLabs).
+         Тайминги сцен стоят по голосу: крики «ДЕНЬГИ» на 2,9 / 6,9 / 11,5 с. -->
+    <div id="root" data-composition-id="main" data-start="0" data-duration="17" data-width="1080" data-height="1920" data-fps="30">
+      <!-- 1. Подработка: грузчик -->
+      <section id="s1" class="scene clip" data-start="0" data-duration="2.85" data-track-index="0">
+        <div class="cam" data-layout-allow-overflow><img id="s1-img" class="photo" src="assets/img/mover-calm.jpg" alt="" /></div>
+        <div class="shade"></div>
+        <div class="top">
+          <div id="s1-neon" class="neon">ШАБАШКА</div>
+          <div id="s1-chip" class="chip">ПОДРАБОТКА</div>
+        </div>
+        <div id="s1-card" class="card">
+          <div class="card-label">Подработка · Бишкек · из объявлений</div>
+          <div class="card-title">Разнорабочий на завтра</div>
+          <div class="card-price">2 000 сом</div>
+        </div>
+      </section>
+
+      <!-- 2. ДЕНЬГИ! -->
+      <section id="s2" class="scene clip" data-start="2.85" data-duration="1.3" data-track-index="0">
+        <div id="s2-cam" class="cam" data-layout-allow-overflow><img id="s2-img" class="photo" src="assets/img/mover-money.jpg" alt="" /></div>
+        <div class="shade"></div>
+        <div id="s2-rays" class="rays" data-layout-allow-overflow></div>
+        <div class="top"><div id="s2-gold" class="gold" data-layout-allow-overlap>ДЕНЬГИ!</div></div>
+        <div id="s2-flash" class="flash"></div>
+      </section>
+
+      <!-- 3. Вакансии: официантка -->
+      <section id="s3" class="scene clip" data-start="4.15" data-duration="2.7" data-track-index="0">
+        <div class="cam" data-layout-allow-overflow><img id="s3-img" class="photo" src="assets/img/waitress-calm.jpg" alt="" /></div>
+        <div class="shade"></div>
+        <div class="top">
+          <div id="s3-neon" class="neon">ШАБАШКА</div>
+          <div id="s3-chip" class="chip">ВАКАНСИИ</div>
+        </div>
+        <div id="s3-card" class="card">
+          <div class="card-label">Вакансии · работа в штат</div>
+          <div class="card-title">Общепит, продажи, цеха</div>
+          <div class="card-price">2 500+ вакансий</div>
+        </div>
+      </section>
+
+      <!-- 4. ДЕНЬГИ! -->
+      <section id="s4" class="scene clip" data-start="6.85" data-duration="1.75" data-track-index="0">
+        <div id="s4-cam" class="cam" data-layout-allow-overflow><img id="s4-img" class="photo" src="assets/img/waitress-money.jpg" alt="" /></div>
+        <div class="shade"></div>
+        <div id="s4-rays" class="rays" data-layout-allow-overflow></div>
+        <div class="top"><div id="s4-gold" class="gold" data-layout-allow-overlap>ДЕНЬГИ!</div></div>
+        <div id="s4-flash" class="flash"></div>
+      </section>
+
+      <!-- 5. Биржа задач: мастер -->
+      <section id="s5" class="scene clip" data-start="8.6" data-duration="2.85" data-track-index="0">
+        <div class="cam" data-layout-allow-overflow><img id="s5-img" class="photo" src="assets/img/handyman-calm.jpg" alt="" /></div>
+        <div class="shade"></div>
+        <div class="top">
+          <div id="s5-neon" class="neon">ШАБАШКА</div>
+          <div id="s5-chip" class="chip">БИРЖА ЗАДАЧ</div>
+        </div>
+        <div id="s5-card" class="card">
+          <div class="card-label">Биржа · без комиссии</div>
+          <div class="card-title">Опиши задачу — мастера сами предложат цену</div>
+        </div>
+      </section>
+
+      <!-- 6. Мастер в деньгах (короткий удар) -->
+      <section id="s6" class="scene clip" data-start="11.45" data-duration="0.55" data-track-index="0">
+        <div id="s6-cam" class="cam" data-layout-allow-overflow><img id="s6-img" class="photo" src="assets/img/handyman-money.jpg" alt="" /></div>
+        <div class="shade"></div>
+        <div id="s6-flash" class="flash"></div>
+      </section>
+
+      <!-- 7. Вулкан из денег -->
+      <section id="s7" class="scene clip" data-start="12" data-duration="1.65" data-track-index="0">
+        <div id="s7-cam" class="cam" data-layout-allow-overflow><img id="s7-img" class="photo" src="assets/img/volcano.jpg" alt="" /></div>
+        <div class="shade"></div>
+        <div id="s7-rays" class="rays" data-layout-allow-overflow></div>
+        <div id="s7-flash" class="flash"></div>
+      </section>
+
+      <!-- «ДЕНЬГИИИИ!» поверх сцен 6 и 7 -->
+      <section id="s67" class="scene clip" data-start="11.45" data-duration="2.2" data-track-index="1" style="background: transparent; z-index: 5">
+        <div class="top"><div id="s67-gold" class="gold gold-long" data-layout-allow-overlap>ДЕНЬГИИИИ!</div></div>
+      </section>
+
+      <!-- Монеты сыплются из вулкана -->
+      <section id="coins" class="scene clip" data-start="12" data-duration="1.65" data-track-index="2" style="background: transparent">
+        <div id="c1" class="coin" data-layout-allow-overflow data-layout-allow-overlap style="left: 60px"></div>
+        <div id="c2" class="coin" data-layout-allow-overflow data-layout-allow-overlap style="left: 250px"></div>
+        <div id="c3" class="coin" data-layout-allow-overflow data-layout-allow-overlap style="left: 440px"></div>
+        <div id="c4" class="coin" data-layout-allow-overflow data-layout-allow-overlap style="left: 620px"></div>
+        <div id="c5" class="coin" data-layout-allow-overflow data-layout-allow-overlap style="left: 800px"></div>
+        <div id="c6" class="coin" data-layout-allow-overflow data-layout-allow-overlap style="left: 930px"></div>
+        <div id="c7" class="coin" data-layout-allow-overflow data-layout-allow-overlap style="left: 150px"></div>
+        <div id="c8" class="coin" data-layout-allow-overflow data-layout-allow-overlap style="left: 710px"></div>
+      </section>
+
+      <!-- 8. Финал -->
+      <section id="s8" class="scene clip" data-start="13.65" data-duration="3.35" data-track-index="0">
+        <img class="photo" src="assets/img/volcano-blur.jpg" alt="" />
+        <div class="final-tint"></div>
+        <div class="pad">
+          <svg class="logo" viewBox="0 0 100 100" id="s8-logo">
+            <rect x="2" y="2" width="96" height="96" rx="23" fill="#fff" />
+            <g fill="none" stroke="#F0433E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M30 32 V60 a10 10 0 0 0 20 0 V32" />
+              <path d="M50 32 V60 a10 10 0 0 0 20 0 V32" />
+            </g>
+          </svg>
+          <div id="s8-url" class="cta-url">шабашка.com</div>
+          <div id="s8-a" class="cta-small">Работа и подработка<br />по всему Кыргызстану</div>
+          <div id="s8-b" class="handle">@shabashka.com_</div>
+          <div id="s8-play" class="play">НАЙТИ РАБОТУ</div>
+          <svg id="s8-arrow" class="arrow" viewBox="0 0 100 100">
+            <path d="M50 8 L88 52 H64 V92 H36 V52 H12 Z" fill="#fff" />
+          </svg>
+        </div>
+      </section>
+
+      <audio id="voice" src="assets/voice.wav" data-start="0" data-duration="15.9" data-volume="1" data-track-index="10"></audio>
+      <audio id="bgm" src="assets/music.wav" data-start="0" data-duration="17" data-volume="0.22" data-fade-out="1.2" data-track-index="11"></audio>
+      <audio id="sfx-w1" src="assets/whoosh.wav" data-start="2.7" data-duration="0.45" data-volume="0.5" data-track-index="12"></audio>
+      <audio id="sfx-w2" src="assets/whoosh.wav" data-start="6.7" data-duration="0.45" data-volume="0.5" data-track-index="12"></audio>
+      <audio id="sfx-w3" src="assets/whoosh.wav" data-start="11.3" data-duration="0.45" data-volume="0.5" data-track-index="12"></audio>
+      <audio id="sfx-w4" src="assets/whoosh.wav" data-start="13.5" data-duration="0.45" data-volume="0.5" data-track-index="12"></audio>
+      <audio id="sfx-b1" src="assets/boom.wav" data-start="2.87" data-duration="0.9" data-volume="0.8" data-track-index="13"></audio>
+      <audio id="sfx-b2" src="assets/boom.wav" data-start="6.87" data-duration="0.9" data-volume="0.8" data-track-index="13"></audio>
+      <audio id="sfx-b3" src="assets/boom.wav" data-start="11.47" data-duration="0.9" data-volume="0.8" data-track-index="13"></audio>
+      <audio id="sfx-b4" src="assets/boom.wav" data-start="12" data-duration="0.9" data-volume="1" data-track-index="14"></audio>
+      <audio id="sfx-c1" src="assets/coins.wav" data-start="2.95" data-duration="0.9" data-volume="0.55" data-track-index="15"></audio>
+      <audio id="sfx-c2" src="assets/coins.wav" data-start="6.95" data-duration="0.9" data-volume="0.55" data-track-index="15"></audio>
+      <audio id="sfx-c3" src="assets/coins.wav" data-start="12.05" data-duration="0.9" data-volume="0.6" data-track-index="15"></audio>
+      <audio id="sfx-p1" src="assets/pop.wav" data-start="1.5" data-duration="0.15" data-volume="0.5" data-track-index="16"></audio>
+      <audio id="sfx-p2" src="assets/pop.wav" data-start="1.85" data-duration="0.15" data-volume="0.5" data-track-index="16"></audio>
+      <audio id="sfx-p3" src="assets/pop.wav" data-start="5.4" data-duration="0.15" data-volume="0.5" data-track-index="16"></audio>
+      <audio id="sfx-p4" src="assets/pop.wav" data-start="5.75" data-duration="0.15" data-volume="0.5" data-track-index="16"></audio>
+      <audio id="sfx-p5" src="assets/pop.wav" data-start="9.8" data-duration="0.15" data-volume="0.5" data-track-index="16"></audio>
+      <audio id="sfx-p6" src="assets/pop.wav" data-start="10.15" data-duration="0.15" data-volume="0.5" data-track-index="16"></audio>
+      <audio id="sfx-p7" src="assets/pop.wav" data-start="13.75" data-duration="0.15" data-volume="0.6" data-track-index="16"></audio>
+      <audio id="sfx-p8" src="assets/pop.wav" data-start="15.6" data-duration="0.15" data-volume="0.7" data-track-index="16"></audio>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      const pop = { duration: 0.45, ease: 'back.out(1.8)' };
+
+      // Повторные fromTo на тот же элемент не должны подменять его начальное состояние.
+      const later = { immediateRender: false };
+
+      // Тряска камеры: заранее заданные сдвиги, без Math.random — рендер всегда одинаковый.
+      const SHAKE = [[-34, 20], [28, -26], [-22, -14], [30, 22], [-16, 26], [18, -18], [-10, 10], [8, -6], [0, 0]];
+      function shake(sel, at, step, power, first) {
+        let prev = [0, 0];
+        SHAKE.forEach((p, i) => {
+          const next = [p[0] * power, p[1] * power];
+          const extra = first && i === 0 ? {} : later;
+          tl.fromTo(sel, { x: prev[0], y: prev[1] }, { x: next[0], y: next[1], duration: step, ease: 'none', ...extra }, at + i * step);
+          prev = next;
+        });
+      }
+
+      // Спокойная сцена: медленный наезд, неоновое «ШАБАШКА», раздел сайта, карточка.
+      function calm(n, start, dur, chipAt, cardAt) {
+        const s = '#s' + n;
+        tl.fromTo(s + '-img', { scale: 1 }, { scale: 1.1, duration: dur, ease: 'none' }, start);
+        tl.fromTo(s + '-neon', { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1, duration: 0.5, ease: 'back.out(2)' }, start + 0.1);
+        tl.fromTo(s + '-chip', { opacity: 0, scale: 0.3, rotation: -14 }, { opacity: 1, scale: 1, rotation: -3, ...pop }, chipAt);
+        tl.fromTo(s + '-card', { opacity: 0, y: 140 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power3.out' }, cardAt);
+      }
+
+      // «ДЕНЬГИ!»: вспышка, удар камерой, золото и лучи.
+      function money(n, start, dur, withGold) {
+        const s = '#s' + n;
+        tl.fromTo(s + '-flash', { opacity: 1 }, { opacity: 0, duration: 0.3, ease: 'power2.out' }, start);
+        tl.fromTo(s + '-img', { scale: 1.25 }, { scale: 1.02, duration: dur, ease: 'power3.out' }, start);
+        shake(s + '-cam', start + 0.03, 0.045, 1, true);
+        if (withGold) {
+          tl.fromTo(s + '-gold', { opacity: 0, scale: 3, rotation: -12 }, { opacity: 1, scale: 1, rotation: -4, duration: 0.22, ease: 'power4.in' }, start + 0.02);
+          tl.fromTo(s + '-gold', { scale: 1 }, { scale: 1.08, duration: dur - 0.3, ease: 'sine.inOut', ...later }, start + 0.24);
+          tl.fromTo(s + '-rays', { rotation: 0, opacity: 0 }, { rotation: 35, opacity: 1, duration: dur, ease: 'none' }, start);
+        }
+      }
+
+      // Монеты из вулкана: свой момент и поворот у каждой — фиксированные.
+      const COINS = [
+        ['#c1', 0.0, 260], ['#c2', 0.12, -200], ['#c3', 0.05, 320], ['#c4', 0.2, -280],
+        ['#c5', 0.08, 240], ['#c6', 0.25, -300], ['#c7', 0.3, 200], ['#c8', 0.16, -220],
+      ];
+      function coins(at, dur, first) {
+        COINS.forEach(([sel, delay, spin]) => {
+          const extra = first ? {} : later;
+          tl.fromTo(sel, { y: -180, rotation: 0 }, { y: 2100, rotation: spin, duration: dur, ease: 'power1.in', ...extra }, at + delay);
+        });
+      }
+
+      calm(1, 0, 2.85, 1.5, 1.85);
+      money(2, 2.85, 1.3, true);
+
+      calm(3, 4.15, 2.7, 5.4, 5.75);
+      money(4, 6.85, 1.75, true);
+
+      calm(5, 8.6, 2.85, 9.8, 10.15);
+
+      // Финальное «ДЕНЬГИИИИ!»: мастер в деньгах, потом вулкан, тряска сильнее.
+      money(6, 11.45, 0.55, false);
+      tl.fromTo('#s67-gold', { opacity: 0, scale: 3, rotation: -12 }, { opacity: 1, scale: 1, rotation: -4, duration: 0.22, ease: 'power4.in' }, 11.47);
+      tl.fromTo('#s67-gold', { scaleX: 1 }, { scaleX: 1.12, duration: 1.9, ease: 'sine.inOut', ...later }, 11.7);
+      tl.fromTo('#s7-flash', { opacity: 1 }, { opacity: 0, duration: 0.35, ease: 'power2.out' }, 12);
+      tl.fromTo('#s7-img', { scale: 1 }, { scale: 1.3, duration: 1.65, ease: 'power1.in' }, 12);
+      tl.fromTo('#s7-rays', { rotation: 0, opacity: 0 }, { rotation: 45, opacity: 1, duration: 1.65, ease: 'none' }, 12);
+      shake('#s7-cam', 12.02, 0.05, 1.4, true);
+      shake('#s7-cam', 12.5, 0.06, 0.9, false);
+      coins(12.05, 1.5, true);
+
+      // Финал: «шабашка точка ком» и кнопка с прыгающей стрелкой.
+      tl.fromTo('#s8-logo', { scale: 0 }, { scale: 1, duration: 0.45, ease: 'back.out(1.8)' }, 13.7);
+      tl.fromTo('#s8-url', { opacity: 0, scale: 0.5 }, { opacity: 1, scale: 1, duration: 0.55, ease: 'back.out(1.7)' }, 13.8);
+      tl.fromTo('#s8-a', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power3.out' }, 14.5);
+      tl.fromTo('#s8-b', { opacity: 0 }, { opacity: 1, duration: 0.4 }, 14.9);
+      tl.fromTo('#s8-play', { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1, duration: 0.5, ease: 'back.out(2)' }, 15.55);
+      [0, 1, 2].forEach((i) => {
+        tl.fromTo('#s8-arrow', { y: 0 }, { y: -26, duration: 0.22, ease: 'power2.out', ...later }, 15.9 + i * 0.36);
+        tl.fromTo('#s8-arrow', { y: -26 }, { y: 0, duration: 0.14, ease: 'power2.in', ...later }, 16.12 + i * 0.36);
+      });
+      tl.fromTo('#s8-arrow', { opacity: 0 }, { opacity: 1, duration: 0.2 }, 15.8);
+
+      window.__timelines['main'] = tl;
+    </script>
+  </body>
+</html>

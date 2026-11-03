@@ -1,7 +1,8 @@
 """Своя музыка и звуки для промо-роликов: без чужих прав и без сети.
 
 python3 make_audio.py <папка> <длина_музыки_сек> [настроение]
-Пишет music.wav, pop.wav и whoosh.wav. Настроение: beat (по умолчанию — бит
+Пишет music.wav, pop.wav, whoosh.wav, boom.wav (удар) и coins.wav (звон монет).
+Настроение: beat (по умолчанию — бит
 120 BPM, как в первых роликах), soft (колокольчики 96 BPM — для пригласительных),
 calm (спокойно, 84 BPM — для читалки).
 """
@@ -182,9 +183,37 @@ def whoosh():
     return out * shape / np.max(np.abs(out * shape)) * 0.5
 
 
+def boom():
+    """Удар, как в дешёвой рекламе: падающий по тону бас и короткий шумовой хлопок."""
+    n = int(0.9 * SR)
+    t = np.arange(n) / SR
+    f = 32 + 140 * np.exp(-t * 9)
+    body = np.sin(2 * np.pi * np.cumsum(f) / SR) * env(n, 0.002, 0.35)
+    noise = rng.standard_normal(n)
+    noise = np.convolve(noise, np.ones(6) / 6, "same") * env(n, 0.001, 0.05)
+    x = np.tanh((body + noise * 0.6) * 2.2)  # перегруз — чтобы «бахнуло»
+    return x / np.max(np.abs(x)) * 0.9
+
+
+def coins():
+    """Звон монет: россыпь коротких металлических «динь» с негармоничными призвуками."""
+    n = int(0.9 * SR)
+    out = np.zeros(n)
+    for k in range(14):
+        at = 0.02 + k * 0.045 + rng.uniform(0, 0.03)
+        freq = rng.uniform(2600, 4200)
+        m = int(0.25 * SR)
+        t = np.arange(m) / SR
+        ping = sum(np.sin(2 * np.pi * freq * r * t) * a for r, a in ((1, 1), (1.47, 0.5), (2.09, 0.3)))
+        place(out, ping * env(m, 0.0005, 0.04) * (1 - k / 18), at)
+    return out / np.max(np.abs(out)) * 0.6
+
+
 if __name__ == "__main__":
     folder, length = sys.argv[1], float(sys.argv[2])
     mood = sys.argv[3] if len(sys.argv) > 3 else "beat"
     write(f"{folder}/music.wav", MOODS[mood](length))
     write(f"{folder}/pop.wav", pop())
     write(f"{folder}/whoosh.wav", whoosh())
+    write(f"{folder}/boom.wav", boom())
+    write(f"{folder}/coins.wav", coins())

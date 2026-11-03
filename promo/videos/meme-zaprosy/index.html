@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Шабашка — Я: хочу 100 000 сом, без опыта и 2 часа в день</title>
+    <script src="assets/gsap.min.js"></script>
+    <!-- Собрано tools/meme.py: правьте тексты здесь или пересоберите командой. -->
+    <style>
+@font-face{font-family:'Rubik';font-weight:500;font-style:normal;src:url(assets/fonts/rubik-cyrillic-500-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:500;font-style:normal;src:url(assets/fonts/rubik-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:700;font-style:normal;src:url(assets/fonts/rubik-cyrillic-700-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:700;font-style:normal;src:url(assets/fonts/rubik-latin-700-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:800;font-style:normal;src:url(assets/fonts/rubik-cyrillic-800-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:800;font-style:normal;src:url(assets/fonts/rubik-latin-800-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:900;font-style:normal;src:url(assets/fonts/rubik-cyrillic-900-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:900;font-style:normal;src:url(assets/fonts/rubik-latin-900-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:400;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-400-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:400;font-style:normal;src:url(assets/fonts/golos-text-latin-400-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:500;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-500-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:500;font-style:normal;src:url(assets/fonts/golos-text-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:600;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-600-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:600;font-style:normal;src:url(assets/fonts/golos-text-latin-600-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:700;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-700-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:700;font-style:normal;src:url(assets/fonts/golos-text-latin-700-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #241a19;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: 'Golos Text', sans-serif;
+        color: #241a19;
+        background: #241a19;
+      }
+      /* Фирменные цвета сайта: красный #f0433e, тёмный #241a19, светлый #fbf7f6 */
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      .red {
+        background: #f0433e;
+        color: #fff;
+      }
+      .pad {
+        position: absolute;
+        inset: 0;
+        padding: 230px 80px 300px;
+        display: flex;
+        flex-direction: column;
+      }
+      .center {
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+      }
+      /* Мем-подпись сверху */
+      .meme-cap {
+        position: absolute;
+        left: 50px;
+        right: 50px;
+        top: 230px;
+        background: #fff;
+        color: #241a19;
+        border-radius: 34px;
+        padding: 26px 40px 32px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 800;
+        font-size: 62px;
+        line-height: 1.12;
+        text-align: center;
+        box-shadow: 0 16px 50px rgba(0, 0, 0, 0.3);
+      }
+      .subs {
+        position: absolute;
+        left: 40px;
+        right: 40px;
+        top: 1440px;
+        text-align: center;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 74px;
+        line-height: 1.06;
+        color: #fff;
+        -webkit-text-stroke: 12px #241a19;
+        paint-order: stroke fill;
+      }
+      /* Финал */
+      .logo {
+        display: block;
+        width: 170px;
+        height: 170px;
+        margin-bottom: 40px;
+      }
+      .cta-url {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 128px;
+        letter-spacing: -0.035em;
+        margin-top: 40px;
+        background: #fff;
+        color: #f0433e;
+        padding: 18px 50px 26px;
+        border-radius: 40px;
+      }
+      .cta-small {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 800;
+        font-size: 64px;
+        line-height: 1.12;
+        margin-top: 50px;
+      }
+      .handle {
+        font-size: 44px;
+        font-weight: 600;
+        margin-top: 24px;
+        opacity: 0.95;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="10.8" data-width="1080" data-height="1920" data-fps="30">
+      <video id="clip" class="scene clip" src="assets/clips/clip.mp4" data-start="0" data-duration="8.6" data-track-index="0" muted playsinline></video>
+      <div id="cap" class="clip meme-cap" data-start="0" data-duration="8.6" data-track-index="1">Я: хочу 100 000 сом, без опыта и 2 часа в день</div>
+      <div id="sub0" class="clip subs" data-start="0.0" data-duration="2.8" data-track-index="3">Очень велики запросы</div>
+      <div id="sub1" class="clip subs" data-start="2.8" data-duration="2.8" data-track-index="4">Очень!</div>
+      <div id="sub2" class="clip subs" data-start="5.6" data-duration="3.0" data-track-index="3">Не существует такого</div>
+
+      <!-- Финал -->
+      <section id="fin" class="scene red clip" data-start="8.6" data-duration="2.2" data-track-index="0">
+        <div class="pad center">
+          <svg class="logo" viewBox="0 0 100 100" id="fin-logo">
+            <rect x="2" y="2" width="96" height="96" rx="23" fill="#fff" />
+            <g fill="none" stroke="#F0433E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M30 32 V60 a10 10 0 0 0 20 0 V32" />
+              <path d="M50 32 V60 a10 10 0 0 0 20 0 V32" />
+            </g>
+          </svg>
+          <div id="fin-url" class="cta-url">шабашка.com</div>
+          <div id="fin-a" class="cta-small">Зато есть подработки за 2 000–4 000 сом в день</div>
+          <div id="fin-b" class="handle">@shabashka.com_</div>
+        </div>
+      </section>
+
+      <audio id="voice" src="assets/clip.wav" data-start="0" data-duration="8.6" data-volume="1.2" data-track-index="10"></audio>
+      <audio id="bgm" src="assets/music.wav" data-start="8.6" data-duration="2.2" data-volume="0.6" data-fade-in="0.15" data-track-index="11"></audio>
+      <audio id="sfx-w" src="assets/whoosh.wav" data-start="8.45" data-duration="0.45" data-volume="0.6" data-track-index="12"></audio>
+      <audio id="sfx-p" src="assets/pop.wav" data-start="9.05" data-duration="0.15" data-volume="0.9" data-track-index="13"></audio>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      const END_AT = 8.6;
+
+      tl.fromTo('#cap', { opacity: 0, y: -40, scale: 0.9 }, { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: 'back.out(1.8)' }, 0.03);
+      tl.fromTo('#sub0', { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.2, ease: 'back.out(2.4)' }, 0.02);
+      tl.fromTo('#sub1', { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.2, ease: 'back.out(2.4)' }, 2.82);
+      tl.fromTo('#sub2', { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.2, ease: 'back.out(2.4)' }, 5.619999999999999);
+
+      tl.fromTo('#fin-logo', { scale: 0 }, { scale: 1, duration: 0.4, ease: 'back.out(1.8)' }, END_AT + 0.05);
+      tl.fromTo('#fin-url', { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.5, ease: 'back.out(1.7)' }, END_AT + 0.4);
+      tl.fromTo('#fin-a', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power3.out' }, END_AT + 0.8);
+      tl.fromTo('#fin-b', { opacity: 0 }, { opacity: 0.95, duration: 0.35 }, END_AT + 1.1);
+
+      window.__timelines['main'] = tl;
+    </script>
+  </body>
+</html>

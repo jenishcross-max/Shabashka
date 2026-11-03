@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Шабашка — {{TITLE}}</title>
+    <script src="assets/gsap.min.js"></script>
+    <!-- Собрано tools/meme.py: правьте тексты здесь или пересоберите командой. -->
+    <style>
+/*FONTS*/
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #241a19;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: 'Golos Text', sans-serif;
+        color: #241a19;
+        background: #241a19;
+      }
+      /* Фирменные цвета сайта: красный #f0433e, тёмный #241a19, светлый #fbf7f6 */
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      .red {
+        background: #f0433e;
+        color: #fff;
+      }
+      .pad {
+        position: absolute;
+        inset: 0;
+        padding: 230px 80px 300px;
+        display: flex;
+        flex-direction: column;
+      }
+      .center {
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+      }
+      /* Мем-подпись сверху */
+      .meme-cap {
+        position: absolute;
+        left: 50px;
+        right: 50px;
+        top: 230px;
+        background: #fff;
+        color: #241a19;
+        border-radius: 34px;
+        padding: 26px 40px 32px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 800;
+        font-size: 62px;
+        line-height: 1.12;
+        text-align: center;
+        box-shadow: 0 16px 50px rgba(0, 0, 0, 0.3);
+      }
+      .subs {
+        position: absolute;
+        left: 40px;
+        right: 40px;
+        top: {{SUBS_Y}}px;
+        text-align: center;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 74px;
+        line-height: 1.06;
+        color: #fff;
+        -webkit-text-stroke: 12px #241a19;
+        paint-order: stroke fill;
+      }
+      /* Финал */
+      .logo {
+        display: block;
+        width: 170px;
+        height: 170px;
+        margin-bottom: 40px;
+      }
+      .cta-url {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 128px;
+        letter-spacing: -0.035em;
+        margin-top: 40px;
+        background: #fff;
+        color: #f0433e;
+        padding: 18px 50px 26px;
+        border-radius: 40px;
+      }
+      .cta-small {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 800;
+        font-size: 64px;
+        line-height: 1.12;
+        margin-top: 50px;
+      }
+      .handle {
+        font-size: 44px;
+        font-weight: 600;
+        margin-top: 24px;
+        opacity: 0.95;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="{{TOTAL}}" data-width="1080" data-height="1920" data-fps="30">
+      <video id="clip" class="scene clip" src="assets/clips/clip.mp4" data-start="0" data-duration="{{CLIP}}" data-track-index="0" muted playsinline></video>
+      <div id="cap" class="clip meme-cap" data-start="0" data-duration="{{CLIP}}" data-track-index="1">{{CAPTION}}</div>
+      {{SUBS}}
+
+      <!-- Финал -->
+      <section id="fin" class="scene red clip" data-start="{{END_AT}}" data-duration="{{END_DUR}}" data-track-index="0">
+        <div class="pad center">
+          <svg class="logo" viewBox="0 0 100 100" id="fin-logo">
+            <rect x="2" y="2" width="96" height="96" rx="23" fill="#fff" />
+            <g fill="none" stroke="#F0433E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M30 32 V60 a10 10 0 0 0 20 0 V32" />
+              <path d="M50 32 V60 a10 10 0 0 0 20 0 V32" />
+            </g>
+          </svg>
+          <div id="fin-url" class="cta-url">шабашка.com</div>
+          <div id="fin-a" class="cta-small">{{END_TEXT}}</div>
+          <div id="fin-b" class="handle">@shabashka.com_</div>
+        </div>
+      </section>
+
+      <audio id="voice" src="assets/clip.wav" data-start="0" data-duration="{{CLIP}}" data-volume="1.2" data-track-index="10"></audio>
+      <audio id="bgm" src="assets/music.wav" data-start="{{END_AT}}" data-duration="{{END_DUR}}" data-volume="0.6" data-fade-in="0.15" data-track-index="11"></audio>
+      <audio id="sfx-w" src="assets/whoosh.wav" data-start="{{END_WHOOSH}}" data-duration="0.45" data-volume="0.6" data-track-index="12"></audio>
+      <audio id="sfx-p" src="assets/pop.wav" data-start="{{END_POP}}" data-duration="0.15" data-volume="0.9" data-track-index="13"></audio>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      const END_AT = /*END_AT*/;
+
+      tl.fromTo('#cap', { opacity: 0, y: -40, scale: 0.9 }, { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: 'back.out(1.8)' }, 0.03);
+      /*SUBS_JS*/
+
+      tl.fromTo('#fin-logo', { scale: 0 }, { scale: 1, duration: 0.4, ease: 'back.out(1.8)' }, END_AT + 0.05);
+      tl.fromTo('#fin-url', { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.5, ease: 'back.out(1.7)' }, END_AT + 0.4);
+      tl.fromTo('#fin-a', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power3.out' }, END_AT + 0.8);
+      tl.fromTo('#fin-b', { opacity: 0 }, { opacity: 0.95, duration: 0.35 }, END_AT + 1.1);
+
+      window.__timelines['main'] = tl;
+    </script>
+  </body>
+</html>

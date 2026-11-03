@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Аудиокниги — лекция в наушниках</title>
+    <script src="assets/gsap.min.js"></script>
+    <!-- Исходник: src/audiobooks.html → python src/build.py. Голос — настоящая запись бота
+         (Audiobooks/promo/«Закон Ома простыми словами.mp3»), кусок 1× и кусок 2×. Музыка — make_audio.py calm, владелец 03.11 доверил выбор.
+         Ссылка бота в финале — t.me/Audio_and_Books_bot (подтвердила маркетинг-сессия 31.10). -->
+    <style>
+@font-face{font-family:'Rubik';font-weight:500;font-style:normal;src:url(assets/fonts/rubik-cyrillic-500-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:500;font-style:normal;src:url(assets/fonts/rubik-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:700;font-style:normal;src:url(assets/fonts/rubik-cyrillic-700-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:700;font-style:normal;src:url(assets/fonts/rubik-latin-700-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:800;font-style:normal;src:url(assets/fonts/rubik-cyrillic-800-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:800;font-style:normal;src:url(assets/fonts/rubik-latin-800-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:900;font-style:normal;src:url(assets/fonts/rubik-cyrillic-900-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:900;font-style:normal;src:url(assets/fonts/rubik-latin-900-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:400;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-400-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:400;font-style:normal;src:url(assets/fonts/golos-text-latin-400-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:500;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-500-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:500;font-style:normal;src:url(assets/fonts/golos-text-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:600;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-600-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:600;font-style:normal;src:url(assets/fonts/golos-text-latin-600-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:700;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-700-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:700;font-style:normal;src:url(assets/fonts/golos-text-latin-700-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #1b1f4b;
+      }
+      /* Цвета промо бота: тёмно-синий #1b1f4b, фиолет #7a4cfb, бирюза #00b0d4; чат — как в Telegram */
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: 'Golos Text', sans-serif;
+        color: #fff;
+        background: linear-gradient(160deg, #1b1f4b 0%, #2a2470 55%, #4a33b8 100%);
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      .cyan {
+        color: #4fe0f5;
+      }
+      /* 1. Крючок */
+      .hook {
+        position: absolute;
+        left: 80px;
+        right: 80px;
+        top: 330px;
+      }
+      .pov {
+        display: inline-block;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 800;
+        font-size: 48px;
+        letter-spacing: 0.06em;
+        background: #4fe0f5;
+        color: #1b1f4b;
+        padding: 8px 30px 12px;
+        border-radius: 999px;
+        margin-bottom: 40px;
+      }
+      .h-xl {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 104px;
+        line-height: 1.04;
+        letter-spacing: -0.03em;
+      }
+      .word {
+        display: block;
+      }
+      .pages {
+        position: absolute;
+        left: 290px;
+        top: 1040px;
+        width: 500px;
+        height: 640px;
+      }
+      .page {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 440px;
+        height: 580px;
+        border-radius: 26px;
+        background: #fff;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+        padding: 54px 46px;
+      }
+      .page i {
+        display: block;
+        height: 18px;
+        border-radius: 9px;
+        background: #d9dcef;
+        margin-bottom: 26px;
+      }
+      .page .count {
+        position: absolute;
+        right: -40px;
+        bottom: -30px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 84px;
+        background: #ff5a5f;
+        color: #fff;
+        padding: 10px 34px 18px;
+        border-radius: 30px;
+        box-shadow: 0 14px 40px rgba(0, 0, 0, 0.3);
+      }
+      /* 2–3. Чат в стиле Telegram */
+      .chat {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 1920px;
+        background: #b6cf98;
+      }
+      .chat-bg {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0) 40%), radial-gradient(circle at 80% 70%, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0) 45%);
+      }
+      .tg-head {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 300px;
+        background: #fff;
+        display: flex;
+        align-items: flex-end;
+        padding: 0 50px 34px;
+        gap: 30px;
+        color: #1b1f2b;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+      }
+      .ava {
+        width: 110px;
+        height: 110px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #7a4cfb, #00b0d4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 58px;
+      }
+      .tg-head b {
+        display: block;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 700;
+        font-size: 50px;
+      }
+      .tg-head span {
+        font-size: 36px;
+        color: #656b75;
+      }
+      .col {
+        position: absolute;
+        left: 40px;
+        right: 40px;
+        top: 360px;
+        display: flex;
+        flex-direction: column;
+        gap: 30px;
+      }
+      .bub {
+        max-width: 860px;
+        border-radius: 34px;
+        padding: 26px 32px 22px;
+        color: #1b1f2b;
+        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
+        font-size: 42px;
+        line-height: 1.25;
+      }
+      .bub.me {
+        align-self: flex-end;
+        background: #effdde;
+        border-bottom-right-radius: 10px;
+      }
+      .bub.bot {
+        align-self: flex-start;
+        background: #fff;
+        border-bottom-left-radius: 10px;
+      }
+      .time {
+        display: block;
+        text-align: right;
+        font-size: 28px;
+        color: #3d7a3d;
+        margin-top: 6px;
+      }
+      .bot .time {
+        color: #656b75;
+      }
+      .file {
+        display: flex;
+        align-items: center;
+        gap: 28px;
+      }
+      .pdf {
+        width: 120px;
+        height: 120px;
+        border-radius: 24px;
+        background: #2e8a39;
+        color: #fff;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 800;
+        font-size: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .file b {
+        display: block;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 700;
+        font-size: 44px;
+      }
+      .file span {
+        font-size: 34px;
+        color: #3d7a3d;
+      }
+      .prog {
+        display: flex;
+        gap: 10px;
+        margin-top: 18px;
+      }
+      .prog i {
+        width: 58px;
+        height: 30px;
+        border-radius: 6px;
+        border: 4px solid #1b1f2b;
+        background: transparent;
+      }
+      .prog i.on {
+        background: #1b1f2b;
+      }
+      .voice {
+        display: flex;
+        align-items: center;
+        gap: 30px;
+        width: 860px;
+      }
+      .play {
+        position: relative;
+        flex: 0 0 130px;
+        height: 130px;
+        border-radius: 50%;
+        background: #3a8de0;
+      }
+      .play svg {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 130px;
+        height: 130px;
+      }
+      .wave {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        height: 90px;
+      }
+      .wave i {
+        width: 9px;
+        border-radius: 5px;
+        background: #b9cde6;
+      }
+      .wave i.lit {
+        background: #3a8de0;
+      }
+      .vmeta {
+        font-size: 32px;
+        color: #656b75;
+        margin-top: 8px;
+      }
+      .speed {
+        display: inline-block;
+        margin-left: 18px;
+        background: #e6eefb;
+        color: #1d64b0;
+        font-weight: 700;
+        border-radius: 12px;
+        padding: 0 14px 4px;
+      }
+      /* Крупные подписи поверх чата */
+      .big {
+        position: absolute;
+        left: 60px;
+        right: 60px;
+        text-align: center;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        line-height: 1.05;
+        color: #fff;
+        -webkit-text-stroke: 14px #1b1f4b;
+        paint-order: stroke fill;
+      }
+      .x2 {
+        position: absolute;
+        right: 90px;
+        top: 1150px;
+        width: 300px;
+        height: 300px;
+        border-radius: 50%;
+        background: #7a4cfb;
+        color: #fff;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 150px;
+        line-height: 290px;
+        text-align: center;
+        box-shadow: 0 20px 60px rgba(27, 31, 75, 0.45);
+      }
+      /* 4. Финал */
+      .fin {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 0 70px 160px;
+      }
+      .f-ico {
+        width: 200px;
+        height: 200px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #7a4cfb, #00b0d4);
+        font-size: 110px;
+        line-height: 200px;
+        margin-bottom: 54px;
+        box-shadow: 0 0 120px rgba(79, 224, 245, 0.35);
+      }
+      .f-title {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 96px;
+        line-height: 1.04;
+        letter-spacing: -0.03em;
+      }
+      .f-free {
+        display: inline-block;
+        margin-top: 50px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 64px;
+        background: #4fe0f5;
+        color: #1b1f4b;
+        padding: 10px 44px 16px;
+        border-radius: 999px;
+      }
+      .f-url {
+        margin-top: 46px;
+        font-family: 'Golos Text', sans-serif;
+        font-weight: 700;
+        font-size: 54px;
+        color: #fff;
+        background: rgba(27, 31, 75, 0.6);
+        border: 3px solid #6b5fd6;
+        padding: 16px 40px 22px;
+        border-radius: 28px;
+        white-space: nowrap;
+      }
+      .handle {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 120px;
+        text-align: center;
+        font-size: 36px;
+        font-weight: 600;
+        color: #b9b4f0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="16.6" data-width="1080" data-height="1920" data-fps="30">
+      <!-- 1. Крючок: виден с первого кадра -->
+      <section id="s1" class="scene clip" data-start="0" data-duration="1.7" data-track-index="0">
+        <div class="hook">
+          <div class="pov">POV</div>
+          <div class="h-xl">
+            <span class="word">завтра экзамен,</span>
+            <span class="word">а лекция —</span>
+            <span id="s1-40" class="word cyan">40 страниц</span>
+          </div>
+        </div>
+        <div class="pages">
+          <div id="pg3" class="page" style="transform: rotate(-9deg) translate(-40px, 30px)"><i></i><i></i><i></i></div>
+          <div id="pg2" class="page" style="transform: rotate(6deg) translate(40px, 10px)"><i></i><i></i><i></i></div>
+          <div id="pg1" class="page"><i></i><i style="width: 80%"></i><i></i><i style="width: 60%"></i><i></i><i style="width: 85%"></i><i></i><div class="count">40 стр.</div></div>
+        </div>
+      </section>
+
+      <!-- 2–3. Чат: пересылаешь PDF → «Озвучиваю…» → голосовое играет -->
+      <section id="s2" class="scene clip" data-start="1.7" data-duration="10.9" data-track-index="0">
+        <div class="chat">
+          <div class="chat-bg"></div>
+          <div class="tg-head">
+            <div class="ava">🎧</div>
+            <div><b>Аудиокниги</b><span>бот</span></div>
+          </div>
+          <div class="col">
+            <div id="m1" class="bub me">
+              <div class="file"><div class="pdf">PDF</div><div><b>Лекция_физика.pdf</b><span>40 стр. · 2,1 МБ</span></div></div>
+              <span class="time">23:47 ✓✓</span>
+            </div>
+            <div id="m2" class="bub bot">
+              🎙 Озвучиваю · Светлана<br />
+              <span id="m2-pct">40 страниц ≈ 1 час аудио</span>
+              <div class="prog"><i id="p0"></i><i id="p1"></i><i id="p2"></i><i id="p3"></i><i id="p4"></i><i id="p5"></i><i id="p6"></i><i id="p7"></i><i id="p8"></i><i id="p9"></i></div>
+              <span class="time">23:47</span>
+            </div>
+            <div id="m3" class="bub bot">
+              <div class="voice">
+                <div class="play">
+                  <svg viewBox="0 0 130 130"><polygon id="ic-play" points="52,38 52,92 96,65" fill="#fff" /><g id="ic-pause" fill="#fff" opacity="0"><rect x="45" y="38" width="14" height="54" rx="4" /><rect x="71" y="38" width="14" height="54" rx="4" /></g></svg>
+                </div>
+                <div>
+                  <div class="wave"><i id="w0" style="height: 40px"></i><i id="w1" style="height: 90px"></i><i id="w2" style="height: 57px"></i><i id="w3" style="height: 51px"></i><i id="w4" style="height: 46px"></i><i id="w5" style="height: 46px"></i><i id="w6" style="height: 32px"></i><i id="w7" style="height: 37px"></i><i id="w8" style="height: 44px"></i><i id="w9" style="height: 43px"></i><i id="w10" style="height: 57px"></i><i id="w11" style="height: 41px"></i><i id="w12" style="height: 34px"></i><i id="w13" style="height: 44px"></i><i id="w14" style="height: 47px"></i><i id="w15" style="height: 44px"></i><i id="w16" style="height: 34px"></i><i id="w17" style="height: 50px"></i><i id="w18" style="height: 42px"></i><i id="w19" style="height: 43px"></i><i id="w20" style="height: 37px"></i><i id="w21" style="height: 41px"></i><i id="w22" style="height: 32px"></i><i id="w23" style="height: 39px"></i><i id="w24" style="height: 28px"></i><i id="w25" style="height: 43px"></i><i id="w26" style="height: 42px"></i><i id="w27" style="height: 38px"></i><i id="w28" style="height: 32px"></i><i id="w29" style="height: 20px"></i><i id="w30" style="height: 18px"></i><i id="w31" style="height: 18px"></i><i id="w32" style="height: 35px"></i><i id="w33" style="height: 44px"></i><i id="w34" style="height: 36px"></i><i id="w35" style="height: 45px"></i></div>
+                  <div class="vmeta">Лекция_физика · 58:12<span id="spd1" class="speed">1×</span><span id="spd2" class="speed" style="opacity: 0">2×</span></div>
+                </div>
+              </div>
+              <span class="time">23:48</span>
+            </div>
+          </div>
+        </div>
+        <div id="cap-a" class="big" style="top: 1420px; font-size: 92px">Переслал PDF —</div>
+        <div id="cap-b" class="big" style="top: 1530px; font-size: 92px">получил аудио</div>
+        <div id="cap-c" class="big" style="top: 1460px; font-size: 96px">Слушаешь<br />в маршрутке 🚌</div>
+        <div id="x2" class="x2">2×</div>
+      </section>
+
+      <!-- 4. Финал -->
+      <section id="s3" class="scene clip" data-start="12.6" data-duration="4" data-track-index="0">
+        <div class="fin">
+          <div id="f-ico" class="f-ico">🎧</div>
+          <div id="f-title" class="f-title">Перешли PDF —<br /><span class="cyan">получи аудио</span></div>
+          <div id="f-free" class="f-free">Бесплатно</div>
+          <div id="f-url" class="f-url">t.me/Audio_and_Books_bot</div>
+        </div>
+        <div id="f-handle" class="handle">@shabashka.com_</div>
+      </section>
+
+      <!-- Под голосом бота (7–12.6 с) музыка уже приглушена в самом music.wav -->
+      <audio id="bgm" src="assets/music.wav" data-start="0" data-duration="16.6" data-volume="0.32" data-track-index="9"></audio>
+      <audio id="voice" src="assets/voice.wav" data-start="7" data-duration="5.59" data-volume="1" data-track-index="10"></audio>
+      <audio id="sfx-1" src="assets/sfx/whoosh-short.mp3" data-start="1.65" data-duration="0.57" data-volume="0.4" data-track-index="11"></audio>
+      <audio id="sfx-2" src="assets/sfx/pop.mp3" data-start="1.90" data-duration="0.72" data-volume="0.45" data-track-index="12"></audio>
+      <audio id="sfx-3" src="assets/sfx/pop.mp3" data-start="2.80" data-duration="0.72" data-volume="0.35" data-track-index="12"></audio>
+      <audio id="sfx-4" src="assets/sfx/notification.mp3" data-start="5.70" data-duration="2.46" data-volume="0.35" data-track-index="13"></audio>
+      <audio id="sfx-5" src="assets/sfx/click-soft.mp3" data-start="6.95" data-duration="0.37" data-volume="0.5" data-track-index="14"></audio>
+      <audio id="sfx-6" src="assets/sfx/pop.mp3" data-start="9.60" data-duration="0.72" data-volume="0.4" data-track-index="12"></audio>
+      <audio id="sfx-7" src="assets/sfx/whoosh-short.mp3" data-start="12.55" data-duration="0.57" data-volume="0.4" data-track-index="11"></audio>
+      <audio id="sfx-8" src="assets/sfx/chime.mp3" data-start="13.35" data-duration="2.5" data-volume="0.4" data-track-index="13"></audio>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // 1. Крючок: текст и стопка листов на месте с первого кадра (это обложка)
+      tl.fromTo('#pg1', { y: 0 }, { y: -30, duration: 0.18, yoyo: true, repeat: 1, ease: 'power2.out' }, 0.3);
+      tl.fromTo('#s1-40', { scale: 1 }, { scale: 1.08, duration: 0.25, yoyo: true, repeat: 1, ease: 'power2.out', transformOrigin: '0% 50%' }, 0.7);
+
+      // 2. Файл → «Озвучиваю…» с полосой → голосовое
+      tl.fromTo('#m1', { opacity: 0, x: 200, scale: 0.9 }, { opacity: 1, x: 0, scale: 1, duration: 0.4, ease: 'back.out(1.6)' }, 1.9);
+      tl.fromTo('#cap-a', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.35, ease: 'power3.out' }, 2.0);
+      tl.fromTo('#m2', { opacity: 0, x: -200, scale: 0.9 }, { opacity: 1, x: 0, scale: 1, duration: 0.4, ease: 'back.out(1.6)' }, 2.8);
+      for (let i = 0; i < 10; i++) tl.set('#p' + i, { backgroundColor: '#1b1f2b' }, 3.1 + i * 0.24);
+      tl.fromTo('#m3', { opacity: 0, x: -200, scale: 0.9 }, { opacity: 1, x: 0, scale: 1, duration: 0.4, ease: 'back.out(1.6)' }, 5.7);
+      tl.fromTo('#cap-b', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.35, ease: 'back.out(2)' }, 5.75);
+      tl.to(['#cap-a', '#cap-b'], { opacity: 0, duration: 0.2 }, 6.8);
+
+      // 3. Голосовое играет: значок паузы, волна загорается, «в маршрутке», потом 2×
+      tl.set('#ic-play', { opacity: 0 }, 7.0);
+      tl.set('#ic-pause', { opacity: 1 }, 7.0);
+      for (let i = 0; i < 36; i++) tl.set('#w' + i, { backgroundColor: '#3a8de0' }, 7.0 + i * 0.1553);
+      tl.fromTo('#cap-c', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.4, ease: 'back.out(1.8)' }, 7.3);
+      tl.fromTo('#x2', { opacity: 0, scale: 0.2, rotation: -30 }, { opacity: 1, scale: 1, rotation: 8, duration: 0.45, ease: 'back.out(2.2)' }, 9.6);
+      tl.set('#spd1', { display: 'none' }, 9.6);
+      tl.set('#spd2', { opacity: 1 }, 9.6);
+
+      // 4. Финал
+      tl.fromTo('#f-ico', { scale: 0.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: 'back.out(1.8)' }, 12.65);
+      tl.fromTo('#f-title', { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power3.out' }, 12.85);
+      tl.fromTo('#f-free', { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.45, ease: 'back.out(2)' }, 13.35);
+      tl.fromTo('#f-url', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power3.out' }, 13.75);
+      tl.fromTo('#f-handle', { opacity: 0 }, { opacity: 1, duration: 0.4 }, 14.1);
+
+      window.__timelines['main'] = tl;
+    </script>
+  </body>
+</html>
