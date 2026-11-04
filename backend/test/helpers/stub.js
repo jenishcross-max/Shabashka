@@ -330,6 +330,15 @@ function exchangeStubs() {
       onCallback: async (query) => String(query.data || '').startsWith('fd:'),
     },
     [at('tasksRepo.js')]: { get: async () => null },
+    // WhatsApp-канал (см. whatsapp/index.js) грузит Baileys и ходит в базу; боту
+    // в тестах хватает того, что команда до него доходит.
+    [at('whatsapp/index.js')]: {
+      start: () => {},
+      command: async (arg) => {
+        calls.push({ whatsapp: arg });
+        return '💬 WhatsApp-канал';
+      },
+    },
   };
 }
 

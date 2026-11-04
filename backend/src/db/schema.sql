@@ -545,3 +545,14 @@ CREATE TABLE IF NOT EXISTS outreach_contacts (
   listing_id   INTEGER NOT NULL,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Вход WhatsApp-канала (см. whatsapp/auth.js): ключи шифрования второго номера,
+-- которым бот выкладывает подборки в канал. В базе, а не в папке, как в
+-- примерах Baileys: у бесплатного Render нет диска, и после каждого деплоя номер
+-- пришлось бы привязывать заново. key — 'creds' (сам вход) или '<тип>-<id>'
+-- (ключи переписки), value — JSON, где Buffer записан через BufferJSON.
+CREATE TABLE IF NOT EXISTS wa_auth (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

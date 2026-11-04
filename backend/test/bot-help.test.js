@@ -112,6 +112,24 @@ test('справка называет то, что бот делает на са
   assert.match(text, /\/outreach/, '«кому написать»');
   assert.match(text, /Не больше 10 в день/);
   assert.match(text, /\/find 6683/, 'найти и снять объявление');
+  assert.match(text, /\/whatsapp/, 'WhatsApp-канал');
+});
+
+// WhatsApp-канал (см. src/whatsapp/index.js): привязать номер и выложить
+// подборку может только админ.
+test('/whatsapp — админу, постороннему — нет', async () => {
+  exchangeCalls.length = 0;
+  tg.clear();
+  await say('/whatsapp');
+  await say('/whatsapp link');
+  assert.deepEqual(exchangeCalls, [{ whatsapp: '' }, { whatsapp: 'link' }]);
+  assert.ok(tg.has(/💬 WhatsApp-канал/));
+
+  exchangeCalls.length = 0;
+  await bot.handleUpdate({
+    message: { chat: { id: 99, type: 'private' }, from: { id: 779 }, message_id: 7, text: '/whatsapp link' },
+  });
+  assert.deepEqual(exchangeCalls, [], 'постороннему привязку не даём');
 });
 
 // «🔎 Найти и снять» (см. src/telegram/findListing.js) — только админу: снять

@@ -93,6 +93,23 @@ async function freshOrders({ hours = 24, limit = 5 } = {}) {
   return rows.map(order);
 }
 
+// Свежие вакансии для WhatsApp-канала (см. whatsapp/digest.js): новее прошлой
+// подборки (afterId — курсор), но не старше суток — после долгого молчания канал
+// не вываливает позавчерашнее. Свежие сверху.
+async function freshVacancies({ afterId = 0, hours = 24, limit = 5 } = {}) {
+  const { rows } = await db.query(
+    `SELECT * FROM (
+       SELECT DISTINCT ON (${WHO}) ${VACANCY_FIELDS}
+         FROM vacancies
+        WHERE status = 'open' AND NOT is_example AND id > $1
+          AND created_at > NOW() - make_interval(hours => $2)
+        ORDER BY ${WHO}, id DESC
+     ) v ORDER BY id DESC LIMIT $3`,
+    [afterId, hours, limit]
+  );
+  return rows.map(vacancy);
+}
+
 // Середина зарплат «от» по категориям: медиана, а не среднее — одна вакансия
 // «от 200 000» не должна поднимать всю профессию. «Другое» не показываем: это
 // не профессия, и сказать про неё «столько платят» нечего. Закрытые за месяц
@@ -118,4 +135,4 @@ async function salaryStats({ city = 'Бишкек', days = 30, minCount = 5, lim
   return rows;
 }
 
-module.exports = { topSalary, forStudents, freshOrders, salaryStats };
+module.exports = { topSalary, forStudents, freshOrders, freshVacancies, salaryStats };

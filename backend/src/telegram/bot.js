@@ -32,6 +32,7 @@ const taskShare = require('./taskShare');
 const outreach = require('./outreach');
 const groupPost = require('./groupPost');
 const findListing = require('./findListing');
+const whatsapp = require('../whatsapp');
 const taskEvents = require('../taskEvents');
 const tasksRepo = require('../tasksRepo');
 const { tag } = require('../sourceTag');
@@ -1723,6 +1724,9 @@ async function sendHelp(chatId) {
       '/find 6683 (или «☰ Меню → 🔎 Найти и снять») — найти объявление по номеру,',
       'ссылке, телефону или словам из заголовка и снять кнопкой 🗑: с сайта, из канала',
       'и из Threads; на ролик в Instagram дам ссылку — удалить его через API нельзя.',
+      '',
+      '/whatsapp — WhatsApp-канал: подборки свежих вакансий 5 раз в день со второго',
+      'номера. /whatsapp link — код, чтобы привязать номер; /whatsapp now — подборка сейчас.',
     ],
   ];
   for (const [i, part] of help.entries()) {
@@ -1882,6 +1886,13 @@ async function onMessage(message) {
 
   if (text === '/outreach') {
     await outreach.send(chatId, subscriptionDeps);
+    return;
+  }
+
+  // WhatsApp-канал (см. whatsapp/index.js): состояние, привязка, подборка сейчас.
+  const wa = text.match(/^\/whatsapp(?:\s+(\w+))?$/);
+  if (wa) {
+    await tg.sendMessage(chatId, await whatsapp.command(wa[1] || ''));
     return;
   }
 
@@ -2876,6 +2887,11 @@ function startWatchers() {
     siteUrl: (type) => (SITE_URL && LISTING_PATHS[type] ? `${SITE_URL}/${LISTING_PATHS[type]}` : ''),
     pretty: prettyLink,
     channel: CHANNEL_ID ? (html) => tg.sendMessage(CHANNEL_ID, html) : null,
+  });
+  // Подборки в WhatsApp-канал — со второго номера, если задан WA_CHANNEL.
+  whatsapp.start({
+    siteUrl: (type) => (SITE_URL && LISTING_PATHS[type] ? `${SITE_URL}/${LISTING_PATHS[type]}` : ''),
+    pretty: prettyLink,
   });
 }
 

@@ -59,7 +59,7 @@
          знаков Threads. Поэтому разворачиваем здесь, до запуска Метрики. -->
     <script id="source-tag">
       (function () {
-        var SOURCES = { t: 'threads', tg: 'telegram', b: 'bot' };
+        var SOURCES = { t: 'threads', tg: 'telegram', b: 'bot', w: 'whatsapp' };
         try {
           var url = new URL(location.href);
           var source = SOURCES[url.searchParams.get('s')];

@@ -300,6 +300,14 @@ async function build({ now = Date.now(), previous = null, tech = false, title = 
           }`,
         ]
       : []),
+    // Подборки в WhatsApp-канал (см. whatsapp/digest.js).
+    ...(n('wa.ok') || n('wa.skip') || n('wa.fail')
+      ? [
+          `💬 WhatsApp: ${num(n('wa.ok'))}${n('wa.skip') ? ` · мало данных ${num(n('wa.skip'))}` : ''}${
+            n('wa.fail') ? ` · не вышло ${num(n('wa.fail'))}` : ''
+          }`,
+        ]
+      : []),
     ...(await followerLines(now, bot)),
     ...botLines(bot, n)
   );

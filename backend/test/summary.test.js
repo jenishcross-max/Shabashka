@@ -204,6 +204,15 @@ test('рубрики — сколько вышло и почему нет', asyn
   assert.doesNotMatch((await summary.build()).text, /Рубрик/, 'не было — строки нет');
 });
 
+// Подборки в WhatsApp-канал (см. src/whatsapp/digest.js).
+test('WhatsApp-канал — сколько подборок вышло и почему нет', async () => {
+  Object.assign(stats.counters, { 'wa.ok': 4, 'wa.skip': 1, 'wa.fail': 1 });
+  const { text } = await summary.build();
+  assert.match(text, /💬 WhatsApp: 4 · мало данных 1 · не вышло 1\n/);
+  for (const key of ['wa.ok', 'wa.skip', 'wa.fail']) delete stats.counters[key];
+  assert.doesNotMatch((await summary.build()).text, /WhatsApp:/, 'канал выключен — строки нет');
+});
+
 test('часы сводки: off выключает, мусор отбрасывается', () => {
   assert.deepEqual(summary.parseHours('off'), []);
   assert.deepEqual(summary.parseHours('21, 9,x,25,9'), [9, 21]);

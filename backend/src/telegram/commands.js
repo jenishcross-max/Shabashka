@@ -15,6 +15,7 @@ const ADMIN_COMMANDS = [
   ...COMMANDS,
   { command: 'outreach', description: 'Кому написать: авторы объявлений из групп' },
   { command: 'subs', description: 'Подписка на вакансии и задачи' },
+  { command: 'whatsapp', description: 'WhatsApp-канал: состояние и привязка' },
 ];
 
 // Сначала общий список, потом по админу. Админ, с которым бот ещё не говорил

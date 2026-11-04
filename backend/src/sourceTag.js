@@ -5,8 +5,9 @@
 // «прямые» (замер 21 октября 2026, см. docs/plans/2026-10-21-subscribe-and-sources.md).
 // Метка короткая: полное «?utm_source=threads» съело бы 20 из 500 знаков поста
 // в Threads. Сайт сам разворачивает её в utm_source до запуска Метрики (см.
-// frontend/index.html) — список кодов там тот же.
-const CODES = { threads: 't', telegram: 'tg', bot: 'b' };
+// frontend/index.html) — список кодов там тот же. w — WhatsApp-канал (см.
+// whatsapp/digest.js): встроенный браузер WhatsApp тоже не говорит, откуда заход.
+const CODES = { threads: 't', telegram: 'tg', bot: 'b', whatsapp: 'w' };
 
 function tag(link, source) {
   if (!link) return '';

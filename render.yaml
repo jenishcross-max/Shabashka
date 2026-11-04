@@ -135,3 +135,12 @@ services:
         sync: false
       - key: AD_PRICE
         sync: false
+      # WhatsApp-канал (см. README, «WhatsApp-канал»): ссылка на канал и второй
+      # номер, которым бот выкладывает подборки. Пусто — выключено.
+      - key: WA_CHANNEL
+        sync: false
+      - key: WA_PHONE
+        sync: false
+      # Часы подборок по Бишкеку (по умолчанию 9,12,15,18,21; off — ни одной).
+      - key: WA_HOURS
+        sync: false

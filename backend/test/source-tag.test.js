@@ -9,6 +9,7 @@ test('метка — короткий параметр s в конце адре�
   assert.equal(tag('шабашка.com/vacancies/12', 'threads'), 'шабашка.com/vacancies/12?s=t');
   assert.equal(tag('https://xn--80aaac0cyed.com/vacancies', 'telegram'), 'https://xn--80aaac0cyed.com/vacancies?s=tg');
   assert.equal(tag('шабашка.com/rabota/obshchepit', 'bot'), 'шабашка.com/rabota/obshchepit?s=b');
+  assert.equal(tag('шабашка.com/vacancies/12', 'whatsapp'), 'шабашка.com/vacancies/12?s=w');
 });
 
 test('свои параметры и якорь адреса метка не ломает', () => {
