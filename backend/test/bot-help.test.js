@@ -113,6 +113,7 @@ test('справка называет то, что бот делает на са
   assert.match(text, /Не больше 10 в день/);
   assert.match(text, /\/find 6683/, 'найти и снять объявление');
   assert.match(text, /\/whatsapp/, 'WhatsApp-канал');
+  assert.match(text, /🔔 Получать вакансии/, 'кнопка подписки под вакансиями в группе');
 });
 
 // WhatsApp-канал (см. src/whatsapp/index.js): привязать номер и выложить

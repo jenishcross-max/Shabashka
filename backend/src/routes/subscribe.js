@@ -17,7 +17,9 @@ const { BOT_UA_RE } = require('../bots');
 
 const router = express.Router();
 
-const SOURCES = ['threads', 'site'];
+// telegram — кнопка под вакансией в Telegram-группе (см. groupButton в
+// telegram/subscriptions.js).
+const SOURCES = ['threads', 'site', 'telegram'];
 
 // Имя бота не меняется, пока не сменят токен, — а токен меняется с перезапуском.
 let username = null;

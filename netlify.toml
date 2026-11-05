@@ -23,6 +23,14 @@
   to = "https://shabashka-zvkc.onrender.com/api/subscribe/:slug/threads"
   status = 302
 
+# То же с источником: шабашка.com/s/obshchepit/telegram — кнопка под вакансией в
+# Telegram-группе (см. backend/src/telegram/subscriptions.js). Бэкенд считает
+# переход по источнику, незнакомый пишет в «без метки».
+[[redirects]]
+  from = "/s/:slug/:from"
+  to = "https://shabashka-zvkc.onrender.com/api/subscribe/:slug/:from"
+  status = 302
+
 # SPA-роутинг: любой путь отдаём index.html, React Router разбирается сам.
 [[redirects]]
   from = "/*"

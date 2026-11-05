@@ -357,6 +357,13 @@ function subscriptionsStub() {
     // Для сводки (см. summary.js).
     stats: async () => ({ chats: 0, byCategory: [] }),
     start: () => {},
+    // Кнопка под постом-вакансией в группе — как у настоящей, но без базы.
+    groupButton: (listingType, parsed, siteUrl) => {
+      calls.push({ groupButton: listingType, siteUrl });
+      if (listingType !== 'vacancy') return undefined;
+      const text = `🔔 Получать вакансии «${parsed.category}»`;
+      return { reply_markup: { inline_keyboard: [[{ text, url: `${siteUrl}/s/menu/telegram` }]] } };
+    },
   };
 }
 

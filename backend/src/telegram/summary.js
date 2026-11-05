@@ -178,6 +178,8 @@ const TOP_CATEGORIES = 5;
 const CLICKS = [
   ['threads', 'из Threads'],
   ['site', 'с сайта'],
+  // Кнопка под вакансией в Telegram-группе (см. groupButton в subscriptions.js).
+  ['telegram', 'из группы'],
   // Старые ссылки без источника — например, из закэшированной страницы сайта.
   ['other', 'без метки'],
 ];

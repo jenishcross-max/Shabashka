@@ -33,6 +33,8 @@ const outreach = require('./outreach');
 const groupPost = require('./groupPost');
 const findListing = require('./findListing');
 const whatsapp = require('../whatsapp');
+const { inviteCode } = require('../whatsapp/channel');
+const groupPromo = require('./groupPromo');
 const taskEvents = require('../taskEvents');
 const tasksRepo = require('../tasksRepo');
 const { tag } = require('../sourceTag');
@@ -83,9 +85,18 @@ function prettyLink(link) {
   }
 }
 
+// Имя бота — для команд в группе вида /subs@имя: чужому боту не отвечаем (см.
+// onGroupMessage в subscriptions.js). Меняется только со сменой токена.
+let botUsername = null;
+async function botName() {
+  if (!botUsername) botUsername = (await tg.call('getMe')).username || null;
+  return botUsername;
+}
+
 // Что нужно подписке на вакансии (см. subscriptions.js): как писать, отвечать на
 // кнопку, менять кнопки под сообщением и как показывать ссылки на сайт.
 const subscriptionDeps = {
+  botName,
   send: (chatId, text, extra) => tg.sendMessage(chatId, text, extra),
   answer: (id, text) => tg.answerCallbackQuery(id, text),
   edit: (chatId, messageId, extra) =>
@@ -798,7 +809,9 @@ async function publishOne(chatId, id, parsed, priority = false, { quiet = false 
   let channelLine = '';
   if (CHANNEL_ID) {
     try {
-      const inChannel = await tg.sendMessage(CHANNEL_ID, `${tg.esc(body)}${channelTag}`);
+      // Под вакансией — кнопка подписки в боте (см. groupButton в subscriptions.js).
+      const subscribe = priority ? undefined : subscriptions.groupButton(result.type, ready, SITE_URL);
+      const inChannel = await tg.sendMessage(CHANNEL_ID, `${tg.esc(body)}${channelTag}`, subscribe);
       await imports.setPosts(id, { channelMessageId: inChannel.message_id });
       channelLine = '📢 Выложено в Telegram-канал';
     } catch (err) {
@@ -1727,6 +1740,10 @@ async function sendHelp(chatId) {
       '',
       '/whatsapp — WhatsApp-канал: подборки свежих вакансий 5 раз в день со второго',
       'номера. /whatsapp link — код, чтобы привязать номер; /whatsapp now — подборка сейчас.',
+      '',
+      'В группе под каждой вакансией — кнопка «🔔 Получать вакансии»: одно нажатие, и',
+      'человек подписан в боте. На /subs в группе бот отвечает, куда нажать, а раз в день',
+      '(в 19:00) сам пишет туда, как подписаться и где наш WhatsApp-канал.',
     ],
   ];
   for (const [i, part] of help.entries()) {
@@ -2892,6 +2909,14 @@ function startWatchers() {
   whatsapp.start({
     siteUrl: (type) => (SITE_URL && LISTING_PATHS[type] ? `${SITE_URL}/${LISTING_PATHS[type]}` : ''),
     pretty: prettyLink,
+  });
+  // Раз в день — пост в группу: как получать вакансии в боте и где WhatsApp-канал.
+  const waCode = inviteCode(process.env.WA_CHANNEL);
+  groupPromo.start({
+    chatId: CHANNEL_ID,
+    siteUrl: SITE_URL,
+    waChannel: waCode ? `https://whatsapp.com/channel/${waCode}` : '',
+    send: (chatId, html, extra) => tg.sendMessage(chatId, html, extra),
   });
 }
 

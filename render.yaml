@@ -144,3 +144,12 @@ services:
       # Часы подборок по Бишкеку (по умолчанию 9,12,15,18,21; off — ни одной).
       - key: WA_HOURS
         sync: false
+      # Пост в группу раз в день о том, как подписаться (час, по умолчанию 19; off).
+      - key: GROUP_PROMO
+        sync: false
+      # Зов в WhatsApp-канал и Telegram-группу в Threads и Instagram (см. README,
+      # «Из группы — в бота»): раз в сколько постов и адрес группы.
+      - key: CHANNELS_EVERY
+        sync: false
+      - key: TELEGRAM_GROUP_URL
+        sync: false

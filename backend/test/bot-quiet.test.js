@@ -85,7 +85,7 @@ const requireSrc = install({
     setCard: async () => {},
     publish: async (id) => {
       rows.get(id).status = 'published';
-      return { type: 'board', id: 50 + id };
+      return { type: rows.get(id).parsed.listing_type === 'vacancy' ? 'vacancy' : 'board', id: 50 + id };
     },
     listPublished: async ({ from }) => published(from),
     countPublished: async (from) => published(from).length,
@@ -346,4 +346,20 @@ test('снятие: уже удалённый пост в канале, Threads 
   );
   assert.match(report, /📸 Instagram: <a href="https:\/\/www\.instagram\.com\/reel\/XyZ\/">откройте пост<\/a>/);
   assert.match(report, /В этом ролике ещё 2 объявления/);
+});
+
+// Кнопка подписки в боте под постом-вакансией (см. groupButton в
+// telegram/subscriptions.js): люди в группе нажимали /subs, а подписка — в личке.
+test('пост-вакансия в группе — с кнопкой «Получать вакансии», прочее — без', async () => {
+  byChat.length = 0;
+  const cook = { ...listing('Повар в кафе', '+996700555666'), listing_type: 'vacancy', category: 'Общепит' };
+  await bot.ingestFromSource(1, [cook], { source: 'channel', rawText: 'Повар в кафе 0700555666' });
+  await settle();
+  const [post] = toChannel();
+  assert.ok(post && post.extra, 'кнопка есть');
+  assert.deepEqual(
+    post.extra.reply_markup.inline_keyboard.flat().map((b) => b.text),
+    ['🔔 Получать вакансии «Общепит»']
+  );
+  assert.deepEqual(subscriptions.calls.at(-1), { groupButton: 'vacancy', siteUrl: 'https://xn--80aaac0cyed.com' });
 });

@@ -177,8 +177,14 @@ test('бот: профессии подписчиков и переходы за
 
     stats.counters['sub.click.other'] = 1;
     assert.match((await summary.build()).text, /из Threads 7 · с сайта 3 · без метки 1\n/);
+
+    // Кнопка под вакансией в Telegram-группе (см. groupButton в subscriptions.js).
+    stats.counters['sub.click.telegram'] = 4;
+    assert.match((await summary.build()).text, /из Threads 7 · с сайта 3 · из группы 4 · без метки 1\n/);
   } finally {
-    for (const key of ['sub.click.threads', 'sub.click.site', 'sub.click.other']) delete stats.counters[key];
+    for (const key of ['sub.click.threads', 'sub.click.site', 'sub.click.telegram', 'sub.click.other']) {
+      delete stats.counters[key];
+    }
   }
 
   // Ни подписчиков, ни переходов — строк нет; база не ответила — сводка не падает.

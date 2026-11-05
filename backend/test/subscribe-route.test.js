@@ -56,8 +56,16 @@ test('переход считается по источнику, а роботы
   assert.equal(await go('obshchepit/threads'), 'https://t.me/shabashka_test_bot?start=sub_obshchepit');
   assert.equal(await go('menu/site'), 'https://t.me/shabashka_test_bot?start');
   assert.equal(await go('prodazhi/kuda-to'), 'https://t.me/shabashka_test_bot?start=sub_prodazhi');
+  // Кнопка под вакансией в Telegram-группе (см. groupButton в subscriptions.js).
+  assert.equal(await go('obshchepit/telegram'), 'https://t.me/shabashka_test_bot?start=sub_obshchepit');
   await go('obshchepit');
   // Threads, Telegram и WhatsApp сами открывают ссылку, чтобы нарисовать превью.
   await go('obshchepit/threads', { 'user-agent': 'facebookexternalhit/1.1' });
-  assert.deepEqual(bumps, ['sub.click.threads', 'sub.click.site', 'sub.click.other', 'sub.click.other']);
+  assert.deepEqual(bumps, [
+    'sub.click.threads',
+    'sub.click.site',
+    'sub.click.other',
+    'sub.click.telegram',
+    'sub.click.other',
+  ]);
 });

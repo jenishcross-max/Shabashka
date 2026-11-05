@@ -11,6 +11,7 @@ const leads = require('./leads');
 const follow = require('./follow');
 const more = require('./more');
 const subLine = require('./subLine');
+const channels = require('./channels');
 const { tag } = require('../sourceTag');
 
 // Публичный адрес самого бэкенда — по нему площадки придут за роликом. Отдельной
@@ -508,9 +509,10 @@ async function runBatch(entries, opts = {}) {
     // так что смешанной пачки здесь не бывает.
     ad: entries.length > 0 && entries.every((entry) => entry.priority),
   };
-  // Зов подписаться — в подписи каждого ролика, кроме рекламного (см. follow.js).
-  // В задании, а не при сборке подписи: повтор выйдет с той же строкой.
-  job.follow = job.ad ? '' : follow.line();
+  // Зов подписаться — в подписи каждого ролика, кроме рекламного (см. follow.js);
+  // у каждого второго вместо него — «мы есть в WhatsApp и Telegram» (см.
+  // channels.js). В задании, а не при сборке подписи: повтор выйдет с той же строкой.
+  job.follow = job.ad ? '' : channels.instagram() || follow.line();
   // Реклама едет вперёд остальных: между публикациями в Instagram полторы
   // минуты, и в тихий день их не видно, а на пачке скриншотов платное
   // объявление иначе стояло бы за всеми.
@@ -914,10 +916,13 @@ async function shareListing(parsed, listingType, siteLink, ctx, { priority = fal
     // сутки» и не рядом с «подпишись»: два зова в одном посте спорят.
     const followLine = priority ? '' : follow.next();
     const subscribe = priority || followLine ? '' : subLine.line(listingType, parsed, siteLink);
+    // Где нет ни «подпишись», ни подписки в бота, — иногда зов в WhatsApp-канал и
+    // Telegram-группу (см. channels.js) вместо «Все N за сутки».
+    const channelLine = priority || followLine || subscribe ? '' : channels.next();
     const text = video.threadsText(parsed, listingType, tag(siteLink, 'threads'), {
       ad: priority,
       follow: followLine,
-      more: priority ? '' : subscribe || more.line(listingType, siteLink),
+      more: priority ? '' : subscribe || channelLine || more.line(listingType, siteLink),
     });
     const withCard = THREADS_CARDS === 'all' || (THREADS_CARDS === 'ads' && priority);
     result.threadsQueued = true;

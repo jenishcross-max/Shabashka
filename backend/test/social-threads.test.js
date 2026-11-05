@@ -303,6 +303,27 @@ test('каждый четвёртый пост-объявление зовёт �
   assert.match(long, /…\n\n🔔 Подпишись — каждый день 60\+[^\n]*\nшабашка\.com\/vacancies\/9$/);
 });
 
+// Зов в WhatsApp-канал и Telegram-группу (см. src/social/channels.js): у части
+// постов, где нет ни «подпишись», ни подписки в бота, — вместо «Все N за сутки»;
+// у рекламы — никогда.
+test('часть постов-объявлений зовёт в Telegram-группу, но не рядом с «подпишись»', async () => {
+  posted.length = 0;
+  const ids = Array.from({ length: 12 }, (_, i) => 61 + i);
+  for (const n of ids) social.shareListing(parsed, 'order', `шабашка.com/orders/${n}`, { chatId: 1 }, {});
+  social.shareListing(parsed, 'order', 'шабашка.com/orders/73', { chatId: 1 }, { priority: true });
+  const mine = () => posted.filter((p) => /orders\/(6[1-9]|7[0-3])\b/.test(p.text));
+  for (let i = 0; i < 120 && mine().length < 13; i += 1) await settle();
+  assert.equal(mine().length, 13);
+  const withChannel = mine().filter((p) => p.text.includes('✈️'));
+  assert.ok(withChannel.length >= 1, 'хотя бы один из двенадцати');
+  for (const p of withChannel) {
+    assert.match(p.text, /\nшабашка\.com\/orders\/\d+\?s=t\n✈️ Вакансии каждый день — в нашей Telegram-группе: t\.me\/Shabashkacom$/);
+    assert.ok(!p.text.includes('🔔'), 'не рядом с «подпишись»');
+    assert.ok(!p.text.includes('👉'), 'вместо «Все N за сутки», а не вдобавок');
+  }
+  assert.ok(!mine().find((p) => /orders\/73/.test(p.text)).text.includes('✈️'), 'у рекламы строки нет');
+});
+
 // Повод зайти на сайт (исследование 18 октября 2026, см. docs/research): пост
 // с номером самодостаточен, и из сотен просмотров на сайт переходили единицы.
 // Последняя строка зовёт не на одну карточку, а ко всем вакансиям за сутки.
@@ -363,8 +384,8 @@ test('часть постов-вакансий зовёт подписаться
       assert.ok(!p.text.includes('🔔'), 'не рядом с «подпишись»: два зова в одном посте спорят');
     }
     assert.ok(
-      ordinary.filter((p) => !withSub.includes(p)).every((p) => p.text.includes('👉 Все 63 вакансии')),
-      'у остальных — «Все N за сутки», как раньше'
+      ordinary.filter((p) => !withSub.includes(p)).every((p) => p.text.includes('👉 Все 63 вакансии') || p.text.includes('✈️')),
+      'у остальных — «Все N за сутки» или зов в Telegram-группу (см. channels.js)'
     );
     assert.ok(!ad.text.includes('📲'), 'у рекламы строки нет');
   } finally {

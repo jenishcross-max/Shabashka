@@ -244,3 +244,50 @@ test('«Студентам»: подписка со страницы, сразу
   assert.equal((both.match(/Официант-студент/g) || []).length, 1, 'одна вакансия — один раз');
   assert.match(both, /<b>Студентам<\/b>\n• Курьер после пар/, 'студенческое — последним, без повторов');
 });
+
+// Группа @Shabashkacom (5 ноября 2026): люди нажимали /subs@бот прямо в группе,
+// а бот молчал — подписка работает только в личке. Теперь в группе бот
+// объясняет, как подписаться, а под каждым постом — кнопка.
+const SITE = 'https://xn--80aaac0cyed.com';
+const groupDeps = { ...deps, botName: async () => 'shabashka_telegram_bot' };
+const inGroup = (text) => ({ chat: { id: -1001, type: 'supergroup' }, from: { id: 777 }, message_id: 55, text });
+
+test('кнопка под постом-вакансией в группе: профессия — сразу в подписку на неё, без неё — в меню', () => {
+  assert.deepEqual(buttons(subs.groupButton('vacancy', { category: 'Общепит' }, SITE)), [
+    { text: '🔔 Получать вакансии «Общепит»', url: `${SITE}/s/obshchepit/telegram` },
+  ]);
+  assert.equal(
+    subs.groupButton('order', { category: 'Общепит' }, SITE),
+    undefined,
+    'под заказом — нет: бот присылает только вакансии, звать из заказа — обещать не то'
+  );
+  assert.deepEqual(buttons(subs.groupButton('vacancy', { category: 'Другое' }, SITE)), [
+    { text: '🔔 Получать новые вакансии', url: `${SITE}/s/menu/telegram` },
+  ]);
+  assert.equal(subs.groupButton('vacancy', { category: 'Общепит' }, ''), undefined, 'без адреса сайта кнопки нет');
+});
+
+test('/subs и /start в группе: три простых шага и кнопка в личку бота', async () => {
+  sent.length = 0;
+  assert.equal(await subs.onMessage(inGroup('/subs@shabashka_telegram_bot'), groupDeps), true);
+  assert.equal(await subs.onMessage(inGroup('/start'), groupDeps), true);
+  assert.equal(sent.length, 2);
+  const [reply] = sent;
+  assert.equal(reply.chatId, -1001);
+  assert.match(reply.text, /1\. Нажмите кнопку «📲 Открыть бота»/);
+  assert.match(reply.text, /2\. Нажмите «Запустить»/);
+  assert.doesNotMatch(reply.text, /рассылк/i, 'без непонятных слов');
+  assert.equal(reply.extra.reply_to_message_id, 55);
+  assert.deepEqual(buttons(reply.extra), [{ text: '📲 Открыть бота', url: `${SITE}/s/menu/telegram` }]);
+  assert.deepEqual(await subs.categoriesOf(-1001), [], 'группу саму не подписываем');
+});
+
+test('/stop в группе — как отписаться; чужому боту и обычным сообщениям — молчим', async () => {
+  sent.length = 0;
+  assert.equal(await subs.onMessage(inGroup('/stop@shabashka_telegram_bot'), groupDeps), true);
+  assert.match(sent[0].text, /\/stop/);
+  assert.equal(await subs.onMessage(inGroup('/subs@other_bot'), groupDeps), false);
+  assert.equal(await subs.onMessage(inGroup('Ищу работу, 0700123456'), groupDeps), false);
+  assert.equal(await subs.onMessage(inGroup('/post'), groupDeps), false, 'админские команды — не здесь');
+  assert.equal(sent.length, 1);
+});

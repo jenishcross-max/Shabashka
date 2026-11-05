@@ -90,10 +90,63 @@ async function showMenu(chatId, { send }, lead = '') {
   await send(chatId, esc(menuText(chosen, lead)), keyboard(chosen));
 }
 
+// Ссылка в бота с сайта (см. routes/subscribe.js): переход считается в сводке
+// «↪️ Перешли в бота: из группы». Профессия — сразу подписка на неё, menu —
+// просто меню бота (такой профессии нет).
+const groupLink = (siteUrl, slug) => `${siteUrl}/s/${slug}/telegram`;
+const urlButton = (text, url) => ({ reply_markup: { inline_keyboard: [[{ text, url }]] } });
+
+// Кнопка под постом-вакансией в Telegram-группе. Команду /subs там знают
+// немногие, а кнопку поймёт любой: читает вакансию повара — одним нажатием
+// подписывается на «Общепит». Под заказом и прочим кнопки нет: бот присылает
+// только вакансии, и звать из заказа — обещать не то. Без адреса сайта ссылке
+// некуда вести — тоже нет.
+function groupButton(listingType, parsed, siteUrl) {
+  if (!siteUrl || listingType !== 'vacancy') return undefined;
+  const profession = parsed ? byCategory(parsed.category) : null;
+  if (profession && profession !== STUDENTS) {
+    return urlButton(`🔔 Получать вакансии «${profession.category}»`, groupLink(siteUrl, profession.slug));
+  }
+  return urlButton('🔔 Получать новые вакансии', groupLink(siteUrl, 'menu'));
+}
+
+// Команды подписки в группе. Подписка живёт в личке: в группе новые вакансии
+// приходили бы всем сразу. Поэтому бот объясняет, куда нажать, — простыми
+// словами: в группе много взрослых людей, им непонятно слово «рассылка».
+const GROUP_COMMAND = /^\/(start|subs|stop)(?:@(\w+))?(?:\s|$)/i;
+
+async function onGroupMessage(message, deps) {
+  const match = String(message.text || '').trim().match(GROUP_COMMAND);
+  if (!match) return false;
+  if (match[2] && deps.botName) {
+    const name = await deps.botName().catch(() => null);
+    if (name && match[2].toLowerCase() !== String(name).toLowerCase()) return false;
+  }
+  const stop = match[1].toLowerCase() === 'stop';
+  const text = stop
+    ? '🔕 Отписаться можно в личке бота: нажмите «📲 Открыть бота» и отправьте /stop.'
+    : [
+        '🔔 Новые вакансии могут приходить вам прямо в Telegram — бесплатно.',
+        '',
+        '1. Нажмите кнопку «📲 Открыть бота» 👇',
+        '2. Нажмите «Запустить»',
+        '3. Выберите свою работу — готово!',
+      ].join('\n');
+  await deps.send(message.chat.id, esc(text), {
+    reply_to_message_id: message.message_id,
+    allow_sending_without_reply: true,
+    ...urlButton('📲 Открыть бота', groupLink(deps.siteUrl, 'menu')),
+  });
+  return true;
+}
+
 // Сообщение в личке. true — наше, дальше не разбирать. admin — у админа
 // /start показывает его справку, поэтому ему здесь только подписка по ссылке.
+// В группе — только ответ на команды подписки (см. onGroupMessage).
 async function onMessage(message, deps, { admin = false } = {}) {
-  if (!message || message.chat.type !== 'private') return false;
+  if (!message) return false;
+  if (message.chat.type === 'group' || message.chat.type === 'supergroup') return onGroupMessage(message, deps);
+  if (message.chat.type !== 'private') return false;
   const chatId = message.chat.id;
   const text = String(message.text || '').trim();
 
@@ -351,6 +404,7 @@ module.exports = {
   stats,
   start,
   categoriesOf,
+  groupButton,
   PROFESSIONS,
   TASKS,
   STUDENTS,
