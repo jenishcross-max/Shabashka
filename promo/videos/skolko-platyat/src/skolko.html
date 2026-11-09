@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Сколько платят за день подработки в Бишкеке</title>
+    <script src="assets/gsap.min.js"></script>
+    <!-- Исходник: src/skolko.html → python src/build.py. Четыре настоящих заказа с шабашка.com за 1–6.11
+         (публичный список /api/orders, карточки не открывали), по возрастанию суммы. -->
+    <style>
+/*FONTS*/
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #fbf7f6;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: 'Golos Text', sans-serif;
+        color: #241a19;
+        background: #fbf7f6;
+      }
+      /* Фирменные цвета сайта: красный #f0433e, тёмный #241a19, светлый #fbf7f6 */
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      .red {
+        background: #f0433e;
+        color: #fff;
+      }
+      .pill {
+        display: inline-block;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 46px;
+        letter-spacing: 0.04em;
+        background: #f0433e;
+        color: #fff;
+        padding: 10px 36px 14px;
+        border-radius: 999px;
+      }
+      .h-xl {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 108px;
+        line-height: 1.02;
+        letter-spacing: -0.03em;
+      }
+      .word {
+        display: block;
+      }
+      .mark {
+        display: inline-block;
+        background: #f0433e;
+        color: #fff;
+        padding: 0 22px 10px;
+        border-radius: 22px;
+        margin-top: 10px;
+      }
+      /* 1. Крючок: вопрос и лестница сумм — видны с первого кадра (обложка) */
+      .hook {
+        position: absolute;
+        left: 70px;
+        right: 70px;
+        top: 190px;
+      }
+      .hook .h-xl {
+        margin-top: 36px;
+      }
+      .ladder {
+        position: absolute;
+        left: 70px;
+        right: 70px;
+        top: 900px;
+        height: 760px;
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+      }
+      .step {
+        width: 214px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .step b {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 50px;
+        white-space: nowrap;
+        margin-bottom: 14px;
+      }
+      .step i {
+        display: block;
+        width: 100%;
+        border-radius: 28px 28px 10px 10px;
+        background: #f6c9c5;
+        transform-origin: 50% 100%;
+      }
+      .step.top i {
+        background: #f0433e;
+      }
+      .step span {
+        margin-top: 16px;
+        font-size: 34px;
+        font-weight: 700;
+        color: #6b5b57;
+        text-align: center;
+        line-height: 1.15;
+        height: 80px;
+      }
+      .src {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 1720px;
+        text-align: center;
+        font-size: 32px;
+        font-weight: 600;
+        color: #9a8a88;
+      }
+      /* Карточки: картинка сверху, карточка снизу, мини-лестница справа */
+      .pic {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 1180px;
+        object-fit: cover;
+      }
+      .pic-fade {
+        position: absolute;
+        left: 0;
+        top: 960px;
+        width: 1080px;
+        height: 300px;
+        background: linear-gradient(180deg, rgba(251, 247, 246, 0) 0%, #fbf7f6 70%, #fbf7f6 100%);
+      }
+      .mini {
+        position: absolute;
+        right: 56px;
+        top: 220px;
+        display: flex;
+        align-items: flex-end;
+        gap: 12px;
+        background: rgba(255, 255, 255, 0.92);
+        padding: 20px 24px;
+        border-radius: 30px;
+        box-shadow: 0 14px 40px rgba(36, 26, 25, 0.25);
+      }
+      .mini i {
+        display: block;
+        width: 34px;
+        border-radius: 10px 10px 4px 4px;
+        background: #e6d6d3;
+      }
+      .mini i.on {
+        background: #f0433e;
+      }
+      .jcard {
+        position: absolute;
+        left: 50px;
+        right: 50px;
+        top: 1080px;
+        background: #fff;
+        border-radius: 40px;
+        padding: 34px 44px 28px;
+        box-shadow: 0 20px 60px rgba(36, 26, 25, 0.16);
+      }
+      .j-title {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 700;
+        font-size: 50px;
+        line-height: 1.12;
+      }
+      .j-price {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 92px;
+        line-height: 1;
+        color: #f0433e;
+        margin-top: 12px;
+        white-space: nowrap;
+      }
+      .j-price small {
+        font-size: 50px;
+        color: #241a19;
+      }
+      .j-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 18px;
+        margin-top: 20px;
+        font-weight: 600;
+        font-size: 42px;
+        line-height: 1.18;
+      }
+      .j-ico {
+        flex: 0 0 54px;
+        height: 54px;
+        border-radius: 50%;
+        color: #fff;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 46px;
+        line-height: 50px;
+        text-align: center;
+      }
+      .plus .j-ico {
+        background: #241a19;
+      }
+      .minus .j-ico {
+        background: #f0433e;
+      }
+      .minus {
+        color: #f0433e;
+      }
+      .j-src {
+        margin-top: 18px;
+        font-size: 26px;
+        font-weight: 500;
+        color: #9a8a88;
+      }
+      /* Финал */
+      .pad {
+        position: absolute;
+        inset: 0;
+        padding: 200px 80px 320px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+      }
+      .logo {
+        display: block;
+        width: 160px;
+        height: 160px;
+      }
+      .cta-url {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 120px;
+        letter-spacing: -0.035em;
+        margin-top: 44px;
+        background: #fff;
+        color: #f0433e;
+        padding: 18px 50px 26px;
+        border-radius: 40px;
+      }
+      .cta-small {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 700;
+        font-size: 58px;
+        margin-top: 44px;
+        line-height: 1.15;
+      }
+      .ask {
+        margin-top: 60px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 800;
+        font-size: 54px;
+        background: #241a19;
+        color: #fff;
+        padding: 18px 40px 24px;
+        border-radius: 30px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="14.4" data-width="1080" data-height="1920" data-fps="30">
+      <!-- 1. Крючок -->
+      <section id="s1" class="scene clip" data-start="0" data-duration="2.0" data-track-index="0">
+        <div class="hook">
+          <div class="pill">РЕАЛЬНЫЕ ЗАКАЗЫ НЕДЕЛИ</div>
+          <div class="h-xl">
+            <span class="word">Сколько платят</span>
+            <span class="word">за 1 день</span>
+            <span class="word">подработки</span>
+            <span class="word"><span class="mark">в Бишкеке?</span></span>
+          </div>
+        </div>
+        <div class="ladder">
+          <div class="step"><b>2 000</b><i id="b1" style="height: 230px"></i><span>покраска</span></div>
+          <div class="step"><b>3 000</b><i id="b2" style="height: 340px"></i><span>8 парней</span></div>
+          <div class="step"><b>4 000</b><i id="b3" style="height: 450px"></i><span>огород</span></div>
+          <div class="step top"><b>5 000</b><i id="b4" style="height: 560px"></i><span>стройка</span></div>
+        </div>
+        <div class="src">сом за день · заказы с шабашка.com, 1–6 ноября</div>
+      </section>
+
+      <!-- Карточки по возрастанию -->
+      <section id="c1" class="scene clip" data-start="2.0" data-duration="2.6" data-track-index="0">
+        <img id="c1-img" class="pic" data-layout-allow-overflow src="assets/img/kraska.jpg" alt="" style="object-position: 50% 35%" />
+        <div class="pic-fade"></div>
+        <div id="c1-mini" class="mini"><i class="on" style="height: 46px"></i><i style="height: 68px"></i><i style="height: 90px"></i><i style="height: 112px"></i></div>
+        <div id="c1-card" class="jcard">
+          <div class="j-title">Помощник на покраску</div>
+          <div id="c1-p" class="j-price">2 000 <small>сом за выход</small></div>
+          <div id="c1-plus" class="j-row plus"><span class="j-ico">+</span><span>платят за каждый выход</span></div>
+          <div id="c1-minus" class="j-row minus"><span class="j-ico">−</span><span>краска отмывается. Через неделю</span></div>
+          <div class="j-src">реальный заказ с шабашка.com · 5.11</div>
+        </div>
+      </section>
+
+      <section id="c2" class="scene clip" data-start="4.6" data-duration="2.6" data-track-index="0">
+        <img id="c2-img" class="pic" data-layout-allow-overflow src="assets/img/vosem.jpg" alt="" style="object-position: 50% 40%" />
+        <div class="pic-fade"></div>
+        <div id="c2-mini" class="mini"><i style="height: 46px"></i><i class="on" style="height: 68px"></i><i style="height: 90px"></i><i style="height: 112px"></i></div>
+        <div id="c2-card" class="jcard">
+          <div class="j-title">Нужно 8 парней на завтра</div>
+          <div id="c2-p" class="j-price">3 000 <small>сом каждому</small></div>
+          <div id="c2-plus" class="j-row plus"><span class="j-ico">+</span><span>можно идти с друзьями</span></div>
+          <div id="c2-minus" class="j-row minus"><span class="j-ico">−</span><span>друзей тоже придётся будить в 7 утра</span></div>
+          <div class="j-src">реальный заказ с шабашка.com · 5.11</div>
+        </div>
+      </section>
+
+      <section id="c3" class="scene clip" data-start="7.2" data-duration="2.6" data-track-index="0">
+        <img id="c3-img" class="pic" data-layout-allow-overflow src="assets/img/ogorod.jpg" alt="" style="object-position: 50% 40%" />
+        <div class="pic-fade"></div>
+        <div id="c3-mini" class="mini"><i style="height: 46px"></i><i style="height: 68px"></i><i class="on" style="height: 90px"></i><i style="height: 112px"></i></div>
+        <div id="c3-card" class="jcard">
+          <div class="j-title">Вынести мусор с огорода, 1 день</div>
+          <div id="c3-p" class="j-price">4 000 <small>сом каждому</small></div>
+          <div id="c3-plus" class="j-row plus"><span class="j-ico">+</span><span>всего один день</span></div>
+          <div id="c3-minus" class="j-row minus"><span class="j-ico">−</span><span>огород станет чище вашей комнаты</span></div>
+          <div class="j-src">реальный заказ с шабашка.com · 2.11</div>
+        </div>
+      </section>
+
+      <section id="c4" class="scene clip" data-start="9.8" data-duration="2.6" data-track-index="0">
+        <img id="c4-img" class="pic" data-layout-allow-overflow src="assets/img/stroyka.jpg" alt="" style="object-position: 50% 46%" />
+        <div class="pic-fade"></div>
+        <div id="c4-mini" class="mini"><i style="height: 46px"></i><i style="height: 68px"></i><i style="height: 90px"></i><i class="on" style="height: 112px"></i></div>
+        <div id="c4-card" class="jcard">
+          <div class="j-title">Разнорабочие, срочно</div>
+          <div id="c4-p" class="j-price">5 000 <small>сом + обед</small></div>
+          <div id="c4-plus" class="j-row plus"><span class="j-ico">+</span><span>ещё и кормят</span></div>
+          <div id="c4-minus" class="j-row minus"><span class="j-ico">−</span><span>с 8:00 до 20:00. Обед вы заслужите</span></div>
+          <div class="j-src">реальный заказ с шабашка.com · 4.11</div>
+        </div>
+      </section>
+
+      <!-- Финал -->
+      <section id="s9" class="scene red clip" data-start="12.4" data-duration="2.0" data-track-index="0">
+        <div class="pad">
+          <!--LOGO-->
+          <div id="s9-url" class="cta-url">шабашка.com</div>
+          <div id="s9-a" class="cta-small">Новые заказы — каждый день</div>
+          <div id="s9-ask" class="ask">Какой бы взяли вы? 👇</div>
+        </div>
+      </section>
+
+      <audio id="bgm" src="assets/music.wav" data-start="0" data-duration="14.4" data-volume="0.35" data-track-index="10"></audio>
+      <!--SFX-->
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // 1. Лестница стоит с 0-го кадра; столбики по очереди «подпрыгивают», верхний — сильнее
+      ['#b1', '#b2', '#b3', '#b4'].forEach((b, i) => {
+        tl.fromTo(b, { scaleY: 1 }, { scaleY: i === 3 ? 1.08 : 1.04, duration: 0.18, yoyo: true, repeat: 1, ease: 'power2.out' }, 0.25 + i * 0.32);
+      });
+
+      // Карточки
+      [['c1', 2.0], ['c2', 4.6], ['c3', 7.2], ['c4', 9.8]].forEach(([id, t]) => {
+        tl.fromTo('#' + id + '-img', { scale: 1.1 }, { scale: 1, duration: 2.6, ease: 'power1.out' }, t);
+        tl.fromTo('#' + id + '-mini', { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.35, ease: 'back.out(2)' }, t + 0.05);
+        tl.fromTo('#' + id + '-card', { opacity: 0, y: 140 }, { opacity: 1, y: 0, duration: 0.35, ease: 'power3.out' }, t + 0.08);
+        tl.fromTo('#' + id + '-p', { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.4, ease: 'back.out(1.8)', transformOrigin: '0% 50%' }, t + 0.35);
+        tl.fromTo('#' + id + '-plus', { opacity: 0, x: -60 }, { opacity: 1, x: 0, duration: 0.3, ease: 'power3.out' }, t + 0.8);
+        tl.fromTo('#' + id + '-minus', { opacity: 0, x: -60 }, { opacity: 1, x: 0, duration: 0.3, ease: 'power3.out' }, t + 1.35);
+      });
+
+      // Финал
+      tl.fromTo('#s9-logo', { scale: 0 }, { scale: 1, duration: 0.4, ease: 'back.out(1.8)' }, 12.45);
+      tl.fromTo('#s9-url', { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.45, ease: 'back.out(1.7)' }, 12.6);
+      tl.fromTo('#s9-a', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.35, ease: 'power3.out' }, 12.9);
+      tl.fromTo('#s9-ask', { opacity: 0, scale: 0.7 }, { opacity: 1, scale: 1, duration: 0.4, ease: 'back.out(2)' }, 13.2);
+
+      window.__timelines['main'] = tl;
+    </script>
+  </body>
+</html>

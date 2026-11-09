@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Пригласительное на той одной ссылкой</title>
+    <script src="assets/gsap.min.js"></script>
+    <!-- Исходник: src/invite.html → python src/build.py. Клип assets/clip/site.mp4 — настоящий демо-сайт
+         rushnik-invitation-demo.web.app, снятый покадрово (src/capture.py). Блок «Место» не показываем:
+         в демо подмосковный адрес. -->
+    <style>
+/*FONTS*/
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #fbf7f6;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: 'Golos Text', sans-serif;
+        color: #241a19;
+        background: #fbf7f6;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      .phone {
+        position: absolute;
+        left: 160px;
+        top: 430px;
+        width: 760px;
+        height: 1351px;
+        border-radius: 64px;
+        background: #1c1415;
+        padding: 18px;
+        box-shadow: 0 40px 110px rgba(36, 26, 25, 0.35), 0 0 0 3px #3a2b2c;
+      }
+      .screen {
+        position: relative;
+        width: 724px;
+        height: 1287px;
+        border-radius: 48px;
+        overflow: hidden;
+        background: #a31d2a;
+      }
+      #site {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 724px;
+        height: 1287px;
+        object-fit: cover;
+      }
+      /* Подписи: белая плашка сверху, поверх сайта */
+      .cap {
+        position: absolute;
+        left: 50px;
+        right: 50px;
+        top: 120px;
+        height: 270px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+      .cap-big {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 82px;
+        line-height: 1.04;
+        letter-spacing: -0.02em;
+      }
+      .cap-big .r {
+        color: #c8202f;
+      }
+      .cap-mid {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 80px;
+        line-height: 1.04;
+        letter-spacing: -0.02em;
+      }
+      .cap-sub {
+        margin-top: 14px;
+        font-size: 40px;
+        font-weight: 600;
+        color: #6b5b57;
+      }
+      /* Финал */
+      .fin {
+        position: absolute;
+        inset: 0;
+        background: #f0433e;
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 0 70px 260px;
+      }
+      .f-emoji {
+        font-size: 150px;
+        line-height: 1;
+      }
+      .f-name {
+        margin-top: 40px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 96px;
+        line-height: 1.02;
+        letter-spacing: -0.03em;
+      }
+      .f-line {
+        margin-top: 36px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 700;
+        font-size: 54px;
+        line-height: 1.15;
+      }
+      .f-ask {
+        margin-top: 56px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 800;
+        font-size: 56px;
+        background: #fff;
+        color: #f0433e;
+        padding: 18px 44px 24px;
+        border-radius: 32px;
+      }
+      .f-url {
+        margin-top: 40px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 52px;
+        opacity: 0.95;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="11.6" data-width="1080" data-height="1920" data-fps="30">
+      <!-- Сайт: 0–3 с вышиваются имена, 3–9 с листаем до программы дня -->
+      <div id="phone" class="phone">
+        <div class="screen">
+          <video id="site" src="assets/clip/site.mp4" muted playsinline data-start="0" data-duration="9" data-track-index="1"></video>
+        </div>
+      </div>
+
+      <!-- Подписи. Первая — с 0-го кадра: это обложка -->
+      <div id="cap1" class="cap clip" data-start="0" data-duration="3" data-track-index="2">
+        <div class="cap-big">Приглашение на той —<br /><span class="r">одной ссылкой</span> 💌</div>
+        <div id="cap1-sub" class="cap-sub">имена вышиваются прямо на экране</div>
+      </div>
+      <div id="cap2" class="cap clip" data-start="3" data-duration="3" data-track-index="2">
+        <div class="cap-mid">Отсчёт до тоя<br />и ваша история</div>
+      </div>
+      <div id="cap3" class="cap clip" data-start="6" data-duration="3" data-track-index="2">
+        <div class="cap-mid">Программа по часам</div>
+        <div class="cap-sub">гости отвечают «приду» прямо на сайте</div>
+      </div>
+
+      <!-- Финал -->
+      <section id="s9" class="scene clip" data-start="9" data-duration="2.6" data-track-index="3">
+        <div class="fin">
+          <div id="f-emoji" class="f-emoji">💍</div>
+          <div id="f-name" class="f-name">Сайт-пригласительное на ваш той</div>
+          <div id="f-line" class="f-line">Одна ссылка в WhatsApp —<br />и у гостей всё под рукой</div>
+          <div id="f-ask" class="f-ask">Хотите такое?<br />Напишите «хочу» 👇</div>
+          <div id="f-url" class="f-url">шабашка.com</div>
+        </div>
+      </section>
+
+      <audio id="bgm" src="assets/music.wav" data-start="0" data-duration="11.6" data-volume="0.45" data-track-index="10"></audio>
+      <!--SFX-->
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.fromTo('#cap1-sub', { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.4, ease: 'power3.out' }, 0.9);
+      ['#cap2', '#cap3'].forEach((c, i) => {
+        tl.fromTo(c, { opacity: 0, y: -40, scale: 0.95 }, { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: 'back.out(1.8)' }, 3 + i * 3);
+      });
+
+      tl.fromTo('#f-emoji', { scale: 0, rotation: -30 }, { scale: 1, rotation: 0, duration: 0.5, ease: 'back.out(2)' }, 9.05);
+      tl.fromTo('#f-name', { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power3.out' }, 9.2);
+      tl.fromTo('#f-line', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.4, ease: 'power3.out' }, 9.6);
+      tl.fromTo('#f-ask', { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.45, ease: 'back.out(2)' }, 10.0);
+      tl.fromTo('#f-url', { opacity: 0 }, { opacity: 0.95, duration: 0.4 }, 10.4);
+
+      window.__timelines['main'] = tl;
+    </script>
+  </body>
+</html>

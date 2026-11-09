@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Пригласительное на той одной ссылкой</title>
+    <script src="assets/gsap.min.js"></script>
+    <!-- Исходник: src/invite.html → python src/build.py. Клип assets/clip/site.mp4 — настоящий демо-сайт
+         rushnik-invitation-demo.web.app, снятый покадрово (src/capture.py). Блок «Место» не показываем:
+         в демо подмосковный адрес. -->
+    <style>
+@font-face{font-family:'Rubik';font-weight:500;font-style:normal;src:url(assets/fonts/rubik-cyrillic-500-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:500;font-style:normal;src:url(assets/fonts/rubik-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:700;font-style:normal;src:url(assets/fonts/rubik-cyrillic-700-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:700;font-style:normal;src:url(assets/fonts/rubik-latin-700-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:800;font-style:normal;src:url(assets/fonts/rubik-cyrillic-800-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:800;font-style:normal;src:url(assets/fonts/rubik-latin-800-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Rubik';font-weight:900;font-style:normal;src:url(assets/fonts/rubik-cyrillic-900-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Rubik';font-weight:900;font-style:normal;src:url(assets/fonts/rubik-latin-900-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:400;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-400-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:400;font-style:normal;src:url(assets/fonts/golos-text-latin-400-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:500;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-500-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:500;font-style:normal;src:url(assets/fonts/golos-text-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:600;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-600-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:600;font-style:normal;src:url(assets/fonts/golos-text-latin-600-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Golos Text';font-weight:700;font-style:normal;src:url(assets/fonts/golos-text-cyrillic-700-normal.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;}
+@font-face{font-family:'Golos Text';font-weight:700;font-style:normal;src:url(assets/fonts/golos-text-latin-700-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #fbf7f6;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: 'Golos Text', sans-serif;
+        color: #241a19;
+        background: #fbf7f6;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      .phone {
+        position: absolute;
+        left: 160px;
+        top: 430px;
+        width: 760px;
+        height: 1351px;
+        border-radius: 64px;
+        background: #1c1415;
+        padding: 18px;
+        box-shadow: 0 40px 110px rgba(36, 26, 25, 0.35), 0 0 0 3px #3a2b2c;
+      }
+      .screen {
+        position: relative;
+        width: 724px;
+        height: 1287px;
+        border-radius: 48px;
+        overflow: hidden;
+        background: #a31d2a;
+      }
+      #site {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 724px;
+        height: 1287px;
+        object-fit: cover;
+      }
+      /* Подписи: белая плашка сверху, поверх сайта */
+      .cap {
+        position: absolute;
+        left: 50px;
+        right: 50px;
+        top: 120px;
+        height: 270px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+      .cap-big {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 82px;
+        line-height: 1.04;
+        letter-spacing: -0.02em;
+      }
+      .cap-big .r {
+        color: #c8202f;
+      }
+      .cap-mid {
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 80px;
+        line-height: 1.04;
+        letter-spacing: -0.02em;
+      }
+      .cap-sub {
+        margin-top: 14px;
+        font-size: 40px;
+        font-weight: 600;
+        color: #6b5b57;
+      }
+      /* Финал */
+      .fin {
+        position: absolute;
+        inset: 0;
+        background: #f0433e;
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 0 70px 260px;
+      }
+      .f-emoji {
+        font-size: 150px;
+        line-height: 1;
+      }
+      .f-name {
+        margin-top: 40px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 96px;
+        line-height: 1.02;
+        letter-spacing: -0.03em;
+      }
+      .f-line {
+        margin-top: 36px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 700;
+        font-size: 54px;
+        line-height: 1.15;
+      }
+      .f-ask {
+        margin-top: 56px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 800;
+        font-size: 56px;
+        background: #fff;
+        color: #f0433e;
+        padding: 18px 44px 24px;
+        border-radius: 32px;
+      }
+      .f-url {
+        margin-top: 40px;
+        font-family: 'Rubik', sans-serif;
+        font-weight: 900;
+        font-size: 52px;
+        opacity: 0.95;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="11.6" data-width="1080" data-height="1920" data-fps="30">
+      <!-- Сайт: 0–3 с вышиваются имена, 3–9 с листаем до программы дня -->
+      <div id="phone" class="phone">
+        <div class="screen">
+          <video id="site" src="assets/clip/site.mp4" muted playsinline data-start="0" data-duration="9" data-track-index="1"></video>
+        </div>
+      </div>
+
+      <!-- Подписи. Первая — с 0-го кадра: это обложка -->
+      <div id="cap1" class="cap clip" data-start="0" data-duration="3" data-track-index="2">
+        <div class="cap-big">Приглашение на той —<br /><span class="r">одной ссылкой</span> 💌</div>
+        <div id="cap1-sub" class="cap-sub">имена вышиваются прямо на экране</div>
+      </div>
+      <div id="cap2" class="cap clip" data-start="3" data-duration="3" data-track-index="2">
+        <div class="cap-mid">Отсчёт до тоя<br />и ваша история</div>
+      </div>
+      <div id="cap3" class="cap clip" data-start="6" data-duration="3" data-track-index="2">
+        <div class="cap-mid">Программа по часам</div>
+        <div class="cap-sub">гости отвечают «приду» прямо на сайте</div>
+      </div>
+
+      <!-- Финал -->
+      <section id="s9" class="scene clip" data-start="9" data-duration="2.6" data-track-index="3">
+        <div class="fin">
+          <div id="f-emoji" class="f-emoji">💍</div>
+          <div id="f-name" class="f-name">Сайт-пригласительное на ваш той</div>
+          <div id="f-line" class="f-line">Одна ссылка в WhatsApp —<br />и у гостей всё под рукой</div>
+          <div id="f-ask" class="f-ask">Хотите такое?<br />Напишите «хочу» 👇</div>
+          <div id="f-url" class="f-url">шабашка.com</div>
+        </div>
+      </section>
+
+      <audio id="bgm" src="assets/music.wav" data-start="0" data-duration="11.6" data-volume="0.45" data-track-index="10"></audio>
+      <audio id="sfx-1" src="assets/sfx/sparkle.mp3" data-start="0.20" data-duration="1.8" data-volume="0.3" data-track-index="11"></audio>
+      <audio id="sfx-2" src="assets/sfx/pop.mp3" data-start="0.90" data-duration="0.72" data-volume="0.3" data-track-index="12"></audio>
+      <audio id="sfx-3" src="assets/sfx/whoosh-short.mp3" data-start="2.95" data-duration="0.57" data-volume="0.35" data-track-index="13"></audio>
+      <audio id="sfx-4" src="assets/sfx/whoosh-short.mp3" data-start="5.95" data-duration="0.57" data-volume="0.35" data-track-index="13"></audio>
+      <audio id="sfx-5" src="assets/sfx/whoosh-short.mp3" data-start="8.95" data-duration="0.57" data-volume="0.4" data-track-index="13"></audio>
+      <audio id="sfx-6" src="assets/sfx/pop.mp3" data-start="10.00" data-duration="0.72" data-volume="0.4" data-track-index="12"></audio>
+      <audio id="sfx-7" src="assets/sfx/chime.mp3" data-start="10.40" data-duration="2.5" data-volume="0.3" data-track-index="14"></audio>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.fromTo('#cap1-sub', { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.4, ease: 'power3.out' }, 0.9);
+      ['#cap2', '#cap3'].forEach((c, i) => {
+        tl.fromTo(c, { opacity: 0, y: -40, scale: 0.95 }, { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: 'back.out(1.8)' }, 3 + i * 3);
+      });
+
+      tl.fromTo('#f-emoji', { scale: 0, rotation: -30 }, { scale: 1, rotation: 0, duration: 0.5, ease: 'back.out(2)' }, 9.05);
+      tl.fromTo('#f-name', { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power3.out' }, 9.2);
+      tl.fromTo('#f-line', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.4, ease: 'power3.out' }, 9.6);
+      tl.fromTo('#f-ask', { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.45, ease: 'back.out(2)' }, 10.0);
+      tl.fromTo('#f-url', { opacity: 0 }, { opacity: 0.95, duration: 0.4 }, 10.4);
+
+      window.__timelines['main'] = tl;
+    </script>
+  </body>
+</html>

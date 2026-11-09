@@ -19,6 +19,9 @@
 | «Свободная суббота = 2 000 сом» — 5 подработок недели, плитка 340 000 сом | 23,2 с | `videos/rabota-vyhodnye/renders/rabota-vyhodnye.mp4` | `videos/rabota-vyhodnye/src/rabota.html` → `python src/build.py` |
 | «Речевой тренажёр: 3 минуты до собеседования» — настоящие экраны сайта (`src/shots.py`), без музыки | 18 с | `videos/logoped-3min/renders/logoped-3min.mp4` | `videos/logoped-3min/src/logoped.html` → `python src/build.py` |
 | «Аудиокниги: лекция в наушниках» — чат, настоящий голос бота, музыка make_audio calm (под голосом приглушена); в финале t.me/Audio_and_Books_bot | 16,6 с | `videos/audiobooks-lekciya/renders/audiobooks-lekciya.mp4` | `videos/audiobooks-lekciya/src/audiobooks.html` → `python src/build.py` |
+| «Новые вакансии — сами к вам в телефон» — замена «ШАБАШКА… ДЕНЬГИ!» в продукте «На Сайт»: бот в Telegram и канал в WhatsApp, + картинка 1080×1350 | 10 с | `videos/vakansii-v-telefon/renders/vakansii-v-telefon.mp4` | `videos/vakansii-v-telefon/src/vakansii.html` → `python src/build.py`; картинка — `python src/kartinka.py` |
+| «Сколько платят за 1 день подработки в Бишкеке?» — лестница 2 000 → 5 000 сом, 4 настоящих заказа 1–6.11, картинки Qwen | 14,4 с | `videos/skolko-platyat/renders/skolko-platyat.mp4` | `videos/skolko-platyat/src/skolko.html` → `python src/build.py` |
+| «Приглашение на той — одной ссылкой» — настоящий демо-сайт в телефоне, снят покадрово (`src/capture.py`) | 11,6 с | `videos/invite-site/renders/invite-site.mp4` | `videos/invite-site/src/invite.html` → `python src/build.py` |
 | «Да ты не искал даже» — трендовый клип (mem.video, зелёный фон) + реальные заказы | 12 с | `videos/ne-iskal/renders/ne-iskal.mp4` | `videos/ne-iskal/index.html` |
 | Мемы недели 1 (5 шт.): рабочее время, запросы, резюме, «опыт», грузчик — `tools/meme.py` | 7,6–10,8 с | `videos/meme-*/renders/meme-*.mp4` | `videos/meme-*/index.html` |
 

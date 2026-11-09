@@ -63,8 +63,14 @@ node studio/new.mjs <имя-латиницей> [beat|soft|calm]   # из заг
 cd videos/<имя>
 npm run check                                           # должно быть «Check passed»
 npx --yes hyperframes@0.8.169 snapshot --at 2,6,10 --no-end --describe false
-npx --yes hyperframes@0.8.169 render --quality delivery --output renders/<имя>.mp4
+npx --yes hyperframes@0.8.169 render --quality delivery --video-bitrate 12M --output renders/master.mp4
+python ../../tools/finish_reel.py renders/master.mp4 renders/<имя>.mp4   # громкость −14 и размер; master потом удалить
 ```
+
+- Сначала мастер на 12 Мбит/с (без него ролики выходили 0,8 Мбит/с, мелкий текст мылился),
+  потом `tools/finish_reel.py`: x264 CRF 18 и loudnorm в два прохода до −14 LUFS. Готовый файл —
+  до 15 МБ: бот скачивает видео продукта из Telegram только до 20 МБ, тяжелее — пост уходит
+  без ролика, и Instagram его не принимает (7.11 мастер 14 с весил 21,4 МБ).
 
 - Заготовка (`studio/template/index.html`) — рабочий ролик в формате «POV» на
   12,5 секунды: крючок, чат, решение, финал с адресом. Новый ролик — это она
