@@ -1102,6 +1102,54 @@ a:hover {
 .whatsapp-btn:hover {
   background: #1ebe5b;
 }
+/* Панель контакта на карточке вакансии прилипает к низу экрана: кнопка WhatsApp
+   стояла ниже первого экрана, а «Позвонить» не было вовсе (аудит 12 ноября 2026,
+   см. docs/research). Звонок — второстепенной белой кнопкой: WhatsApp бесплатный
+   и с готовым текстом, звонок — для тех, кому так привычнее. */
+.contact-bar {
+  position: sticky;
+  bottom: 16px;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 18px 0 4px;
+}
+.contact-bar a {
+  white-space: nowrap;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.contact-call {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #fff;
+  color: var(--text) !important;
+  text-decoration: none !important;
+  border: 2px solid var(--whatsapp);
+  border-radius: 12px;
+  font-family: 'Rubik', sans-serif;
+  font-weight: 700;
+  font-size: 17px;
+  padding: 14px 10px;
+  box-shadow: 0 6px 18px rgba(36, 26, 25, 0.08);
+}
+.contact-bar .whatsapp-btn {
+  box-shadow: 0 6px 18px rgba(36, 26, 25, 0.08);
+}
+/* На телефоне внизу — своя панель из пяти кнопок (66 px, см. .bottom-nav):
+   контакт встаёт над ней. Во встроенном браузере Threads на Android та панель
+   сверху — там контакт у самого низа. */
+@media (max-width: 900px) {
+  .contact-bar {
+    bottom: 74px;
+  }
+  .in-app-android .contact-bar {
+    bottom: 8px;
+  }
+}
 .secondary-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;

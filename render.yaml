@@ -153,3 +153,7 @@ services:
         sync: false
       - key: TELEGRAM_GROUP_URL
         sync: false
+      # Тест «группа против бота» в постах Threads (см. README, «Отклик, воронка
+      # и вакансии с сайта»): off — только бот.
+      - key: SUB_GROUP
+        sync: false

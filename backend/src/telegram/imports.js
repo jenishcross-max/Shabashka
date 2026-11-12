@@ -205,6 +205,33 @@ function amount(value) {
   return digits ? Number(digits) : null;
 }
 
+// Повтор вакансии из чата (аудит 12 ноября 2026, см. docs/research): за неделю
+// 37% вакансий — тот же номер и тот же заголовок. Каждая становилась новой
+// карточкой, и список на сайте превращался в ленту повторов. Теперь повтор за
+// REPEAT_DAYS поднимает старую открытую карточку наверх, а пост в соцсети уходит
+// как раньше и ведёт на неё — число постов не меняется. Платную рекламу не
+// склеиваем: у неё свои поднятия и снятие (см. adRaises.js).
+const REPEAT_DAYS = 7;
+const titleKey = (title) =>
+  String(title || '')
+    .toLowerCase()
+    .replace(/[^a-zа-яё0-9]+/gi, '');
+
+async function repeatOf(parsed) {
+  const phone = String(parsed.phone || '').replace(/\D/g, '');
+  const key = titleKey(parsed.title);
+  if (!phone || !key) return null;
+  const { rows } = await db.query(
+    `SELECT id, title FROM vacancies
+      WHERE status = 'open' AND is_imported AND regexp_replace(COALESCE(whatsapp_phone, ''), '[^0-9]', '', 'g') = $1
+        AND created_at > NOW() - make_interval(days => $2)
+      ORDER BY id DESC`,
+    [phone, REPEAT_DAYS]
+  );
+  const same = rows.find((v) => titleKey(v.title) === key);
+  return same ? same.id : null;
+}
+
 async function publish(id) {
   const row = await get(id);
   if (!row) throw new Error('Объявление не найдено');
@@ -243,6 +270,17 @@ async function publish(id) {
   }
 
   if (parsed.listing_type === 'vacancy') {
+    const repeat = row.is_ad ? null : await repeatOf(parsed);
+    if (repeat) {
+      await db.query('UPDATE vacancies SET bumped_at = NOW() WHERE id = $1', [repeat]);
+      await db.query(
+        "UPDATE imported_listings SET status = 'published', published_at = NOW(), vacancy_id = $1 WHERE id = $2",
+        [repeat, id]
+      );
+      invalidate('home:');
+      return { type: 'vacancy', id: repeat, repeat: true };
+    }
+
     const inserted = await db.query(
       `INSERT INTO vacancies
         (user_id, title, description, category, employment_type, city, address, work_format, experience, salary_min, whatsapp_phone, is_imported, for_students)

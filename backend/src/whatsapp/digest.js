@@ -15,6 +15,7 @@ const repo = require('../rubricsRepo');
 const { money } = require('../money');
 const { tag } = require('../sourceTag');
 const { clamp } = require('../telegram/format');
+const { morningHead } = require('../morning');
 
 const HOUR_MS = 60 * 60 * 1000;
 const TICK_MS = 10 * 60 * 1000;
@@ -72,11 +73,12 @@ const KINDS = {
   },
 };
 
-function render(type, items, { siteUrl, pretty }) {
+// head — своя шапка вместо обычной: у первой подборки дня — «Утро на Шабашке».
+function render(type, items, { siteUrl, pretty }, head = '') {
   const kind = KINDS[type];
   const list = siteUrl(type);
   const link = (url) => (list ? pretty(tag(url, 'whatsapp')) : '');
-  const lines = [kind.head, ''];
+  const lines = [head || kind.head, ''];
   items.forEach((item, i) => {
     lines.push(`${i + 1}. ${clamp(plain(item.parsed.title), TITLE_MAX)} — ${kind.describe(item)}`);
     if (list) lines.push(`👉 ${link(`${list}/${item.id}`)}`);
@@ -87,9 +89,14 @@ function render(type, items, { siteUrl, pretty }) {
   return lines.join('\n');
 }
 
+// Первая подборка дня, если она утренняя, — «☕ Утро на Шабашке · дата», как
+// утренний топ в Threads и группе (см. morning.js, аудит 12 ноября 2026).
+const MORNING_LAST_HOUR = 11;
+const isMorning = (slot) => slot !== null && slot === HOURS[0] && slot <= MORNING_LAST_HOUR;
+
 // Пост для слота или null, если подборки не набралось. cursor — докуда дошли
 // по вакансиям: двигаем только после выхода.
-async function make(deps, slot) {
+async function make(deps, slot, now = Date.now()) {
   if (slot === ORDERS_HOUR) {
     const items = await repo.freshOrders({ limit: LIMIT });
     return items.length < MIN_ITEMS ? null : { text: render('order', items, deps) };
@@ -97,7 +104,8 @@ async function make(deps, slot) {
   const afterId = Number(await feedStats.getSetting(CURSOR_KEY)) || 0;
   const items = await repo.freshVacancies({ afterId, limit: LIMIT });
   if (items.length < MIN_ITEMS) return null;
-  return { text: render('vacancy', items, deps), cursor: Math.max(...items.map((item) => item.id)) };
+  const head = isMorning(slot) ? morningHead(now) : '';
+  return { text: render('vacancy', items, deps, head), cursor: Math.max(...items.map((item) => item.id)) };
 }
 
 // Отправить готовую подборку. Возвращает 'ok' | 'skip' | 'fail'.
@@ -149,7 +157,7 @@ async function tick(deps, now = Date.now()) {
     if (!(await feedStats.claimSetting(SLOT_KEY, `${feedStats.today(now)} ${slot}`))) return null;
     let post;
     try {
-      post = await make(deps, slot);
+      post = await make(deps, slot, now);
     } catch (err) {
       await feedStats.setSetting(SLOT_KEY, '').catch(() => {});
       return failed(err);

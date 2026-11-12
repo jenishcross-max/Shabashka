@@ -8,6 +8,7 @@ const { money } = require('./money');
 const landings = require('./landings');
 const { BOT_UA_RE } = require('./bots');
 const { VACANCY_DAYS } = require('./staleListings');
+const salaryUnit = require('./salaryUnit');
 
 const router = express.Router();
 
@@ -74,9 +75,14 @@ const SCHEMA_EMPLOYMENT_TYPE = {
   full_time: 'FULL_TIME',
   part_time: 'PART_TIME',
   shift: 'OTHER',
-  gig: 'OTHER',
+  // Разовая работа — временная: так её и ищут в блоке вакансий Google.
+  gig: 'TEMPORARY',
   internship: 'INTERN',
 };
+
+// Вакансию из чата бот публикует от имени админа, и Google видел у всех них
+// работодателем его имя. Настоящего имени у нас нет — пишем честно.
+const IMPORTED_EMPLOYER = 'Частный работодатель';
 
 // Та же разметка, что SPA вставляет в VacancyDetail: по ней вакансия может
 // попасть в блок вакансий Google. Googlebot SPA отсюда не видит — значит, и
@@ -93,6 +99,8 @@ function validThrough(v) {
 
 function jobPosting(v) {
   const until = validThrough(v);
+  const min = salaryUnit.clean(v.salary_min);
+  const max = salaryUnit.clean(v.salary_max);
   return {
     '@context': 'https://schema.org/',
     '@type': 'JobPosting',
@@ -101,7 +109,7 @@ function jobPosting(v) {
     datePosted: new Date(v.created_at).toISOString(),
     ...(until ? { validThrough: until } : {}),
     employmentType: SCHEMA_EMPLOYMENT_TYPE[v.employment_type] || 'OTHER',
-    hiringOrganization: { '@type': 'Organization', name: v.owner_name },
+    hiringOrganization: { '@type': 'Organization', name: v.is_imported ? IMPORTED_EMPLOYER : v.owner_name },
     jobLocation: {
       '@type': 'Place',
       address: { '@type': 'PostalAddress', addressLocality: v.city, addressCountry: 'KG' },
@@ -112,16 +120,17 @@ function jobPosting(v) {
     ...(v.work_format === 'online'
       ? { jobLocationType: 'TELECOMMUTE', applicantLocationRequirements: { '@type': 'Country', name: 'Kyrgyzstan' } }
       : {}),
-    ...(v.salary_min || v.salary_max
+    // Сумма меньше 5 000 сом — за день, мусор вроде «10 сом» — не зарплата (см. salaryUnit.js).
+    ...(min || max
       ? {
           baseSalary: {
             '@type': 'MonetaryAmount',
             currency: 'KGS',
             value: {
               '@type': 'QuantitativeValue',
-              minValue: v.salary_min || v.salary_max,
-              maxValue: v.salary_max || v.salary_min,
-              unitText: 'MONTH',
+              minValue: min || max,
+              maxValue: max || min,
+              unitText: salaryUnit.unitText(min, max),
             },
           },
         }

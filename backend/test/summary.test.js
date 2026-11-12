@@ -246,3 +246,52 @@ test('следом за сводкой — «Кому написать»; его
   assert.equal(ok, true, 'сводка ушла — значит, отправлена');
   assert.equal(quiet.length, 1);
 });
+
+// Аудит 12 ноября 2026 (docs/research/2026-11-audit.md): видно, сколько людей
+// дошли от ссылки до подписки и сколько написали работодателю — с какой площадки.
+test('воронка подписки и отклики за сегодня', async () => {
+  const keys = {
+    'sub.start': 12,
+    'sub.new': 7,
+    'sub.off': 1,
+    'sub.blocked': 2,
+    'sub.digest': 34,
+    'contact.wa.threads': 6,
+    'contact.tel.threads': 3,
+    'contact.wa.digest': 4,
+    'contact.wa.bot': 1,
+    'contact.tel.direct': 6,
+  };
+  Object.assign(stats.counters, keys);
+  try {
+    const { text } = await summary.build();
+    assert.match(text, /\n🔔 Бот сегодня: пришли по ссылке 12 → подписались 7 · отписались 1 · заблокировали 2 · подборок 34\n/);
+    assert.match(text, /\n📞 Написали работодателю: WhatsApp 11 · звонок 9 — из Threads 9 · из бота 5 · прямые 6\n/);
+  } finally {
+    for (const key of Object.keys(keys)) delete stats.counters[key];
+  }
+  const { text } = await summary.build();
+  assert.doesNotMatch(text, /Бот сегодня|Написали работодателю/);
+});
+
+// Вакансии, поданные на сайте, бот раздаёт в группу и соцсети (см. siteShare.js).
+test('сколько вакансий с сайта разослано', async () => {
+  stats.counters['site.shared'] = 2;
+  try {
+    assert.match((await summary.build()).text, /\n🌐 Вакансий с сайта разослано: 2\n/);
+  } finally {
+    delete stats.counters['site.shared'];
+  }
+  assert.doesNotMatch((await summary.build()).text, /Вакансий с сайта/);
+});
+
+// Тест «группа против бота» в постах Threads (см. subLine.js и routes/go.js).
+test('переходы в группу — рядом с переходами в бота', async () => {
+  stats.counters['join.click.threads'] = 5;
+  try {
+    assert.match((await summary.build()).text, /\n↪️ Перешли в группу сегодня: из Threads 5\n/);
+  } finally {
+    delete stats.counters['join.click.threads'];
+  }
+  assert.doesNotMatch((await summary.build()).text, /Перешли в группу/);
+});

@@ -49,3 +49,32 @@ test('коды — те же, что ставит бот', () => {
     assert.deepEqual(run(`https://xn--80aaac0cyed.com/?s=${code}`), [`/?utm_source=${source}&utm_medium=social`]);
   }
 });
+
+// Счётчик отклика (src/contact.js, аудит 12 ноября 2026): нажатие «Позвонить» или
+// «WhatsApp» считается по площадке, с которой человек пришёл. Метка из адреса
+// уходит сразу, поэтому скрипт запоминает её на время визита.
+test('источник захода запоминается на визит, без хранилища — не падает', () => {
+  const stored = new Map();
+  const sessionStorage = { setItem: (key, value) => stored.set(key, value) };
+  vm.runInNewContext(SCRIPT, {
+    URL,
+    sessionStorage,
+    location: { href: 'https://xn--80aaac0cyed.com/vacancies/12?s=t' },
+    history: { state: null, replaceState: () => {} },
+  });
+  assert.equal(stored.get('shabashka:src'), 'threads');
+
+  // Приватный режим Safari бросает на setItem — адрес всё равно переписан.
+  const replaced = [];
+  vm.runInNewContext(SCRIPT, {
+    URL,
+    sessionStorage: {
+      setItem: () => {
+        throw new Error('QuotaExceededError');
+      },
+    },
+    location: { href: 'https://xn--80aaac0cyed.com/vacancies/12?s=b' },
+    history: { state: null, replaceState: (_s, _t, url) => replaced.push(url) },
+  });
+  assert.deepEqual(replaced, ['/vacancies/12?utm_source=bot&utm_medium=social']);
+});

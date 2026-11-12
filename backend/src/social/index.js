@@ -529,6 +529,35 @@ async function runBatch(entries, opts = {}) {
   });
 }
 
+// Пачка из очереди. Вакансии — по профессии головы очереди: у всех сорока роликов
+// в день была одна шапка «Вакансии дня», а лучше всех смотрят тематические
+// (аудит 12 ноября 2026, см. docs/research). Своих на пачку не набралось —
+// добираем следующими по очереди: ролик не ждёт, пока наберётся профессия,
+// иначе очередь не успевала бы за потоком.
+function takeBatch(q) {
+  const head = q[0];
+  const category = head && head.listingType === 'vacancy' && head.parsed && head.parsed.category;
+  if (!category) return q.splice(0, BATCH_SIZE);
+  const picked = q.filter((entry) => entry.parsed && entry.parsed.category === category).slice(0, BATCH_SIZE);
+  for (const entry of q) {
+    if (picked.length >= BATCH_SIZE) break;
+    if (!picked.includes(entry)) picked.push(entry);
+  }
+  for (const entry of picked) q.splice(q.indexOf(entry), 1);
+  // Порядок поступления — как и без профессии.
+  return picked;
+}
+
+// Шапка ролика из одной профессии — её название («Склад и грузчики»); смешанный
+// и студенческий ролик называются как раньше (см. collectionTitle в card.js).
+function batchTitle(entries) {
+  const first = entries[0];
+  if (!first || first.listingType !== 'vacancy' || card.isStudentBatch(entries)) return undefined;
+  const category = first.parsed && first.parsed.category;
+  if (!category || category === 'Другое') return undefined;
+  return entries.every((entry) => entry.parsed && entry.parsed.category === category) ? category : undefined;
+}
+
 // Ролик выходит по часам, а не по наполнению очереди (см. RELEASE_INTERVAL_MS).
 // За один раз — одна пачка, и берём её у того типа, чьё объявление ждёт дольше
 // всех: иначе оживлённая очередь заказов не давала бы выйти единственной за
@@ -544,8 +573,8 @@ function release() {
   // Платное объявление ставится в голову своей очереди (см. shareListing), так
   // что по первому элементу видно и срочность, и возраст.
   queues.sort((a, b) => (b[0].priority ? 1 : 0) - (a[0].priority ? 1 : 0) || a[0].at - b[0].at);
-  const entries = queues[0].splice(0, BATCH_SIZE);
-  runBatch(entries).catch((err) => console.error('Автопостинг (ролик):', err));
+  const entries = takeBatch(queues[0]);
+  runBatch(entries, { collection: batchTitle(entries) }).catch((err) => console.error('Автопостинг (ролик):', err));
   return entries.length;
 }
 
@@ -584,10 +613,12 @@ function flushNow(listingType) {
   if (!q.length) return 0;
   // Больше пачки не берём даже по команде: BATCH_SIZE — это не только квота, но
   // и длина ролика, а лишнее пусть дожидается своего выпуска.
-  const entries = q.splice(0, BATCH_SIZE);
+  const entries = takeBatch(q);
   // Намеренно без await, как и в flush: сборка и обработка на стороне Meta —
   // это минуты, а ответить на команду надо сразу.
-  runBatch(entries).catch((err) => console.error('Автопостинг (ролик по команде):', err));
+  runBatch(entries, { collection: batchTitle(entries) }).catch((err) =>
+    console.error('Автопостинг (ролик по команде):', err)
+  );
   return entries.length;
 }
 

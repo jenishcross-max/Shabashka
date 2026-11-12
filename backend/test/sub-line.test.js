@@ -4,6 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 delete process.env.SUB_EVERY;
+// Тесты ниже — про строку бота; тест «группа против бота» — в конце файла, со своим экземпляром.
+process.env.SUB_GROUP = 'off';
 const sub = require('../src/social/subLine');
 
 test('у каждого второго поста-вакансии с профессией — подписка на эту профессию', () => {
@@ -39,4 +41,21 @@ test('SUB_EVERY: по умолчанию каждый второй, off выкл
   assert.equal(sub.parseEvery('off'), 0);
   assert.equal(sub.parseEvery('3'), 3);
   assert.equal(sub.parseEvery('мусор'), 2);
+});
+
+// Аудит 12 ноября 2026 (docs/research/2026-11-audit.md): Telegram-группа с кнопкой
+// под каждым постом выросла за неделю на 18%, а бот за месяц набрал два десятка
+// подписчиков. Что лучше зовёт из Threads — проверяем: половина строк подписки
+// ведёт в бота, половина — в группу, и переходы считаются отдельно (/g → сводка).
+test('группа против бота: строки подписки по очереди, в группу — через счётчик /g', () => {
+  const line = sub.create({ every: 2, group: 'on' });
+  const got = Array.from({ length: 4 }, () => line('vacancy', { category: 'Склад и грузчики' }, 'шабашка.com/vacancies/9'));
+  assert.deepEqual(got, [
+    '',
+    '📲 Новые вакансии «Склад и грузчики» — в Telegram: шабашка.com/s/gruzchik',
+    '',
+    '✈️ Вакансии «Склад и грузчики» и вся работа — каждый день в Telegram-группе: шабашка.com/g',
+  ]);
+  assert.equal(sub.parseGroup(undefined), true, 'по умолчанию тест включён');
+  assert.equal(sub.parseGroup('off'), false);
 });

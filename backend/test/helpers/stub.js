@@ -330,6 +330,8 @@ function exchangeStubs() {
       onCallback: async (query) => String(query.data || '').startsWith('fd:'),
     },
     [at('tasksRepo.js')]: { get: async () => null },
+    // Вакансии с сайта — в группу и соцсети (siteShare.js) — ходит в базу; у него свой тест.
+    [at('telegram/siteShare.js')]: { share: async () => false, DAILY_LIMIT: 3 },
     // WhatsApp-канал (см. whatsapp/index.js) грузит Baileys и ходит в базу; боту
     // в тестах хватает того, что команда до него доходит.
     [at('whatsapp/index.js')]: {

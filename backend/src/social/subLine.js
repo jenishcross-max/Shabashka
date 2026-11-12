@@ -24,20 +24,39 @@ const { parseEvery: parse } = require('./follow');
 const parseEvery = (value) => parse(value, 2);
 const EVERY = parseEvery(process.env.SUB_EVERY);
 
-let posts = 0;
+// Тест «группа против бота» (аудит 12 ноября 2026, см. docs/research): группа с
+// кнопкой под каждым постом за неделю выросла на 18%, а бот за месяц набрал два
+// десятка подписчиков. Каждая вторая строка подписки зовёт в Telegram-группу —
+// через шабашка.com/g, где переход считается (см. routes/go.js), рядом с
+// переходами в бота по /s/. Что приводит больше, видно в сводке. SUB_GROUP=off —
+// только бот.
+const parseGroup = (value) => !/^(off|no|нет|-|0)$/i.test(String(value ?? '').trim());
 
-// siteLink — ссылка поста на карточку («шабашка.com/vacancies/12»): из неё берём
-// адрес сайта, чтобы не держать его здесь второй раз.
-function line(listingType, parsed, siteLink) {
-  if (!EVERY || listingType !== 'vacancy') return '';
-  const category = parsed && parsed.category;
-  const page = category ? landings.find((l) => l.category === category) : null;
-  const host = String(siteLink || '')
-    .replace(/^https?:\/\//, '')
-    .split('/')[0];
-  if (!page || !host) return '';
-  posts += 1;
-  return posts % EVERY === 0 ? `📲 Новые вакансии «${page.category}» — в Telegram: ${host}/s/${page.slug}` : '';
+function create({ every = EVERY, group = 'on' } = {}) {
+  const withGroup = parseGroup(group);
+  let posts = 0;
+  let slots = 0;
+
+  // siteLink — ссылка поста на карточку («шабашка.com/vacancies/12»): из неё берём
+  // адрес сайта, чтобы не держать его здесь второй раз.
+  return function line(listingType, parsed, siteLink) {
+    if (!every || listingType !== 'vacancy') return '';
+    const category = parsed && parsed.category;
+    const page = category ? landings.find((l) => l.category === category) : null;
+    const host = String(siteLink || '')
+      .replace(/^https?:\/\//, '')
+      .split('/')[0];
+    if (!page || !host) return '';
+    posts += 1;
+    if (posts % every !== 0) return '';
+    slots += 1;
+    if (withGroup && slots % 2 === 0) {
+      return `✈️ Вакансии «${page.category}» и вся работа — каждый день в Telegram-группе: ${host}/g`;
+    }
+    return `📲 Новые вакансии «${page.category}» — в Telegram: ${host}/s/${page.slug}`;
+  };
 }
 
-module.exports = { line, parseEvery, EVERY };
+const line = create({ group: process.env.SUB_GROUP });
+
+module.exports = { line, create, parseEvery, parseGroup, EVERY };

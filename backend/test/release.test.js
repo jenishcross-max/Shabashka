@@ -24,6 +24,7 @@ const realSetTimeout = global.setTimeout;
 global.setTimeout = (fn, ms, ...rest) => realSetTimeout(fn, ms >= 1000 ? 5 : ms, ...rest);
 
 const published = [];
+const collections = [];
 
 const requireSrc = install({
   // Токены, слежка за рекламой и заявки ходят в базу — здесь они не нужны.
@@ -44,8 +45,9 @@ const requireSrc = install({
     remove: async () => {},
   },
   [at('social/video.js')]: {
-    build: async (items) => {
+    build: async (items, job) => {
       published.push(items.map((i) => i.parsed.title));
+      collections.push(job && job.collection);
       return { buffer: Buffer.from('mp4'), credit: null };
     },
     caption: () => 'подпись',
@@ -153,4 +155,34 @@ test('студенческие вакансии ждут ролика отдел
   assert.equal(social.flushNow('vacancy_students'), 1, '/now умеет и студенческую очередь');
   assert.deepEqual(await lastReel(), ['Официант, можно студентам'], 'без обычной вакансии в том же ролике');
   assert.deepEqual(byType(), { vacancy: 1 });
+});
+
+// Аудит 12 ноября 2026 (docs/research/2026-11-audit.md): у всех сорока роликов в
+// день была одна шапка «Вакансии дня», а лучшие ролики — тематические. Теперь
+// вакансии одной профессии собираются в один ролик, и шапка называет профессию.
+test('вакансии одной профессии едут одним роликом, и шапка называет профессию', async () => {
+  while (social.release()) await settle();
+  const job = (title, category) =>
+    social.shareListing({ ...listing(title), category }, 'vacancy', 'шабашка.com/x', { chatId: 1 });
+  await job('Повар', 'Общепит');
+  await job('Грузчик 1', 'Склад и грузчики');
+  await job('Официант', 'Общепит');
+  await job('Грузчик 2', 'Склад и грузчики');
+  await job('Бариста', 'Общепит');
+  await job('Мойщик', 'Автомойка, СТО и АЗС');
+
+  assert.equal(social.release(), 3);
+  assert.deepEqual(await lastReel(), ['Повар', 'Официант', 'Бариста'], 'профессия головы очереди');
+  assert.equal(collections.at(-1), 'Общепит');
+
+  // Своих на тройку не набралось — добираем следующими по очереди: ролик не
+  // должен ждать, пока наберётся профессия, иначе очередь не успеет за потоком.
+  assert.equal(social.release(), 3);
+  assert.deepEqual(await lastReel(), ['Грузчик 1', 'Грузчик 2', 'Мойщик']);
+  assert.equal(collections.at(-1), 'Вакансии дня', 'смешанный ролик — общая шапка');
+
+  await job('Охранник', 'Охрана');
+  assert.equal(social.release(), 1);
+  assert.deepEqual(await lastReel(), ['Охранник']);
+  assert.equal(collections.at(-1), 'Охрана', 'одна вакансия — тоже по профессии');
 });

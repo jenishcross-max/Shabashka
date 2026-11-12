@@ -68,6 +68,13 @@
           url.searchParams.set('utm_source', source);
           url.searchParams.set('utm_medium', 'social');
           history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+          // Метка из адреса ушла — запоминаем её на визит: по ней считается,
+          // с какой площадки пришёл тот, кто нажал «Позвонить» (см. src/contact.js).
+          try {
+            sessionStorage.setItem('shabashka:src', source);
+          } catch (e) {
+            // приватный режим — отклик посчитается как прямой заход
+          }
         } catch (e) {
           // старый браузер без URL — зайдёт без метки, как раньше
         }

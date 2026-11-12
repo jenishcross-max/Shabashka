@@ -173,3 +173,27 @@ test('«Проверка URL» в Search Console видит то же, что Go
   const res = await get('/vacancies/131', 'Mozilla/5.0 (compatible; Google-InspectionTool/1.0;)');
   assert.match(await res.text(), /<h1>Официантка и уборщица нужны<\/h1>/);
 });
+
+// Аудит 12 ноября 2026 (docs/research/2026-11-audit.md): Googlebot видел у всех
+// вакансий из чатов работодателя «Азамат Админов» (это админ, от чьего имени их
+// публикует бот) и «1 500 сом в месяц» там, где платят за день.
+test('разметка вакансии: работодатель из чата, оплата за день, разовая работа, мусорная сумма', async () => {
+  const ldOf = async (vacancy) => {
+    rows.vacancies = [vacancy];
+    const html = await (await get('/vacancies/131')).text();
+    rows.vacancies = [VACANCY];
+    return JSON.parse(/<script type="application\/ld\+json">(.*?)<\/script>/s.exec(html)[1]);
+  };
+
+  const chat = await ldOf({ ...VACANCY, is_imported: true, owner_name: 'Азамат Админов', employment_type: 'gig' });
+  assert.equal(chat.hiringOrganization.name, 'Частный работодатель');
+  assert.equal(chat.employmentType, 'TEMPORARY');
+  assert.equal(chat.baseSalary.value.unitText, 'DAY', 'меньше 5 000 сом — это оплата за день');
+
+  const own = await ldOf({ ...VACANCY, owner_name: 'Кафе «Арзу»', employment_type: 'full_time', salary_min: 40000 });
+  assert.equal(own.hiringOrganization.name, 'Кафе «Арзу»', 'поданную на сайте — от имени автора');
+  assert.equal(own.baseSalary.value.unitText, 'MONTH');
+
+  const junk = await ldOf({ ...VACANCY, salary_min: 10 });
+  assert.equal(junk.baseSalary, undefined, '«10 сом» — ошибка разбора, а не зарплата');
+});

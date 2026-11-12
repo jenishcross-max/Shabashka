@@ -13,6 +13,7 @@ const { weight, THREADS_LIMIT } = require('../social/video');
 const { money } = require('../money');
 const { tag } = require('../sourceTag');
 const { clamp, plural } = require('./format');
+const { morningHead } = require('../morning');
 
 const HOUR_MS = 60 * 60 * 1000;
 const TICK_MS = 10 * 60 * 1000;
@@ -29,6 +30,14 @@ const salaryText = ({ min, max }) => (max && max > min ? `${money(min)}–${mone
 // а не «от null сом».
 const salaryAndCity = (item) =>
   item.salary.min ? `${salaryText(item.salary)}, ${item.parsed.city}` : item.parsed.city;
+
+// Сумма меньше 5 000 сом — оплата за день или смену: месячной зарплаты такой
+// не бывает (см. dailyPay в rubricsRepo.js).
+const dailyText = (item) => `${money(item.salary.min)} сом в день, ${item.parsed.city}`;
+
+// Рубрики спроса (аудит 12 ноября 2026): эти профессии открывают вдвое-втрое
+// чаще общепита (3,25 · 2,69 · 3,21 открытия на вакансию против 1,5).
+const DEMAND = ['Склад и грузчики', 'Стройка и разнорабочие', 'Офис'];
 
 const numbered = (items, describe) =>
   items.map((item, i) => `${i + 1}. ${clamp(item.parsed.title, TITLE_MAX)} — ${describe(item)}`);
@@ -47,8 +56,16 @@ const RUBRICS = [
       let items = await repo.topSalary({ days: 1 });
       if (items.length < MIN_ITEMS) items = await repo.topSalary({ days: 2 });
       if (items.length < MIN_ITEMS) return null;
+      // Сколько вышло за сутки — живое число на утреннем выпуске. Не ответила
+      // база — выпуск выходит и без него.
+      const fresh = await repo.countFresh({ hours: 24 }).catch(() => 0);
       return {
+        // Утро на Шабашке — одна шапка с датой во всех каналах (см. morning.js).
+        lead: morningHead(deps.now),
         head: (n) => `💰 Топ-${n} ${plural(n, ['вакансия', 'вакансии', 'вакансий'])} дня по зарплате`,
+        ...(fresh
+          ? { note: `За сутки на сайте — ${fresh} ${plural(fresh, ['новая вакансия', 'новые вакансии', 'новых вакансий'])}.` }
+          : {}),
         lines: numbered(items, salaryAndCity),
         more: { label: 'Все вакансии', url: deps.siteUrl('vacancy') },
         // Без «в 9:00»: проспал Render — топ выходит до полудня (LATE_HOURS).
@@ -121,6 +138,46 @@ const RUBRICS = [
       };
     },
   },
+  // Вечерние рубрики — после всех прочих: обход выпускает первую открытую.
+  {
+    key: 'demand',
+    hour: 18,
+    days: EVERY_DAY,
+    async make(deps) {
+      const items = await repo.byCategories(DEMAND, { hours: 24 });
+      if (items.length < MIN_ITEMS) return null;
+      return {
+        head: () => '🏗 Склад, стройка и офис — свежие вакансии',
+        lines: numbered(items, salaryAndCity),
+        more: { label: 'Все вакансии', url: deps.siteUrl('vacancy') },
+        tail: '🔔 Подпишись — склад, стройка и офис каждый вечер',
+        items,
+        collection: () => 'Склад, стройка, офис',
+        cta: 'все вакансии на сайте',
+      };
+    },
+  },
+  {
+    // «Оплата: Ежедневно» у Lalafo стоит прямо в заголовке — и по ней находят
+    // работу в ИИ-поиске (аудит 12 ноября 2026). Вечером: на завтрашнюю
+    // подработку смотрят с вечера.
+    key: 'daily',
+    hour: 20,
+    days: EVERY_DAY,
+    async make(deps) {
+      const items = await repo.dailyPay({ hours: 24 });
+      if (items.length < MIN_ITEMS) return null;
+      return {
+        head: () => '💵 Оплата за день — свежие вакансии',
+        lines: numbered(items, dailyText),
+        more: { label: 'Все вакансии', url: deps.siteUrl('vacancy') },
+        tail: '🔔 Подпишись — работа с оплатой за день каждый вечер',
+        items,
+        collection: () => 'Оплата за день',
+        cta: 'все вакансии на сайте',
+      };
+    },
+  },
 ];
 
 const KEYS = RUBRICS.map((r) => r.key);
@@ -144,7 +201,14 @@ const ENABLED = parseList(process.env.RUBRICS);
 // (в Instagram текст рубрики не уходит), в теге — Telegram.
 function render(post, pretty = (url) => url) {
   const url = post.more && post.more.url;
-  const body = (n) => [post.head(n), '', ...post.lines.slice(0, n), ...(post.note ? [post.note] : [])];
+  // lead — строка над заголовком: «☕ Утро на Шабашке · дата» у утреннего топа.
+  const body = (n) => [
+    ...(post.lead ? [post.lead] : []),
+    post.head(n),
+    '',
+    ...post.lines.slice(0, n),
+    ...(post.note ? [post.note] : []),
+  ];
   const text = (n) =>
     [...body(n), '', ...(url ? [`${post.more.label} — ${pretty(tag(url, 'threads'))}`] : []), post.tail].join('\n');
   let n = post.lines.length;
@@ -199,7 +263,7 @@ async function tick(deps, now = Date.now()) {
 
       let post;
       try {
-        post = await rubric.make(deps);
+        post = await rubric.make({ ...deps, now });
       } catch (err) {
         console.error(`[рубрики] ${rubric.key}: выборка не удалась:`, err.message);
         await feedStats.setSetting(mark, '').catch(() => {});

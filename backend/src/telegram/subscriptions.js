@@ -15,6 +15,7 @@ const landings = require('../landings');
 const { money } = require('../money');
 const { tag } = require('../sourceTag');
 const { esc } = require('./api');
+const feedStats = require('./feedStats');
 
 const PROFESSIONS = landings.filter((l) => l.category);
 // Задачи биржи — не профессия, а отдельная подписка для исполнителей: заказчик
@@ -44,11 +45,29 @@ const EVERY_MS = 60 * 60 * 1000;
 // Telegram пускает около 30 сообщений в секунду на бота — держимся ниже.
 const PAUSE_MS = 50;
 
-const subscribe = (chatId, category) =>
-  db.query('INSERT INTO subscriptions (chat_id, category) VALUES ($1, $2) ON CONFLICT DO NOTHING', [chatId, category]);
-const unsubscribe = (chatId, category) =>
-  db.query('DELETE FROM subscriptions WHERE chat_id = $1 AND category = $2', [chatId, category]);
-const unsubscribeAll = (chatId) => db.query('DELETE FROM subscriptions WHERE chat_id = $1', [chatId]);
+// Воронка подписки в сводке (см. summary.js, аудит 12 ноября 2026): сколько
+// пришли по ссылке (sub.start), подписались (sub.new), отписались (sub.off),
+// заблокировали бота (sub.blocked) и сколько подборок ушло (sub.digest). RETURNING,
+// а не rowCount: так число строк одинаково и у pg, и у PGlite в тестах.
+async function subscribe(chatId, category) {
+  const { rows } = await db.query(
+    'INSERT INTO subscriptions (chat_id, category) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING chat_id',
+    [chatId, category]
+  );
+  if (rows.length) await feedStats.bump('sub.new');
+}
+async function unsubscribe(chatId, category) {
+  const { rows } = await db.query('DELETE FROM subscriptions WHERE chat_id = $1 AND category = $2 RETURNING chat_id', [
+    chatId,
+    category,
+  ]);
+  if (rows.length) await feedStats.bump('sub.off');
+}
+// blocked — убираем заблокировавшего бота: это не «отписался», а «ушёл молча».
+async function unsubscribeAll(chatId, { blocked = false } = {}) {
+  const { rows } = await db.query('DELETE FROM subscriptions WHERE chat_id = $1 RETURNING chat_id', [chatId]);
+  if (rows.length) await feedStats.bump(blocked ? 'sub.blocked' : 'sub.off');
+}
 
 async function categoriesOf(chatId) {
   const { rows } = await db.query('SELECT category FROM subscriptions WHERE chat_id = $1 ORDER BY created_at, category', [
@@ -152,6 +171,7 @@ async function onMessage(message, deps, { admin = false } = {}) {
 
   const link = text.match(/^\/start\s+sub_([\w-]+)$/);
   if (link) {
+    await feedStats.bump('sub.start');
     const profession = bySlug(link[1]);
     if (profession) await subscribe(chatId, profession.category);
     await showMenu(chatId, deps, profession ? `✅ Подписал: ${profession.category}` : '');
@@ -177,7 +197,7 @@ async function sample(chatId, profession, deps) {
   if (profession === TASKS) return;
   const students = profession === STUDENTS;
   const { rows } = await db.query(
-    `SELECT id, title, city, salary_min FROM vacancies
+    `SELECT id, title, city, salary_min, whatsapp_phone FROM vacancies
       WHERE status = 'open' AND ${students ? 'for_students' : 'category = $2'}
       ORDER BY id DESC LIMIT $1`,
     students ? [SAMPLE] : [SAMPLE, profession.category]
@@ -242,9 +262,14 @@ const writeCursor = (id) =>
 // sourceTag.js), чтобы Метрика отличала заходы из подборки от прямых.
 const linkTo = (url, pretty) => `<a href="${esc(tag(url, 'bot'))}">${esc(pretty(url))}</a>`;
 
+// «💬 Написать» — через счётчик отклика (см. routes/contact.js и /c/:id/:from в
+// netlify.toml): номера в подборке нет, а без кнопки человек шёл на сайт искать
+// её там. Нет номера — нет и кнопки: писать некуда, карточка по ссылке рядом.
 function vacancyLine(v, { siteUrl, pretty }) {
   const pay = v.salary_min ? `, от ${money(v.salary_min)} сом` : '';
-  return `• ${esc(v.title)} — ${esc(v.city)}${pay}\n${linkTo(`${siteUrl}/vacancies/${v.id}`, pretty)}`;
+  const phone = String(v.whatsapp_phone || '').replace(/\D/g, '');
+  const write = phone ? ` · <a href="${esc(`${siteUrl}/c/${v.id}/digest`)}">💬 Написать</a>` : '';
+  return `• ${esc(v.title)} — ${esc(v.city)}${pay}\n${linkTo(`${siteUrl}/vacancies/${v.id}`, pretty)}${write}`;
 }
 
 function digestText(sections, deps) {
@@ -284,7 +309,7 @@ async function digest({ now = new Date(), pause = (ms) => new Promise((r) => set
   const students = categories.includes(STUDENTS.category);
   if (categories.length) {
     const { rows } = await db.query(
-      `SELECT id, title, city, salary_min, category, for_students FROM vacancies
+      `SELECT id, title, city, salary_min, whatsapp_phone, category, for_students FROM vacancies
         WHERE id > $1 AND id <= $2 AND status = 'open' AND (category = ANY($3::text[]) OR ($4 AND for_students))
         ORDER BY id DESC`,
       [cursor, maxId, categories, students]
@@ -319,7 +344,7 @@ async function digest({ now = new Date(), pause = (ms) => new Promise((r) => set
       sent += 1;
     } catch (err) {
       if (/Forbidden|chat not found|user is deactivated/i.test(err.message)) {
-        await unsubscribeAll(chatId);
+        await unsubscribeAll(chatId, { blocked: true });
         removed += 1;
       } else {
         console.error(`[подписка] ${chatId}:`, err.message);
@@ -328,6 +353,7 @@ async function digest({ now = new Date(), pause = (ms) => new Promise((r) => set
     await pause(PAUSE_MS);
   }
   await writeCursor(maxId);
+  await feedStats.bump('sub.digest', sent);
   if (sent || removed) console.log(`[подписка] разослал: ${sent}, убрал заблокировавших: ${removed}`);
   return { sent, removed };
 }
@@ -364,7 +390,7 @@ async function notifyTask(task, { pause = (ms) => new Promise((r) => setTimeout(
       sent += 1;
     } catch (err) {
       if (/Forbidden|chat not found|user is deactivated/i.test(err.message)) {
-        await unsubscribeAll(chatId);
+        await unsubscribeAll(chatId, { blocked: true });
         removed += 1;
       } else {
         console.error(`[подписка] задача ${task.id} → ${chatId}:`, err.message);

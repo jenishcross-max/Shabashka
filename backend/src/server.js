@@ -15,6 +15,8 @@ const conversationRoutes = require('./routes/conversations');
 const taskRoutes = require('./routes/tasks');
 const adRoutes = require('./routes/ads');
 const subscribeRoutes = require('./routes/subscribe');
+const contactRoutes = require('./routes/contact');
+const goRoutes = require('./routes/go');
 const adminRoutes = require('./routes/admin');
 const dmRoutes = require('./routes/dm');
 const telegram = require('./telegram');
@@ -70,6 +72,8 @@ app.use('/api/conversations', conversationRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/ads', adRoutes);
 app.use('/api/subscribe', subscribeRoutes);
+app.use('/api/contact', contactRoutes);
+app.use('/api/go', goRoutes);
 app.use('/api/admin', adminRoutes);
 app.use(metaRoutes);
 

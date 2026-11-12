@@ -291,3 +291,53 @@ test('/stop в группе — как отписаться; чужому бот
   assert.equal(await subs.onMessage(inGroup('/post'), groupDeps), false, 'админские команды — не здесь');
   assert.equal(sent.length, 1);
 });
+
+// Аудит 12 ноября 2026 (docs/research/2026-11-audit.md): в подборке не было номера —
+// чтобы написать работодателю, человек шёл на сайт и искал кнопку там. Теперь у
+// вакансии с номером — «💬 Написать»: через счётчик отклика сразу в WhatsApp.
+test('подборка: у вакансии с номером — «💬 Написать» через счётчик отклика', async () => {
+  await subs.onMessage(message('/start sub_gruzchik', 701), deps);
+  const withPhone = (
+    await db.query(
+      `INSERT INTO vacancies (user_id, title, description, category, employment_type, city, work_format, experience, whatsapp_phone)
+       VALUES ($1, 'Грузчик', 'Описание', 'Склад и грузчики', 'gig', 'Бишкек', 'offline', 'no_experience', '+996 555 12 34 56') RETURNING id`,
+      [userId]
+    )
+  ).rows[0].id;
+  const noPhone = await vacancy('Кладовщик', 'Склад и грузчики');
+  sent.length = 0;
+  await subs.digest({ ...deps, now: AT_10 });
+  const text = sent.find((m) => m.chatId === 701).text;
+  assert.match(
+    text,
+    new RegExp(
+      `• Грузчик — Бишкек\n<a href="[^"]+/vacancies/${withPhone}\\?s=b">[^<]+</a> · <a href="https://xn--80aaac0cyed\\.com/c/${withPhone}/digest">💬 Написать</a>`
+    )
+  );
+  assert.match(text, new RegExp(`/vacancies/${noPhone}\\?s=b">[^<]+</a>\\n`), 'без номера — без кнопки');
+});
+
+// Воронка подписки в сводке (см. summary.js): сколько пришли по ссылке,
+// подписались, отписались, заблокировали бота и сколько подборок ушло.
+test('счётчики воронки подписки', async () => {
+  const feedStats = requireSrc('telegram/feedStats.js');
+  const before = await feedStats.day();
+  const delta = async (key) => ((await feedStats.day())[key] || 0) - (before[key] || 0);
+
+  await subs.onMessage(message('/start sub_uborka', 801), deps);
+  await subs.onMessage(message('/start sub_uborka', 801), deps); // повтор — не новая подписка
+  await subs.onCallback(callback('sub:krasota', 801), deps);
+  await subs.onCallback(callback('sub:krasota', 801), deps); // выключил
+  await subs.onMessage(message('/stop', 801), deps);
+  assert.equal(await delta('sub.start'), 2);
+  assert.equal(await delta('sub.new'), 2);
+  assert.equal(await delta('sub.off'), 2);
+
+  await subs.onMessage(message('/start sub_uborka', 802), deps);
+  await subs.onMessage(message('/start sub_uborka', 803), deps);
+  blocked.add(803);
+  await vacancy('Уборщица', 'Уборка');
+  await subs.digest({ ...deps, now: AT_10 });
+  assert.equal(await delta('sub.digest'), 1);
+  assert.equal(await delta('sub.blocked'), 1);
+});

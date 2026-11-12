@@ -16,15 +16,24 @@ import { viewWord } from '../plural';
 import { shownViews } from '../views';
 import { landingForCategory, landingPath } from '../landings';
 import { StudentBadge } from '../components/StudentField';
+import { salaryUnit, JUNK_BELOW } from '../salary';
+import { trackContact, telLink } from '../contact';
 
 // schema.org JobPosting ожидает свои значения employmentType, а не наши внутренние коды.
 const SCHEMA_EMPLOYMENT_TYPE = {
   full_time: 'FULL_TIME',
   part_time: 'PART_TIME',
   shift: 'OTHER',
-  gig: 'OTHER',
+  // Разовая работа — временная (как в backend/src/meta.js).
+  gig: 'TEMPORARY',
   internship: 'INTERN',
 };
+
+// Вакансию из чата бот публикует от имени админа: его имя у всех них было
+// «работодателем» — и на карточке, и для Google. Настоящего имени у нас нет
+// (аудит 12 ноября 2026, см. docs/research) — пишем честно, как в meta.js.
+const IMPORTED_EMPLOYER = 'Частный работодатель';
+const salaryOf = (value) => (Number(value) >= JUNK_BELOW ? Number(value) : null);
 
 // Столько живёт вакансия из чата: как VACANCY_DAYS в backend/src/staleListings.js.
 const IMPORTED_DAYS = 21;
@@ -127,7 +136,10 @@ export default function VacancyDetail() {
       // должен знать срок, иначе показывает в поиске давно занятые места.
       ...(vacancy.is_imported && !vacancy.pinned ? { validThrough: expiresAt(vacancy) } : {}),
       employmentType: SCHEMA_EMPLOYMENT_TYPE[vacancy.employment_type] || 'OTHER',
-      hiringOrganization: { '@type': 'Organization', name: vacancy.owner_name },
+      hiringOrganization: {
+        '@type': 'Organization',
+        name: vacancy.is_imported ? IMPORTED_EMPLOYER : vacancy.owner_name,
+      },
       jobLocation: {
         '@type': 'Place',
         address: {
@@ -144,16 +156,17 @@ export default function VacancyDetail() {
             applicantLocationRequirements: { '@type': 'Country', name: 'Kyrgyzstan' },
           }
         : {}),
-      ...(vacancy.salary_min || vacancy.salary_max
+      // Меньше 5 000 сом — за день, «10 сом» — не зарплата (см. salary.js).
+      ...(salaryOf(vacancy.salary_min) || salaryOf(vacancy.salary_max)
         ? {
             baseSalary: {
               '@type': 'MonetaryAmount',
               currency: 'KGS',
               value: {
                 '@type': 'QuantitativeValue',
-                minValue: vacancy.salary_min || vacancy.salary_max,
-                maxValue: vacancy.salary_max || vacancy.salary_min,
-                unitText: 'MONTH',
+                minValue: salaryOf(vacancy.salary_min) || salaryOf(vacancy.salary_max),
+                maxValue: salaryOf(vacancy.salary_max) || salaryOf(vacancy.salary_min),
+                unitText: salaryUnit(vacancy.salary_min, vacancy.salary_max),
               },
             },
           }
@@ -194,7 +207,13 @@ export default function VacancyDetail() {
             {vacancy.address ? `, ${vacancy.address}` : ''}
           </span>
           {vacancy.schedule && <span>🗓 {vacancy.schedule}</span>}
-          <span>👤 Работодатель: {vacancy.owner_name}</span>
+          {/* У вакансии из чата «работодателем» было имя админа, от чьего имени её
+              публикует бот. Честнее — откуда она и что с ней сделали. */}
+          {vacancy.is_imported ? (
+            <span>🛡 Из чата · прошла фильтр Шабашки</span>
+          ) : (
+            <span>👤 Работодатель: {vacancy.owner_name}</span>
+          )}
           <span>
             👁 {views} {viewWord(views)}
           </span>
@@ -230,18 +249,40 @@ export default function VacancyDetail() {
         ) : vacancy.status === 'closed' ? (
           <p className="status-msg">Эта вакансия уже закрыта.</p>
         ) : (
-          <>
-            {vacancy.whatsapp_phone && (
+          vacancy.whatsapp_phone && (
+            // Панель контакта прилипает к низу экрана: кнопка WhatsApp стояла ниже
+            // первого экрана (959 px при 746 видимых), а «Позвонить» не было вовсе —
+            // хотя в посте номер есть и звонят оттуда в одно касание (аудит
+            // 12 ноября 2026, см. docs/research).
+            <div className="contact-bar">
+              <a className="contact-call" href={telLink(vacancy.whatsapp_phone)} onClick={() => trackContact(vacancy.id, 'tel')}>
+                📞 Позвонить
+              </a>
               <a
                 className="whatsapp-btn"
                 href={waLink(vacancy.whatsapp_phone, vacancy.title)}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={() => trackContact(vacancy.id, 'wa')}
               >
-                💬 Написать в WhatsApp
+                💬 WhatsApp
               </a>
-            )}
+            </div>
+          )
+        )}
 
+        {/* Повод вернуться — сразу под контактом, а не после блока «Войдите»:
+            кто нажал «Позвонить», дальше уже не листает. С поста приходят на
+            одну вакансию — следующие по этой профессии пусть придут сами. */}
+        {!vacancy.is_example && (
+          <div className="detail-subscribe">
+            <SubscribeButton category={vacancy.category} />
+            <span>Раз в час днём и только когда есть новые. Без регистрации.</span>
+          </div>
+        )}
+
+        {!vacancy.is_example && vacancy.status !== 'closed' && (
+          <>
             {!isOwner && (
               <div className="apply-box">
                 <h3>Или напишите прямо здесь</h3>
@@ -271,15 +312,6 @@ export default function VacancyDetail() {
               </div>
             )}
           </>
-        )}
-
-        {/* Повод вернуться: с поста приходят на одну вакансию — следующие по
-            этой профессии пусть придут сами. У закрытой — тем более. */}
-        {!vacancy.is_example && (
-          <div className="detail-subscribe">
-            <SubscribeButton category={vacancy.category} />
-            <span>Раз в час днём и только когда есть новые. Без регистрации.</span>
-          </div>
         )}
 
         {!vacancy.is_example && <SafetyNote isImported={vacancy.is_imported} />}

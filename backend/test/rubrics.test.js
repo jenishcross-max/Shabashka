@@ -45,6 +45,15 @@ const data = {
     vacancy(12, 'Аниматор на праздники', null, { for_students: true }),
   ],
   orders: [order(9, 'Покрасить забор', 3000), order(10, 'Грузчик на 2 часа', null), order(11, 'Собрать шкаф', 1500)],
+  // Вечерние рубрики спроса (аудит 12 ноября 2026): склад, стройка и офис
+  // открывают вдвое чаще общепита; «оплата за день» — сумма меньше 5 000 сом.
+  demand: [
+    vacancy(20, 'Грузчик на склад', 30000),
+    vacancy(21, 'Разнорабочий на стройку', null),
+    vacancy(22, 'Офис-менеджер', 45000),
+  ],
+  daily: [vacancy(23, 'Грузчик на день', 2000), vacancy(24, 'Официант на банкет', 1500), vacancy(25, 'Уборка офиса', 1200)],
+  fresh: 104,
   stats: [
     { category: 'Общепит', n: 48, median: 30000 },
     { category: 'Строительство', n: 31, median: 45000 },
@@ -62,6 +71,9 @@ const requireSrc = install({
     forStudents: async () => data.students,
     freshOrders: async () => data.orders,
     salaryStats: async () => data.stats,
+    byCategories: async () => data.demand,
+    dailyPay: async () => data.daily,
+    countFresh: async () => data.fresh,
   },
   [at('social/index.js')]: {
     shareRubric: async (post) => {
@@ -94,7 +106,13 @@ test('утренний топ выходит с 9:00 и один раз в де�
   assert.equal(await rubrics.tick(deps, bishkek(7, 9, 15)), null, 'второй раз за день — нет');
 
   const [post] = shared;
-  assert.match(post.text, /^💰 Топ-5 вакансий дня по зарплате\n\n1\. Водитель-экспедитор на грузовик — от 60 000 сом, Бишкек/);
+  // Утро на Шабашке — одна шапка с датой во всех каналах (как утренние выпуски
+  // Hire.kg и DevKG — у них это одни из самых просматриваемых постов).
+  assert.match(
+    post.text,
+    /^☕ Утро на Шабашке · 7 октября\n💰 Топ-5 вакансий дня по зарплате\n\n1\. Водитель-экспедитор на грузовик — от 60 000 сом, Бишкек/
+  );
+  assert.match(post.text, /\nЗа сутки на сайте — 104 новые вакансии\.\n/);
   assert.match(post.text, /Все вакансии — шабашка\.com\/vacancies\?s=t\n🔔 Подпишись — топ по зарплате каждое утро$/);
   assert.ok(weight(post.text) <= 500, `вес ${weight(post.text)}`);
   assert.equal(post.items.length, 5, 'в ролик — все пять');
@@ -108,7 +126,7 @@ test('проспали утро — топ выходит позже, но не 
   shared.length = 0;
   assert.equal(await rubrics.tick(deps, bishkek(8, 12, 30)), null, 'окно 9–12 прошло');
   assert.equal(await rubrics.tick(deps, bishkek(9, 11, 50)), 'ok');
-  assert.match(shared[0].text, /^💰 Топ-5/);
+  assert.match(shared[0].text, /^☕ Утро на Шабашке · 9 октября\n💰 Топ-5/);
 });
 
 test('подработка — с 13:00, студенты — по понедельникам, средам и пятницам', async () => {
@@ -201,7 +219,7 @@ test('длинные названия — пост всё равно влеза�
   assert.ok(weight(post.text) <= 500, `вес ${weight(post.text)}`);
   assert.ok(post.items.length >= 3);
   const n = post.items.length;
-  assert.match(post.text, new RegExp(`^💰 Топ-${n} ${n === 5 ? 'вакансий' : 'вакансии'} дня`), 'заголовок — по тому, что влезло');
+  assert.match(post.text, new RegExp(`\n💰 Топ-${n} ${n === 5 ? 'вакансий' : 'вакансии'} дня`), 'заголовок — по тому, что влезло');
   const top = await rubrics.RUBRICS.find((r) => r.key === 'top').make(deps);
   assert.equal(top.head(4), '💰 Топ-4 вакансии дня по зарплате', '«Топ-4 вакансий» — не по-русски');
   assert.equal(top.head(5), '💰 Топ-5 вакансий дня по зарплате');
@@ -210,7 +228,7 @@ test('длинные названия — пост всё равно влеза�
 test('RUBRICS: off выключает, неизвестное отбрасывается', () => {
   assert.deepEqual(rubrics.parseList('off'), []);
   assert.deepEqual(rubrics.parseList('top, x ,orders'), ['top', 'orders']);
-  assert.deepEqual(rubrics.parseList(undefined), ['top', 'orders', 'students', 'salaries']);
+  assert.deepEqual(rubrics.parseList(undefined), ['top', 'orders', 'students', 'salaries', 'demand', 'daily']);
 });
 
 test('не влезает — убираем строки с конца, но не меньше трёх', () => {
@@ -226,4 +244,21 @@ test('не влезает — убираем строки с конца, но н
   assert.equal(out.items.length, 3);
   assert.equal(out.collection, 'Топ-3 по зарплате');
   assert.match(out.text, /^Топ-3\n/);
+});
+
+// Аудит 12 ноября 2026 (docs/research/2026-11-audit.md): склад, стройка и офис
+// открывают вдвое-втрое чаще общепита, а «оплата за день» стоит у Lalafo прямо в
+// заголовке — и по ней находят работу в ИИ-поиске. Обе рубрики — вечером: на
+// завтрашнюю подработку смотрят с вечера.
+test('вечером — склад, стройка и офис (18:00) и оплата за день (20:00)', async () => {
+  shared.length = 0;
+  assert.equal(await rubrics.tick(deps, bishkek(6, 18, 5)), 'ok');
+  assert.match(shared[0].text, /^🏗 Склад, стройка и офис — свежие вакансии\n\n1\. Грузчик на склад — от 30 000 сом, Бишкек\n2\. Разнорабочий на стройку — Бишкек/);
+  assert.match(shared[0].text, /🔔 Подпишись — склад, стройка и офис каждый вечер$/);
+  assert.equal(shared[0].collection, 'Склад, стройка, офис');
+
+  assert.equal(await rubrics.tick(deps, bishkek(6, 20, 5)), 'ok');
+  assert.match(shared[1].text, /^💵 Оплата за день — свежие вакансии\n\n1\. Грузчик на день — 2 000 сом в день, Бишкек\n/);
+  assert.match(shared[1].text, /🔔 Подпишись — работа с оплатой за день каждый вечер$/);
+  assert.equal(shared[1].collection, 'Оплата за день');
 });

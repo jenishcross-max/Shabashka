@@ -5,6 +5,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+// Адрес сайта — для зова работодателю (см. «постороннему…» ниже); в боевой
+// среде он в punycode (см. README).
+process.env.PUBLIC_URL = 'https://xn--80aaac0cyed.com';
+
 const { install, dmStub, statsStub, at, chat, adGroupsStub, adRaisesStub, productStoreStub, subscriptionsStub, exchangeStubs } = require('./helpers/stub');
 
 const tg = chat();
@@ -186,14 +190,25 @@ test('/stats не падает и называет остаток нормы р�
   assert.match(text, /Публикаций в Instagram за сутки/);
 });
 
-test('чужому боту не отвечает ничем, кроме его же ID', async () => {
+// Аудит 12 ноября 2026 (docs/research/2026-11-audit.md): постороннему бот
+// отвечал «только для администраторов» — и работодатель, который пришёл
+// разместить вакансию, уходил ни с чем. Теперь — куда нажать соискателю и куда
+// идти работодателю. ID — по /id: он нужен только новому админу.
+test('постороннему — подписка и зов разместить вакансию, ID — по /id', async () => {
   tg.clear();
   await bot.handleUpdate({
     message: { chat: { id: 99, type: 'private' }, from: { id: 777 }, message_id: 2, text: '/stats' },
   });
   assert.equal(tg.sent.length, 1);
-  assert.match(tg.sent[0], /только для администраторов/);
-  assert.match(tg.sent[0], /Подписаться на новые вакансии — \/start/);
+  assert.match(tg.sent[0], /Я присылаю новые вакансии — выберите свою работу: \/start/);
+  assert.match(tg.sent[0], /Нужен работник\? Разместите вакансию бесплатно: <a href="[^"]+\/vacancies\/new">/);
+  assert.doesNotMatch(tg.sent[0], /администратор|Ваш ID/);
+
+  tg.clear();
+  await bot.handleUpdate({
+    message: { chat: { id: 99, type: 'private' }, from: { id: 777 }, message_id: 3, text: '/id' },
+  });
+  assert.deepEqual(tg.sent, ['Ваш ID: 777']);
 });
 
 // Бот открыт всем ради подписки — завалить его сообщениями нельзя: сверх
@@ -207,7 +222,7 @@ test('посторонний не может завалить бота, адми
     });
   }
   assert.equal(tg.sent.length, 10, tg.sent.join('\n'));
-  assert.ok(tg.sent.every((t) => /только для администраторов/.test(t)), 'к продуктам посторонний не попал');
+  assert.ok(tg.sent.every((t) => /Нужен работник\?/.test(t)), 'к продуктам посторонний не попал');
 
   tg.clear();
   for (let i = 0; i < 12; i += 1) await say('/help');

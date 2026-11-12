@@ -15,6 +15,7 @@ const { abroadWork } = require('../abroad');
 const { forStudents } = require('../students');
 const bump = require('../bump');
 const spam = require('../spam');
+const vacancyEvents = require('../vacancyEvents');
 
 const router = express.Router();
 const EMPLOYMENT_VALUES = EMPLOYMENT_TYPES.map((t) => t.value);
@@ -347,6 +348,9 @@ router.post(
       `SELECT ${VACANCY_FIELDS} FROM vacancies JOIN users ON users.id = vacancies.user_id WHERE vacancies.id = $1`,
       [inserted.rows[0].id]
     );
+
+    // Бот разошлёт её в группу, Threads и Instagram (см. telegram/siteShare.js).
+    vacancyEvents.created(rows[0], { verified: Boolean(req.user.email_verified) });
 
     res.status(201).json({ vacancy: rows[0] });
   })

@@ -36,6 +36,8 @@ const whatsapp = require('../whatsapp');
 const { inviteCode } = require('../whatsapp/channel');
 const groupPromo = require('./groupPromo');
 const taskEvents = require('../taskEvents');
+const vacancyEvents = require('../vacancyEvents');
+const siteShare = require('./siteShare');
 const tasksRepo = require('../tasksRepo');
 const { tag } = require('../sourceTag');
 const { num, plural, viewsWord, clamp, clock, whenText, agoText } = require('./format');
@@ -778,6 +780,25 @@ async function limitsText() {
     'Сутки скользящие: место освобождается через 24 часа после каждой публикации,',
     'а не в полночь.',
   ].join('\n');
+}
+
+// Вакансия, поданная на сайте (см. siteShare.js): на сайте она уже есть —
+// осталось то же, что после публикации объявления из чата: пост в группу с
+// кнопкой подписки и Threads с Instagram. Тихо, без карточки админу: разбирать
+// тут нечего, а снять её можно через «🔎 Найти и снять».
+async function spreadSiteVacancy(importId, parsed, vacancy) {
+  const siteLink = listingUrl('vacancy', vacancy.id);
+  const shown = prettyLink(siteLink);
+  if (CHANNEL_ID) {
+    const channelTag = siteLink ? `\n\n<a href="${tag(siteLink, 'telegram')}">${tg.esc(shown)}</a>` : '';
+    const inChannel = await tg.sendMessage(
+      CHANNEL_ID,
+      `${tg.esc(publicText(parsed, 'vacancy', ''))}${channelTag}`,
+      subscriptions.groupButton('vacancy', parsed, SITE_URL)
+    );
+    await imports.setPosts(importId, { channelMessageId: inChannel.message_id });
+  }
+  await shareToSocial(adminChat(), parsed, 'vacancy', shown, { importId, quiet: true });
 }
 
 // Публикует объявление сразу, ничего не переспрашивая. Недостающие поля
@@ -1765,11 +1786,24 @@ async function onMessage(message) {
 
   if (!admin) {
     // В группе молчим полностью: если кто-то случайно кинет скриншот, бот не
-    // должен отвечать всей группе. В личке отвечаем — так админ узнаёт свой ID.
+    // должен отвечать всей группе. В личке — куда нажать соискателю и куда идти
+    // работодателю: раньше здесь было «только для администраторов», и тот, кто
+    // пришёл разместить вакансию, уходил ни с чем (аудит 12 ноября 2026, см.
+    // docs/research). Свою вакансию он размещает на сайте — ИИ-разбор от
+    // посторонних в боте открыл бы дорогу спаму. ID — по /id, он нужен только
+    // новому админу.
     if (message.chat.type === 'private') {
+      if (String(message.text || '').trim() === '/id') {
+        await tg.sendMessage(chatId, `Ваш ID: ${userId}`);
+        return;
+      }
+      const post = SITE_URL ? `${SITE_URL}/vacancies/new` : '';
       await tg.sendMessage(
         chatId,
-        `Команды бота — только для администраторов Шабашки. Подписаться на новые вакансии — /start.\nВаш ID: ${userId}`
+        [
+          'Я присылаю новые вакансии — выберите свою работу: /start',
+          ...(post ? ['', `Нужен работник? Разместите вакансию бесплатно: <a href="${post}">${tg.esc(prettyLink(post))}</a>`] : []),
+        ].join('\n')
       );
     }
     return;
@@ -2884,6 +2918,8 @@ function startWatchers() {
   subscriptions.start(subscriptionDeps);
   // Новая задача на бирже — карточка админам с кнопкой «Раздать».
   taskEvents.onCreated((task) => taskShare.announce(task, taskShareDeps));
+  // Новая вакансия с сайта — в группу, Threads и Instagram (см. siteShare.js).
+  vacancyEvents.onCreated((vacancy, author) => siteShare.share(vacancy, author, { spread: spreadSiteVacancy }));
   products.start({
     report: (view) => tg.sendMessage(process.env.SOURCE_REPORT_CHAT_ID || adminChat(), view.text, view.extra),
   });

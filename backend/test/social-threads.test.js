@@ -16,6 +16,8 @@ delete process.env.THREADS_CARDS;
 // что она встаёт первой строкой, когда её просят.
 process.env.AD_LABEL = 'Реклама';
 delete process.env.THREADS_TOPIC_TAG;
+// Строка подписки здесь — только в бота: тест «группа против бота» — в sub-line.test.js.
+process.env.SUB_GROUP = 'off';
 
 // Между постами в Threads десять минут — в тесте сжимаем.
 const realSetTimeout = global.setTimeout;

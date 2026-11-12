@@ -195,6 +195,43 @@ function botLines(bot, n) {
   if (clicks.length) {
     lines.push(`↪️ Перешли в бота сегодня: ${clicks.map(([key, label]) => `${label} ${num(n(`sub.click.${key}`))}`).join(' · ')}`);
   }
+  // Тест «группа против бота» в постах Threads (см. subLine.js и routes/go.js).
+  if (n('join.click.threads')) lines.push(`↪️ Перешли в группу сегодня: из Threads ${num(n('join.click.threads'))}`);
+  return [...lines, ...funnelLines(n)];
+}
+
+// Воронка подписки и отклики (аудит 12 ноября 2026, см. docs/research): сколько
+// людей дошли от ссылки до подписки (счётчики sub.* в subscriptions.js) и сколько
+// написали или позвонили работодателю (contact.* в routes/contact.js) — и откуда.
+// Раньше отклик не считал никто, и любое решение принималось вслепую.
+const CONTACT_FROM = [
+  [['threads'], 'из Threads'],
+  [['telegram'], 'из группы'],
+  // bot — пришли на сайт по ссылке подборки, digest — нажали «💬 Написать» в ней.
+  [['bot', 'digest'], 'из бота'],
+  [['whatsapp'], 'из WhatsApp'],
+  [['direct'], 'прямые'],
+];
+
+function funnelLines(n) {
+  const lines = [];
+  if (['sub.start', 'sub.new', 'sub.off', 'sub.blocked', 'sub.digest'].some((key) => n(key))) {
+    lines.push(
+      `🔔 Бот сегодня: пришли по ссылке ${num(n('sub.start'))} → подписались ${num(n('sub.new'))} · отписались ${num(
+        n('sub.off')
+      )} · заблокировали ${num(n('sub.blocked'))} · подборок ${num(n('sub.digest'))}`
+    );
+  }
+  const by = (how, froms) => froms.reduce((sum, from) => sum + n(`contact.${how}.${from}`), 0);
+  const all = CONTACT_FROM.flatMap(([froms]) => froms);
+  const wa = by('wa', all);
+  const tel = by('tel', all);
+  if (wa || tel) {
+    const from = CONTACT_FROM.map(([froms, label]) => [label, by('wa', froms) + by('tel', froms)])
+      .filter(([, v]) => v)
+      .map(([label, v]) => `${label} ${num(v)}`);
+    lines.push(`📞 Написали работодателю: WhatsApp ${num(wa)} · звонок ${num(tel)} — ${from.join(' · ')}`);
+  }
   return lines;
 }
 
@@ -262,6 +299,8 @@ async function build({ now = Date.now(), previous = null, tech = false, title = 
     );
   }
   if (n('adm.ok')) lines.push('', `✍️ Прислано вручную: ${num(n('adm.ok'))}`);
+  // Вакансии, поданные на сайте, — в группу и соцсети (см. siteShare.js).
+  if (n('site.shared')) lines.push('', `🌐 Вакансий с сайта разослано: ${num(n('site.shared'))}`);
 
   lines.push('', ...(await adLines(n('ad.ok'))));
   // Поднятия рекламы по расписанию (см. adRaises.js).

@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { api } from '../api';
 import OrderCard from '../components/OrderCard';
 import VacancyCard from '../components/VacancyCard';
+import SubscribeButton from '../components/SubscribeButton';
 import LandingLinks from '../components/LandingLinks';
 import TaskCard from '../components/TaskCard';
 import AdCard from '../components/AdCard';
@@ -42,9 +43,10 @@ function freshLine(counts) {
 // «Что ищете?» — четыре раздела сайта сразу под поиском. Раньше с первого
 // экрана вела только строка «Смотреть подработку: Всю / Офлайн / Онлайн», а
 // вакансии, биржа и объявления оттуда не были видны вовсе.
+// Вакансии — первыми: их на сайте в десять раз больше, чем заказов.
 const TILES = [
-  { to: '/orders', icon: '🧰', label: 'Подработка', count: 'orders', word: orderWord, hint: 'разовая работа' },
   { to: '/vacancies', icon: '💼', label: 'Вакансии', count: 'vacancies', word: vacancyWord, hint: 'работа в штат' },
+  { to: '/orders', icon: '🧰', label: 'Подработка', count: 'orders', word: orderWord, hint: 'разовая работа' },
   { to: '/tasks', icon: '⚡', label: 'Биржа', count: 'tasks', word: taskWord, hint: 'исполнители предложат цену' },
   { to: '/ads', icon: '🏷', label: 'Объявления', count: 'ads', word: adWord, hint: 'сдам, продам, услуги' },
 ];
@@ -173,6 +175,59 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Вакансий на сайте в десять раз больше, чем заказов, а начинались они на
+          шестом экране — ниже заказов, биржи и объявлений. Подписка стояла на
+          девятом. Теперь — первым разделом, и подписка сразу под ними (аудит
+          12 ноября 2026, см. docs/research). */}
+      {loading && (
+        <section className="section">
+          <div className="section-head">
+            <h2>Свежие вакансии</h2>
+          </div>
+          <div className="order-grid">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <SkeletonOrderCard key={i} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {vacancies.length > 0 && (
+        <section className="section">
+          <div className="section-head">
+            <h2>Свежие вакансии</h2>
+            <Link to="/vacancies">Все вакансии</Link>
+          </div>
+          {/* Подписка — во втором экране, а не после всей ленты: кто пролистал
+              вакансии, уже ушёл (как над списком на странице вакансий). */}
+          <div className="list-subscribe">
+            <SubscribeButton />
+          </div>
+          <div className="order-grid">
+            {vacancies.map((v) => (
+              <VacancyCard key={v.id} vacancy={v} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Раньше здесь было «заходите почаще» — а повода зайти снова не было.
+          Подписка в боте и есть этот повод (см. SubscribeButton). */}
+      <section className="cta-banner">
+        <h2>Не пропустите новую работу</h2>
+        <p>
+          Бот в Telegram пришлёт свежие вакансии по вашей профессии: раз в час днём и только когда есть новые. Без
+          регистрации.
+        </p>
+        <div className="cta-banner-actions">
+          <a href={api.subscribeUrl()} target="_blank" rel="noopener noreferrer">
+            🔔 Подписаться в Telegram
+          </a>
+          <Link to="/vacancies" className="cta-banner-ghost">
+            Смотреть все вакансии
+          </Link>
+        </div>
+      </section>
       <section className="section">
         <div className="section-head">
           <h2>Свежие заказы</h2>
@@ -232,33 +287,6 @@ export default function Home() {
         </section>
       )}
 
-      {loading && (
-        <section className="section">
-          <div className="section-head">
-            <h2>Свежие вакансии</h2>
-          </div>
-          <div className="order-grid">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <SkeletonOrderCard key={i} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {vacancies.length > 0 && (
-        <section className="section">
-          <div className="section-head">
-            <h2>Свежие вакансии</h2>
-            <Link to="/vacancies">Все вакансии</Link>
-          </div>
-          <div className="order-grid">
-            {vacancies.map((v) => (
-              <VacancyCard key={v.id} vacancy={v} />
-            ))}
-          </div>
-        </section>
-      )}
-
       <LandingLinks />
 
       {loading && (
@@ -304,23 +332,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Раньше здесь было «заходите почаще» — а повода зайти снова не было.
-          Подписка в боте и есть этот повод (см. SubscribeButton). */}
-      <section className="cta-banner">
-        <h2>Не пропустите новую работу</h2>
-        <p>
-          Бот в Telegram пришлёт свежие вакансии по вашей профессии: раз в час днём и только когда есть новые. Без
-          регистрации.
-        </p>
-        <div className="cta-banner-actions">
-          <a href={api.subscribeUrl()} target="_blank" rel="noopener noreferrer">
-            🔔 Подписаться в Telegram
-          </a>
-          <Link to="/orders" className="cta-banner-ghost">
-            Смотреть все заказы
-          </Link>
-        </div>
-      </section>
     </div>
   );
 }

@@ -78,12 +78,14 @@ test('подборка в 9:00 — один раз; проспали больш�
   assert.equal(stats.counters['wa.ok'], 1);
 });
 
+// Первая подборка дня — «Утро на Шабашке» с датой, как утренний топ в Threads и
+// группе (см. src/morning.js, аудит 12 ноября 2026).
 test('текст: свежие вакансии со ссылками на сайт, без номеров и без разметки WhatsApp', () => {
   const [text] = posted;
   assert.equal(
     text,
     [
-      '💼 Свежие вакансии',
+      '☕ Утро на Шабашке · 10 ноября',
       '',
       '1. Водитель на грузовик — от 60 000 сом, Бишкек',
       '👉 шабашка.com/vacancies/14?s=w',
@@ -105,6 +107,7 @@ test('курсор: следующая подборка — только нов�
   assert.equal(settings.get('wa:last_vacancy_id'), '14');
   assert.equal(await digest.tick(deps, bishkek(10, 12, 5)), 'ok');
   assert.equal(asked.at(-1).afterId, 14);
+  assert.match(posted.at(-1), /^💼 Свежие вакансии\n/, 'днём — обычная шапка');
 });
 
 test('в 15:00 — подработка на сегодня', async () => {

@@ -2,13 +2,11 @@ import { relativeDate } from '../formatDate';
 import { employmentLabel } from '../employmentTypes';
 import { experienceLabel } from '../experienceLevels';
 import ListingCard from './ListingCard';
+import { formatSalary } from '../salary';
 
-export function formatSalary(min, max) {
-  if (!min && !max) return 'По договорённости';
-  if (min && max) return `${min.toLocaleString('ru-RU')}–${max.toLocaleString('ru-RU')} сом`;
-  if (min) return `от ${min.toLocaleString('ru-RU')} сом`;
-  return `до ${max.toLocaleString('ru-RU')} сом`;
-}
+// Формат зарплаты живёт в salary.js (там же «в день» и отсев мусорных сумм);
+// отсюда его по-прежнему берут карточки, админка и «Мои вакансии».
+export { formatSalary };
 
 // «Полная занятость, без опыта» — одна строка подробностей под заголовком.
 function terms(vacancy) {

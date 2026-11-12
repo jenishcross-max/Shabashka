@@ -135,4 +135,58 @@ async function salaryStats({ city = 'Бишкек', days = 30, minCount = 5, lim
   return rows;
 }
 
-module.exports = { topSalary, forStudents, freshOrders, freshVacancies, salaryStats };
+// Вечерние рубрики (см. telegram/rubrics.js, аудит 12 ноября 2026).
+
+// Профессии спроса — склад, стройка, офис: свежие сверху, по одной на номер.
+async function byCategories(categories, { hours = 24, limit = 5 } = {}) {
+  const { rows } = await db.query(
+    `SELECT * FROM (
+       SELECT DISTINCT ON (${WHO}) ${VACANCY_FIELDS}
+         FROM vacancies
+        WHERE status = 'open' AND NOT is_example AND category = ANY($1::text[])
+          AND created_at > NOW() - make_interval(hours => $2)
+        ORDER BY ${WHO}, created_at DESC
+     ) v ORDER BY created_at DESC LIMIT $3`,
+    [categories, hours, limit]
+  );
+  return rows.map(vacancy);
+}
+
+// Оплата за день: сумма меньше 5 000 сом — месячной зарплаты такой не бывает,
+// значит это смена или день. Меньше 300 — ошибка разбора («10 сом»), не берём.
+const DAILY_MIN = 300;
+const DAILY_MAX = 4999;
+async function dailyPay({ hours = 24, limit = 5 } = {}) {
+  const { rows } = await db.query(
+    `SELECT * FROM (
+       SELECT DISTINCT ON (${WHO}) ${VACANCY_FIELDS}
+         FROM vacancies
+        WHERE status = 'open' AND NOT is_example AND salary_min BETWEEN $1 AND $2
+          AND created_at > NOW() - make_interval(hours => $3)
+        ORDER BY ${WHO}, salary_min DESC
+     ) v ORDER BY salary_min DESC LIMIT $4`,
+    [DAILY_MIN, DAILY_MAX, hours, limit]
+  );
+  return rows.map(vacancy);
+}
+
+// Сколько вакансий вышло за сутки — живое число на утреннем выпуске.
+async function countFresh({ hours = 24 } = {}) {
+  const { rows } = await db.query(
+    `SELECT COUNT(*)::int AS n FROM vacancies
+      WHERE status = 'open' AND NOT is_example AND created_at > NOW() - make_interval(hours => $1)`,
+    [hours]
+  );
+  return rows[0].n;
+}
+
+module.exports = {
+  topSalary,
+  forStudents,
+  freshOrders,
+  freshVacancies,
+  salaryStats,
+  byCategories,
+  dailyPay,
+  countFresh,
+};

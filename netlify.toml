@@ -31,6 +31,20 @@
   to = "https://shabashka-zvkc.onrender.com/api/subscribe/:slug/:from"
   status = 302
 
+# Кнопка «💬 Написать» в подборке бота (см. backend/src/routes/contact.js):
+# шабашка.com/c/12/digest → бэкенд считает отклик и ведёт в WhatsApp работодателя.
+[[redirects]]
+  from = "/c/:id/:from"
+  to = "https://shabashka-zvkc.onrender.com/api/contact/vacancy/:id/:from"
+  status = 302
+
+# Ссылка в Telegram-группу из постов Threads (см. backend/src/social/subLine.js):
+# бэкенд считает переход и ведёт в группу — рядом с переходами в бота по /s/.
+[[redirects]]
+  from = "/g"
+  to = "https://shabashka-zvkc.onrender.com/api/go/group/threads"
+  status = 302
+
 # SPA-роутинг: любой путь отдаём index.html, React Router разбирается сам.
 [[redirects]]
   from = "/*"
