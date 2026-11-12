@@ -211,6 +211,9 @@ function amount(value) {
 // REPEAT_DAYS поднимает старую открытую карточку наверх, а пост в соцсети уходит
 // как раньше и ведёт на неё — число постов не меняется. Платную рекламу не
 // склеиваем: у неё свои поднятия и снятие (см. adRaises.js).
+// Неделя считается от последнего поднятия: кто постит каждый день, поднимает
+// одну и ту же карточку, а не плодит новую раз в неделю (43 копии с одного
+// номера 12 ноября 2026). Старые копии закрывает staleListings.closeRepeats.
 const REPEAT_DAYS = 7;
 const titleKey = (title) =>
   String(title || '')
@@ -224,7 +227,7 @@ async function repeatOf(parsed) {
   const { rows } = await db.query(
     `SELECT id, title FROM vacancies
       WHERE status = 'open' AND is_imported AND regexp_replace(COALESCE(whatsapp_phone, ''), '[^0-9]', '', 'g') = $1
-        AND created_at > NOW() - make_interval(days => $2)
+        AND COALESCE(bumped_at, created_at) > NOW() - make_interval(days => $2)
       ORDER BY id DESC`,
     [phone, REPEAT_DAYS]
   );
@@ -524,4 +527,5 @@ module.exports = {
   listAds,
   countAds,
   remove,
+  titleKey,
 };

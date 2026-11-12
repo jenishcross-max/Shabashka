@@ -232,6 +232,12 @@ function funnelLines(n) {
       .map(([label, v]) => `${label} ${num(v)}`);
     lines.push(`📞 Написали работодателю: WhatsApp ${num(wa)} · звонок ${num(tel)} — ${from.join(' · ')}`);
   }
+  // Почасовой проход (см. staleListings.js): видно, что фильтры работают.
+  if (n('tidy.repeats') || n('tidy.spam')) {
+    lines.push(
+      `🧹 Убрано сегодня: копий вакансий ${num(n('tidy.repeats'))} · снято фильтром мошенников ${num(n('tidy.spam'))}`
+    );
+  }
   return lines;
 }
 

@@ -2,7 +2,7 @@ const categoriesRepo = require('../categoriesRepo');
 const KNOWN_CITIES = require('../cities');
 const { abroadWork } = require('../abroad');
 const spam = require('../spam');
-const { forStudents, refused } = require('../students');
+const { forStudents, refused, invites } = require('../students');
 const { normalizePhone, hasPhone, phoneFrom, phonesIn } = require('../phone');
 const EMPLOYMENT_TYPES = require('../employmentTypes');
 const EXPERIENCE_LEVELS = require('../experienceLevels');
@@ -1003,10 +1003,12 @@ function shareSolePhone(listings, text, { foreign = false } = {}) {
 
 // Пометку «для студентов» normalize ставит по описанию — а его пересказала
 // модель. Слабая модель лесенки может «Студенты не рассматриваются» выбросить,
-// а «гибкий график, подойдёт студентам» дописать. Отказ в самом сообщении
-// поэтому важнее пересказа — для всех объявлений из него.
+// а «гибкий график, подойдёт студентам» дописать. Поэтому решает и само
+// сообщение: студентов в нём должны звать прямо (12 ноября 2026 в разделе
+// «Для студентов» владелец нашёл лишнее), а отказ важнее пересказа — для всех
+// объявлений из него.
 function studentsAsSaid(listings, text) {
-  if (!refused(text)) return listings;
+  if (invites(text) && !refused(text)) return listings;
   return listings.map((l) => (l.for_students ? { ...l, for_students: false } : l));
 }
 

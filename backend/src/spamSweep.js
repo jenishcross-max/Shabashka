@@ -4,6 +4,7 @@ const moderation = require('./moderation');
 const blocklist = require('./telegram/blocklist');
 const { phonesIn } = require('./phone');
 const { invalidate } = require('./cache');
+const feedStats = require('./telegram/feedStats');
 
 // Проверка уже опубликованного фильтром (см. spam.js).
 //
@@ -119,4 +120,20 @@ async function remove(items, actor) {
   return { removed, blocked };
 }
 
-module.exports = { find, remove };
+// Проход без админа — раз в час вместе с закрытием старого (staleListings.js).
+// Кнопку в админке не нажимали месяцами: «откроем Kaspi в Алматы» с сайта
+// висела с августа по ноябрь 2026. Сам снимает только то, в чём фильтр не
+// сомневается: оформление на чужие документы — откуда угодно, сетевое — только
+// из чатов. Сетевое, поданное на сайте живым работодателем, решает админ: там
+// фильтр по сумме признаков может ошибиться (см. spam.forbidden).
+async function auto() {
+  const items = (await find()).filter((item) => item.kind === 'drop' || item.is_imported);
+  if (!items.length) return { removed: 0, blocked: 0 };
+  const result = await remove(items, 'auto:spam-sweep');
+  if (result.removed) console.log(`[фильтр] снял опубликованное: ${result.removed}, номеров в чёрный список: ${result.blocked}`);
+  // Строка «🧹 Убрано сегодня» в сводке бота (см. telegram/summary.js).
+  await feedStats.bump('tidy.spam', result.removed);
+  return result;
+}
+
+module.exports = { find, remove, auto };

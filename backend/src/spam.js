@@ -115,6 +115,25 @@ const PROFESSION =
 
 const HIRING = /требу|ищем|нуж(ен|на|ны)|керек|набор|приглаша|вакансия/u;
 
+// «Онлайн-оператор: отвечать в WhatsApp по готовым инструкциям, 2–3 часа в
+// день, от 1000 до 3000 сом в день». Такие висели на сайте неделями (12 ноября
+// 2026): профессия названа, а работы за ней нет — только переписка, короткий
+// день и деньги каждый день. Решают все три признака вместе: оператор
+// интернет-магазина на полный день и курьер «на пару часов» проходят.
+const CHAT_JOB =
+  /(отвечать|общаться|переписк\S*|сообщени\S*)[^.!?\n]{0,40}(whatsapp|telegram|ватсап|вотсап|телеграм|instagram|инстаграм|директ)|онлайн[- ](оператор|менеджер|куратор|работ|сотрудник)|работ\S*\s+(онлайн|с\s+телефона|через\s+телефон)/u;
+const FEW_HOURS = /(?<![\p{L}\d])[1-4]\s*(?:[-–]\s*[1-5]\s*)?час\S*\s+в\s+день|пар[ауы]\s+час/u;
+const DAILY_PAY = /\d[\d\s]*\s*(сом\S*\s*)?(в\s+день|ежедневно|за\s+день|каждый\s+день)/u;
+
+function onlineGig(text) {
+  if (!CHAT_JOB.test(text) || !FEW_HOURS.test(text) || !DAILY_PAY.test(text)) return null;
+  return {
+    kind: 'mlm',
+    reason: 'переписка онлайн на пару часов в день с оплатой каждый день — похоже на вербовку',
+    hits: [first(text, FEW_HOURS), first(text, DAILY_PAY)],
+  };
+}
+
 function mlm(text) {
   const words = tally(text, MLM_WORDS);
   const brand = first(text, MLM_BRANDS);
@@ -124,6 +143,9 @@ function mlm(text) {
     words.hits.push(brand);
   }
   if (words.strong && words.score >= 3) return { kind: 'mlm', reason: 'сетевой маркетинг', hits: words.hits };
+  // До проверки профессии: «онлайн-оператор» и «куратор курсов» — тоже названия.
+  const gig = onlineGig(text);
+  if (gig) return gig;
 
   if (PROFESSION.test(text)) return null;
   const signs = OFFICE_SIGNS.filter((re) => re.test(text)).length;

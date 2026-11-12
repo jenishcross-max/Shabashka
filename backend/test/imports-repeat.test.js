@@ -63,11 +63,23 @@ test('повтор за неделю поднимает старую карто�
   assert.equal(row.vacancy_id, first.id, '«🔎 Найти и снять» снимет ту же карточку');
 });
 
-test('старше недели, закрытая или другой заголовок — новая карточка', async () => {
+// 12 ноября 2026 на сайте было 43 копии «Курьерлерди жумушка алабыз» с одного
+// номера: работодатель постит каждый день, а неделя считалась от создания
+// карточки — и раз в неделю появлялась новая. Считаем от последнего поднятия:
+// пока повторяет, поднимается одна и та же.
+test('повторяет каждый день дольше недели — поднимается всё та же карточка', async () => {
   const base = await one("SELECT id FROM vacancies WHERE title ILIKE '%бариста%'");
-  await age('vacancies', base.id, '8 days');
+  await db.query("UPDATE vacancies SET created_at = NOW() - INTERVAL '20 days', bumped_at = NOW() - INTERVAL '1 day' WHERE id = $1", [base.id]);
+  const again = await publish(BARISTA);
+  assert.equal(again.id, base.id);
+  assert.equal(again.repeat, true);
+});
+
+test('неделю тишины, закрытая или другой заголовок — новая карточка', async () => {
+  const base = await one("SELECT id FROM vacancies WHERE title ILIKE '%бариста%'");
+  await db.query("UPDATE vacancies SET created_at = NOW() - INTERVAL '20 days', bumped_at = NOW() - INTERVAL '8 days' WHERE id = $1", [base.id]);
   const late = await publish(BARISTA);
-  assert.notEqual(late.id, base.id, 'неделя прошла — это уже новая вакансия');
+  assert.notEqual(late.id, base.id, 'неделю не повторял — это уже новая вакансия');
 
   await db.query("UPDATE vacancies SET status = 'closed' WHERE id = $1", [late.id]);
   const reopened = await publish(BARISTA);

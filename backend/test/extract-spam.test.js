@@ -82,10 +82,21 @@ test('«можно студентам» в тексте — пометка дл�
     { is_listing: true, listing_type: 'board', title: 'Сдаю комнату', description: 'Студентам скидка', phone: '0700111444' },
     { is_listing: true, listing_type: 'order', title: 'Раздать листовки', description: 'Подойдёт студентам, 1000 сом', phone: '0700111555' },
   ];
-  const [vacancy, board, order] = await extract.fromText('пачка');
+  const [vacancy, board, order] = await extract.fromText(
+    'Официант, можно студентам 0700111333\nСдаю комнату, студентам скидка 0700111444\nРаздать листовки, подойдёт студентам 0700111555'
+  );
   assert.equal(vacancy.for_students, true);
   assert.equal(board.for_students, false);
   assert.equal(order.for_students, true);
+});
+
+// 12 ноября 2026 владелец: в разделе «Для студентов» много лишнего. Пометку
+// ставит пересказ модели, а модель может дописать «подойдёт студентам» от себя.
+test('в сообщении о студентах ни слова — пометки нет, даже если пересказ их дописал', async () => {
+  reply = [{ is_listing: true, listing_type: 'vacancy', title: 'Кассир', description: 'Гибкий график, подойдёт студентам', phone: '0700111333' }];
+  const [vacancy] = await extract.fromText('Требуется кассир в магазин, гибкий график, 2/2. 0700111333');
+  assert.equal(vacancy.is_listing, true);
+  assert.equal(vacancy.for_students, false);
 });
 
 test('в сообщении «не студенты» — пометки нет, что бы модель ни пересказала', async () => {

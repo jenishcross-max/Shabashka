@@ -191,3 +191,26 @@ test('пустой или кривой запрос ничего не снима
     { removed: 0, blocked: 0 }
   );
 });
+
+// Ручная кнопка в админке не нажималась месяцами: «откроем Kaspi в Алматы»
+// с сайта висела с августа по ноябрь 2026. Теперь проход раз в час сам
+// (см. staleListings.js). Сам он снимает только то, что фильтр решает без
+// сомнений: запрещённое — откуда угодно, сетевое — только из чатов. Сетевое,
+// поданное на сайте живым работодателем, по-прежнему решает админ (см. spam.forbidden).
+test('автопроход снимает запрещённое везде, а сетевое — только из чатов', async () => {
+  const sweep = requireSrc('spamSweep.js');
+  const siteDrop = await order(SCAM, { phone: '+996700555111' });
+  const siteMlm = await order(MLM);
+  const before = (await call('/admin/spam-sweep')).body.items.length;
+  assert.ok(before >= 4);
+
+  const result = await sweep.auto();
+  assert.ok(result.removed >= 3, JSON.stringify(result));
+  const left = (await call('/admin/spam-sweep')).body.items.map((i) => `${i.type}:${i.id}`);
+  assert.deepEqual(left, [`order:${siteMlm}`], 'остался только сетевой найм с сайта');
+  assert.equal((await db.query('SELECT 1 FROM orders WHERE id = $1', [siteDrop])).rows.length, 0);
+  const { rows: log } = await db.query("SELECT actor FROM moderation_log WHERE listing_id = $1 AND listing_type = 'order'", [siteDrop]);
+  assert.equal(log[0].actor, 'auto:spam-sweep');
+  const { rows: counted } = await db.query("SELECT SUM(n)::int AS n FROM bot_counters WHERE key = 'tidy.spam'");
+  assert.equal(counted[0].n, result.removed, 'строка «🧹 Убрано сегодня» в сводке');
+});

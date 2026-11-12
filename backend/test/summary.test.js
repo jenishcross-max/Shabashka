@@ -295,3 +295,18 @@ test('переходы в группу — рядом с переходами в
   }
   assert.doesNotMatch((await summary.build()).text, /Перешли в группу/);
 });
+
+// Копии вакансий и мошенников убирает почасовой проход (см. staleListings.js).
+// Владелец видит, что фильтры работают, не открывая админку.
+test('сколько копий закрыто и сколько снял фильтр мошенников', async () => {
+  stats.counters['tidy.repeats'] = 961;
+  stats.counters['tidy.spam'] = 4;
+  try {
+    const { text } = await summary.build();
+    assert.match(text, /\n🧹 Убрано сегодня: копий вакансий 961 · снято фильтром мошенников 4(\n|$)/);
+  } finally {
+    delete stats.counters['tidy.repeats'];
+    delete stats.counters['tidy.spam'];
+  }
+  assert.doesNotMatch((await summary.build()).text, /Убрано сегодня/);
+});

@@ -1,7 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const { Pool } = require('pg');
-const { refused } = require('../students');
+const { refused, forStudents } = require('../students');
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -191,18 +191,24 @@ function init() {
       // Один раз: новые объявления уже размечает исправленный forStudents, а
       // галочку, которую потом поставят руками, снимать при каждом перезапуске
       // нельзя — да и читать все тексты на каждом старте незачем.
-      const studentsFix = 'migr:students-refusal';
+      // Второй раз (12 ноября 2026, новый ключ): бот не узнавал кыргызское
+      // «студент окуучулар чалбагыла» («не звоните»), а у объявлений из чатов
+      // пометка теперь только там, где про студентов сказано в самом тексте.
+      const studentsFix = 'migr:students-refusal-2026-11';
       const { rows: fixed } = await pool.query('SELECT 1 FROM app_settings WHERE key = $1', [studentsFix]);
       if (!fixed.length) {
         for (const [table, fields] of [
           ['vacancies', 'title, description, requirements, conditions, schedule'],
           ['orders', 'title, description'],
         ]) {
-          const { rows } = await pool.query(`SELECT id, ${fields} FROM ${table} WHERE for_students`);
-          const wrong = rows.filter(({ id, ...text }) => refused(Object.values(text).filter(Boolean).join('\n')));
+          const { rows } = await pool.query(`SELECT id, is_imported, ${fields} FROM ${table} WHERE for_students`);
+          const wrong = rows.filter(({ id, is_imported: imported, ...parts }) => {
+            const text = Object.values(parts).filter(Boolean).join('\n');
+            return refused(text) || (imported && !forStudents(text));
+          });
           if (!wrong.length) continue;
           await pool.query(`UPDATE ${table} SET for_students = false WHERE id = ANY($1)`, [wrong.map((r) => r.id)]);
-          console.log(`[db] ${table}: снял «для студентов» с ${wrong.length}, где в тексте отказ`);
+          console.log(`[db] ${table}: снял «для студентов» с ${wrong.length}: в тексте отказ или о студентах ни слова`);
         }
         await pool.query("INSERT INTO app_settings (key, value) VALUES ($1, '1') ON CONFLICT (key) DO NOTHING", [studentsFix]);
       }
