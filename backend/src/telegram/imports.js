@@ -98,9 +98,8 @@ async function reject(id) {
   await db.query("UPDATE imported_listings SET status = 'rejected' WHERE id = $1", [id]);
 }
 
-// Аккаунт, от имени которого публикуются импортированные объявления. Берём
-// администратора: у него подтверждён email, поэтому лимит на одно объявление
-// без подтверждения (см. emailGate.js) импорта не касается.
+// Аккаунт, от имени которого публикуются импортированные объявления, —
+// администратор.
 let ownerIdPromise = null;
 function resolveOwnerId() {
   if (!ownerIdPromise) {

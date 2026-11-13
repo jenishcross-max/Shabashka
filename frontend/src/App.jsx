@@ -4,7 +4,6 @@ import { trackPageview } from './analytics';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import BottomNav from './components/BottomNav';
-import EmailVerifyBanner from './components/EmailVerifyBanner';
 import WakingBanner from './components/WakingBanner';
 import ProtectedRoute from './components/ProtectedRoute';
 import ProtectedAdminRoute from './components/ProtectedAdminRoute';
@@ -56,7 +55,6 @@ function PublicSite() {
     <>
       <Navbar />
       <WakingBanner />
-      <EmailVerifyBanner />
       <main className="container">
         <Routes>
           <Route path="/" element={<Home />} />

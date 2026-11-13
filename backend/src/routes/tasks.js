@@ -4,7 +4,6 @@ const { reportLimiter, taskLimiter, offerLimiter } = require('../rateLimit');
 const asyncHandler = require('../asyncHandler');
 const categoriesRepo = require('../categoriesRepo');
 const reportsRepo = require('../reportsRepo');
-const { canCreateListing } = require('../emailGate');
 const { invalidate } = require('../cache');
 const repo = require('../tasksRepo');
 const exchange = require('../exchange');
@@ -99,11 +98,6 @@ router.post(
   requireAuth,
   taskLimiter,
   asyncHandler(async (req, res) => {
-    if (!(await canCreateListing(req.user.id, req.user.email_verified))) {
-      return res
-        .status(403)
-        .json({ error: 'Подтвердите email, чтобы разместить больше одного объявления', code: 'EMAIL_NOT_VERIFIED' });
-    }
     const categories = await categoriesRepo.listNames();
     const { errors, result } = exchange.validateTask(req.body || {}, { categories });
     if (errors.length) return res.status(400).json({ error: errors[0] });
@@ -174,14 +168,41 @@ router.get(
   })
 );
 
-// Откликнуться или поправить свой отклик — один адрес на оба случая.
+// Отклик без аккаунта. До 13 ноября 2026 откликнуться можно было только из
+// аккаунта, и за всё время биржи никто не предложил цену: регистрироваться ради
+// одного отклика не хотят. Теперь первый — с именем и WhatsApp, заказчик пишет
+// гостю сам. Второй с того же номера — из аккаунта: там отклики можно править,
+// отзывать и видеть, кого выбрали. Номер гостю обратно не отдаём.
+const GUEST_USED =
+  'С этого номера уже был отклик без регистрации. Чтобы откликаться дальше, зарегистрируйтесь — ' +
+  'это минута, и все ваши отклики будут в одном месте.';
+
+async function guestOffer(req, res, task) {
+  const blocker = exchange.offerBlocker(task, null, null);
+  if (blocker) return refuse(res, blocker);
+  const guest = exchange.validateGuest(req.body || {});
+  const offer = exchange.validateOffer(req.body || {});
+  const errors = [...guest.errors, ...offer.errors];
+  if (errors.length) return res.status(400).json({ error: errors[0] });
+  if (await repo.guestOfferExists(guest.result.phone)) {
+    return res.status(403).json({ error: GUEST_USED, code: 'GUEST_USED' });
+  }
+  const saved = await repo.saveGuestOffer(task.id, guest.result, offer.result);
+  if (!saved) return res.status(409).json({ error: 'Задача уже не принимает отклики' });
+  const { guest_name: _name, guest_phone: _phone, ...shown } = saved;
+  res.status(201).json({ offer: withState(shown, 'open') });
+}
+
+// Откликнуться или поправить свой отклик — один адрес на оба случая. Без входа —
+// гостевой отклик (см. guestOffer).
 router.post(
   '/:id/offers',
-  requireAuth,
+  optionalAuth,
   offerLimiter,
   asyncHandler(async (req, res) => {
     const task = await loadTask(req, res);
     if (!task) return;
+    if (!req.user) return guestOffer(req, res, task);
     const blocker = exchange.offerBlocker(task, req.user.id, await repo.offerOf(task.id, req.user.id));
     if (blocker) return refuse(res, blocker);
 

@@ -255,12 +255,10 @@ test('переписка по объявлению: написать автор�
   assert.equal((await call('/conversations', { as: buyer, body: { adId: ad.id, orderId: 1, message: 'Есть?' } })).status, 400);
 });
 
-test('второе объявление без подтверждённой почты — нельзя', async () => {
+test('почту подтверждать не нужно: второе объявление размещается и без этого', async () => {
   const fresh = await user('Новичок', { verified: false });
   await newAd(fresh);
-  const second = await call('/ads', { as: fresh, body: AD });
-  assert.equal(second.status, 403);
-  assert.equal(second.body.code, 'EMAIL_NOT_VERIFIED');
+  assert.equal((await call('/ads', { as: fresh, body: AD })).status, 201);
 });
 
 test('просмотр автора не считается, чужой — считается', async () => {

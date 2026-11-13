@@ -3,7 +3,6 @@ const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { reportLimiter, adLimiter, photoLimiter } = require('../rateLimit');
 const asyncHandler = require('../asyncHandler');
 const reportsRepo = require('../reportsRepo');
-const { canCreateListing } = require('../emailGate');
 const { invalidate } = require('../cache');
 const bump = require('../bump');
 const storage = require('../photoStorage');
@@ -132,11 +131,6 @@ router.post(
   requireAuth,
   adLimiter,
   asyncHandler(async (req, res) => {
-    if (!(await canCreateListing(req.user.id, req.user.email_verified))) {
-      return res
-        .status(403)
-        .json({ error: 'Подтвердите email, чтобы разместить больше одного объявления', code: 'EMAIL_NOT_VERIFIED' });
-    }
     const { errors, result } = rules.validateAd(req.body || {}, { userId: req.user.id });
     if (errors.length) return res.status(400).json({ error: errors[0] });
 

@@ -2919,7 +2919,7 @@ function startWatchers() {
   // Новая задача на бирже — карточка админам с кнопкой «Раздать».
   taskEvents.onCreated((task) => taskShare.announce(task, taskShareDeps));
   // Новая вакансия с сайта — в группу, Threads и Instagram (см. siteShare.js).
-  vacancyEvents.onCreated((vacancy, author) => siteShare.share(vacancy, author, { spread: spreadSiteVacancy }));
+  vacancyEvents.onCreated((vacancy) => siteShare.share(vacancy, { spread: spreadSiteVacancy }));
   products.start({
     report: (view) => tg.sendMessage(process.env.SOURCE_REPORT_CHAT_ID || adminChat(), view.text, view.extra),
   });

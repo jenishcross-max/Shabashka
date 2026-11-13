@@ -9,10 +9,10 @@ function onCreated(fn) {
 }
 
 // Сбой бота не должен ронять размещение вакансии — она уже в базе.
-function created(vacancy, author) {
+function created(vacancy) {
   if (!listener) return;
   Promise.resolve()
-    .then(() => listener(vacancy, author))
+    .then(() => listener(vacancy))
     .catch((err) => console.error('[вакансии с сайта] не сообщил о вакансии:', err.message));
 }
 

@@ -556,3 +556,12 @@ CREATE TABLE IF NOT EXISTS wa_auth (
   value      TEXT NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Отклик на бирже без аккаунта (см. guestOffer в routes/tasks.js): вместо
+-- user_id — имя и WhatsApp, заказчик пишет гостю сам. С одного номера такой
+-- отклик один: второй уже из аккаунта.
+ALTER TABLE task_offers ALTER COLUMN user_id DROP NOT NULL;
+ALTER TABLE task_offers ADD COLUMN IF NOT EXISTS guest_name TEXT;
+ALTER TABLE task_offers ADD COLUMN IF NOT EXISTS guest_phone TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_task_offers_guest_phone
+  ON task_offers(guest_phone) WHERE user_id IS NULL;

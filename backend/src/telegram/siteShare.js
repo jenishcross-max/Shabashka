@@ -8,9 +8,10 @@
 //
 // Админ не одобряет каждую, как задачу биржи (см. taskShare.js): вакансию уже
 // проверил тот же фильтр, что объявления из чатов (spam.js в routes/vacancies.js),
-// а ручного времени у владельца на это нет. Ворота другие:
-// - почта подтверждена — первую вакансию сайт пускает и без неё (emailGate.js),
-//   а одноразовый аккаунт не должен получать охват Шабашки;
+// а ручного времени у владельца на это нет. Объявление из чата от незнакомца
+// уходит в соцсети после того же фильтра — вакансия с сайта рискованнее не
+// больше. До 13 ноября 2026 ещё ждали подтверждённую почту, но подтверждение
+// убрали (см. register в routes/auth.js). Ворота:
 // - не пример (is_example);
 // - не больше DAILY_LIMIT в сутки от одного автора — иначе это уже поток, а не
 //   работодатель.
@@ -49,9 +50,9 @@ async function sharedToday(userId) {
 
 // true — раздали. Ошибку не бросаем: вакансия уже на сайте, и сбой Telegram или
 // Meta не должен превращаться в ошибку размещения у работодателя.
-async function share(vacancy, { verified = false } = {}, deps) {
+async function share(vacancy, deps) {
   try {
-    if (!verified || vacancy.is_example) return false;
+    if (vacancy.is_example) return false;
     if ((await sharedToday(vacancy.user_id)) >= DAILY_LIMIT) return false;
     const parsed = parsedOf(vacancy);
     const { rows } = await db.query(

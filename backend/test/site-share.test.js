@@ -44,10 +44,10 @@ const vacancy = async (title, owner = userId, extra = {}) =>
     )
   ).rows[0];
 
-test('почта подтверждена — вакансия уходит в группу и соцсети, её можно снять через бота', async () => {
+test('вакансия с сайта уходит в группу и соцсети, её можно снять через бота', async () => {
   const v = await vacancy('Повар');
   const before = (await feedStats.day())['site.shared'] || 0;
-  assert.equal(await siteShare.share(v, { verified: true }, deps), true);
+  assert.equal(await siteShare.share(v, deps), true);
   assert.equal(spread.length, 1);
   const { importId, parsed, vacancy: shared } = spread[0];
   assert.equal(shared.id, v.id);
@@ -63,25 +63,24 @@ test('почта подтверждена — вакансия уходит в �
   assert.equal(((await feedStats.day())['site.shared'] || 0) - before, 1);
 });
 
-test('без подтверждённой почты и пример — не раздаём', async () => {
+test('пример не раздаём', async () => {
   spread.length = 0;
-  assert.equal(await siteShare.share(await vacancy('Официант'), { verified: false }, deps), false);
-  assert.equal(await siteShare.share(await vacancy('Пример', userId, { is_example: true }), { verified: true }, deps), false);
+  assert.equal(await siteShare.share(await vacancy('Пример', userId, { is_example: true }), deps), false);
   assert.equal(spread.length, 0);
 });
 
 test('не больше трёх в сутки от одного автора — иначе это уже поток', async () => {
   spread.length = 0;
   // Одна уже ушла в первом тесте.
-  assert.equal(await siteShare.share(await vacancy('Бариста'), { verified: true }, deps), true);
-  assert.equal(await siteShare.share(await vacancy('Кассир'), { verified: true }, deps), true);
-  assert.equal(await siteShare.share(await vacancy('Мойщик'), { verified: true }, deps), false);
+  assert.equal(await siteShare.share(await vacancy('Бариста'), deps), true);
+  assert.equal(await siteShare.share(await vacancy('Кассир'), deps), true);
+  assert.equal(await siteShare.share(await vacancy('Мойщик'), deps), false);
   assert.equal(spread.length, 2);
   // У другого автора своя норма.
-  assert.equal(await siteShare.share(await vacancy('Грузчик', otherId), { verified: true }, deps), true);
+  assert.equal(await siteShare.share(await vacancy('Грузчик', otherId), deps), true);
 });
 
 test('сбой раздачи не роняет размещение', async () => {
   const failing = { spread: async () => { throw new Error('Telegram недоступен'); } };
-  assert.equal(await siteShare.share(await vacancy('Курьер', otherId), { verified: true }, failing), false);
+  assert.equal(await siteShare.share(await vacancy('Курьер', otherId), failing), false);
 });

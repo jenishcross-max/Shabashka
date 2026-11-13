@@ -74,7 +74,7 @@ const TASK = {
 };
 const OFFER = { price: 2500, term: 'за день', comment: 'Свой пылесос' };
 
-test('гость видит задачу и ленту, но откликнуться не может', async () => {
+test('гость видит задачу и ленту; откликнуться без имени и WhatsApp нельзя', async () => {
   const owner = await user('Айгуль');
   const { body } = await call('/tasks', { as: owner, body: TASK });
   const id = body.task.id;
@@ -85,8 +85,55 @@ test('гость видит задачу и ленту, но откликнут�
   assert.equal(view.status, 200);
   assert.equal(view.body.my_offer, null);
   assert.equal(view.body.task.whatsapp_phone, undefined, 'телефона в задаче нет');
-  assert.equal((await call(`/tasks/${id}/offers`, { body: OFFER })).status, 401);
+  const anonymous = await call(`/tasks/${id}/offers`, { body: OFFER });
+  assert.equal(anonymous.status, 400);
+  assert.match(anonymous.body.error, /имя/);
+  const noPhone = await call(`/tasks/${id}/offers`, { body: { ...OFFER, name: 'Нурлан', phone: '12345' } });
+  assert.equal(noPhone.status, 400);
+  assert.match(noPhone.body.error, /WhatsApp/);
   assert.equal((await call('/tasks/999999')).status, 404);
+});
+
+// До 13 ноября 2026 откликнуться можно было только из аккаунта, и за всё время
+// биржи никто не предложил цену: регистрироваться ради одного отклика не хотят.
+// Теперь первый отклик — с именем и WhatsApp, без входа; заказчик пишет в
+// WhatsApp сам. Второй с того же номера — уже из аккаунта.
+test('гость откликается без входа; второй раз с того же номера — только после регистрации', async () => {
+  const owner = await user('Айгуль');
+  const id = (await call('/tasks', { as: owner, body: TASK })).body.task.id;
+  const other = (await call('/tasks', { as: owner, body: { ...TASK, title: 'Помыть окна' } })).body.task.id;
+
+  const sent = await call(`/tasks/${id}/offers`, { body: { ...OFFER, name: ' Нурлан ', phone: '0700 123 456' } });
+  assert.equal(sent.status, 201);
+  assert.equal(sent.body.offer.state, 'waiting');
+  assert.equal(sent.body.offer.guest_phone, undefined, 'номер гостю обратно не отдаём');
+  assert.equal((await call(`/tasks/${id}`)).body.task.offers_count, 1);
+
+  const again = await call(`/tasks/${other}/offers`, { body: { ...OFFER, name: 'Нурлан', phone: '+996 700 123456' } });
+  assert.equal(again.status, 403);
+  assert.equal(again.body.code, 'GUEST_USED');
+  assert.match(again.body.error, /зарегистрируйтесь/);
+
+  // Заказчик видит имя и WhatsApp гостя — написать ему больше негде.
+  assert.equal((await call('/conversations/unread-count', { as: owner })).body.offers, 1);
+  const [offer] = (await call(`/tasks/${id}/offers`, { as: owner })).body.offers;
+  assert.equal(offer.user_name, 'Нурлан');
+  assert.equal(offer.guest, true);
+  assert.equal(offer.phone, '+996700123456');
+
+  // Выбор гостя закрывает задачу, но переписки на сайте нет: гостю там не войти.
+  const chosen = await call(`/tasks/${id}/offers/${offer.id}/accept`, { as: owner, body: {} });
+  assert.equal(chosen.status, 200);
+  assert.equal(chosen.body.task.status, 'assigned');
+  assert.equal(chosen.body.conversation_id, null);
+  assert.equal((await call(`/tasks/${id}`, { as: owner })).body.conversation_id, null);
+  const [kept] = (await call(`/tasks/${id}/offers`, { as: owner })).body.offers;
+  assert.equal(kept.status, 'accepted');
+  assert.equal(kept.phone, '+996700123456');
+
+  // Из аккаунта тот же человек откликается сколько угодно.
+  const registered = await user('Нурлан');
+  assert.equal((await call(`/tasks/${other}/offers`, { as: registered, body: OFFER })).status, 201);
 });
 
 test('автор не откликается на свою задачу, неполный отклик — 400', async () => {
@@ -210,10 +257,10 @@ test('жалобы: на задачу — все, на отклик — толь
   assert.equal((await call(`/tasks/${id}`)).body.task.status, 'cancelled');
 });
 
-test('вторую задачу без подтверждённой почты не разместить', async () => {
+// Подтверждение почты убрано 13 ноября 2026: письмо и плашка «Подтвердите
+// почту» отпугивали от регистрации, а мусор и так ловят фильтр и жалобы.
+test('почту подтверждать не нужно: вторая задача размещается и без этого', async () => {
   const newbie = await user('Новичок', { verified: false });
   assert.equal((await call('/tasks', { as: newbie, body: TASK })).status, 201);
-  const second = await call('/tasks', { as: newbie, body: TASK });
-  assert.equal(second.status, 403);
-  assert.equal(second.body.code, 'EMAIL_NOT_VERIFIED');
+  assert.equal((await call('/tasks', { as: newbie, body: TASK })).status, 201);
 });

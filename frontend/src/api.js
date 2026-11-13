@@ -37,7 +37,10 @@ async function request(path, { method = 'GET', body, token } = {}) {
   const data = isJson ? await res.json() : null;
 
   if (!res.ok) {
-    throw new Error(data?.error || 'Что-то пошло не так');
+    // code — для ответов, на которые сайт реагирует по-своему (GUEST_USED на бирже).
+    const err = new Error(data?.error || 'Что-то пошло не так');
+    if (data?.code) err.code = data.code;
+    throw err;
   }
   return data;
 }

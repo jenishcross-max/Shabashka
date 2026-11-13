@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useCities } from '../useCities';
@@ -12,6 +12,8 @@ export default function Register() {
   const { login } = useAuth();
   const cities = useCities();
   const navigate = useNavigate();
+  // С биржи сюда приходят откликнуться — после регистрации обратно к задаче.
+  const from = useLocation().state?.from;
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', city: '' });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -23,7 +25,7 @@ export default function Register() {
     try {
       const { token, user } = await api.register(form);
       login(token, user);
-      navigate('/orders/new');
+      navigate(from?.pathname || '/orders/new');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -37,10 +39,10 @@ export default function Register() {
         <Logo size="sm" />
       </div>
       <div className="card-body">
-        <h1>Регистрация заказчика</h1>
+        <h1>Регистрация</h1>
         <p className="subtitle">
-          Аккаунт нужен, только чтобы размещать заказы. Исполнителям регистрация не нужна для
-          отклика в WhatsApp — а для сообщений на сайте достаточно войти в свой аккаунт.
+          Аккаунт нужен, чтобы размещать заказы и откликаться на бирже. Почту подтверждать не нужно.
+          На вакансии и заказы откликаются в WhatsApp — там регистрация не нужна.
         </p>
         <form onSubmit={handleSubmit}>
           <label className="field">
@@ -101,7 +103,10 @@ export default function Register() {
         </form>
         <GoogleSignIn />
         <p className="switch-line">
-          Уже есть аккаунт? <Link to="/login">Войти</Link>
+          Уже есть аккаунт?{' '}
+          <Link to="/login" state={from ? { from } : undefined}>
+            Войти
+          </Link>
         </p>
       </div>
     </div>

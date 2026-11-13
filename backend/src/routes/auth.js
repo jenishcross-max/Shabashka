@@ -59,21 +59,18 @@ router.post(
     const existing = await db.query('SELECT id FROM users WHERE email = $1', [normalizedEmail]);
     if (existing.rows[0]) return res.status(409).json({ error: 'Пользователь с таким email уже зарегистрирован' });
 
+    // Письма «подтвердите почту» с 13 ноября 2026 нет: оно и плашка на сайте
+    // отпугивали от регистрации, а мусор ловят фильтр и жалобы. Ссылки из старых
+    // писем по-прежнему работают (/verify-email).
     const passwordHash = bcrypt.hashSync(password, 10);
-    const verifyToken = crypto.randomBytes(32).toString('hex');
-    const verifyExpires = new Date(Date.now() + VERIFY_TOKEN_TTL_MS);
     const inserted = await db.query(
-      `INSERT INTO users (name, email, phone, password_hash, city, email_verified, verify_token, verify_token_expires)
-       VALUES ($1, $2, $3, $4, $5, false, $6, $7) RETURNING id`,
-      [name.trim(), normalizedEmail, normalizedPhone, passwordHash, city ? city.trim() : null, verifyToken, verifyExpires]
+      `INSERT INTO users (name, email, phone, password_hash, city, email_verified)
+       VALUES ($1, $2, $3, $4, $5, false) RETURNING id`,
+      [name.trim(), normalizedEmail, normalizedPhone, passwordHash, city ? city.trim() : null]
     );
 
     const { rows } = await db.query('SELECT * FROM users WHERE id = $1', [inserted.rows[0].id]);
     const user = rows[0];
-
-    sendVerificationEmail(user.email, user.name, verifyLink(verifyToken)).catch((err) =>
-      console.error('Не удалось отправить письмо с подтверждением:', err)
-    );
 
     const token = signToken(user);
     res.status(201).json({ token, user: toPublicUser(user) });

@@ -7,19 +7,23 @@ import { relativeDate } from '../formatDate';
 import { useMeta } from '../useMeta';
 import { offerWord, viewWord } from '../plural';
 import { TASK_STATUS_LABELS, statusClass, som, trustLine } from '../exchange';
+import { offerWaLink, rememberGuestOffer, sentAsGuest } from '../guestOffer';
 import FormatIcon from '../components/FormatIcon';
 import SafetyNote from '../components/SafetyNote';
 import { SkeletonOrderDetail } from '../components/Skeleton';
 
 // Страница задачи биржи. Одна страница на троих — гостя, исполнителя и
 // заказчика: задача у всех одна, а разница только в нижнем блоке. Заказчик
-// видит отклики целиком, исполнитель — только свой, гость — их число.
+// видит отклики целиком, исполнитель — только свой, гость — их число и форму
+// отклика без входа (с именем и WhatsApp, см. GuestOffer).
 
-function OfferForm({ initial, submitLabel, busy, onSubmit, onCancel }) {
+// guest — отклик без аккаунта: ещё имя и WhatsApp, по нему заказчик и напишет.
+function OfferForm({ initial, submitLabel, busy, onSubmit, onCancel, guest = false }) {
   const [form, setForm] = useState({
     price: initial ? String(initial.price) : '',
     term: initial?.term || '',
     comment: initial?.comment || '',
+    ...(guest ? { name: '', phone: '' } : {}),
   });
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
@@ -31,6 +35,18 @@ function OfferForm({ initial, submitLabel, busy, onSubmit, onCancel }) {
         onSubmit(form);
       }}
     >
+      {guest && (
+        <div className="field-row">
+          <label className="field">
+            <span className="label">Ваше имя</span>
+            <input required maxLength={60} placeholder="Как к вам обращаться" value={form.name} onChange={set('name')} />
+          </label>
+          <label className="field">
+            <span className="label">WhatsApp</span>
+            <input type="tel" required placeholder="0700 123 456" value={form.phone} onChange={set('phone')} />
+          </label>
+        </div>
+      )}
       <div className="field-row">
         <label className="field">
           <span className="label">Ваша цена, сом</span>
@@ -63,7 +79,9 @@ function OfferForm({ initial, submitLabel, busy, onSubmit, onCancel }) {
         )}
       </div>
       <p className="format-hint">
-        Отклик увидит только заказчик. Пока он не выбрал исполнителя, отклик можно изменить или отозвать.
+        {guest
+          ? 'Без регистрации: отклик и номер увидит только заказчик и, если выберет вас, напишет в WhatsApp.'
+          : 'Отклик увидит только заказчик. Пока он не выбрал исполнителя, отклик можно изменить или отозвать.'}
       </p>
     </form>
   );
@@ -76,7 +94,7 @@ function OfferCard({ offer, mine = false, children }) {
         <div>
           <span className="offer-name">{mine ? 'Ваш отклик' : offer.user_name}</span>
           {offer.is_new && <span className="offer-new">Новый</span>}
-          {!mine && <div className="offer-trust">{trustLine(offer)}</div>}
+          {!mine && <div className="offer-trust">{offer.guest ? 'Откликнулся без регистрации' : trustLine(offer)}</div>}
         </div>
         <div className="offer-price">{som(offer.price)}</div>
       </div>
@@ -103,6 +121,87 @@ const CLOSED_NOTES = {
   cancelled: 'Задача отменена заказчиком.',
 };
 
+// Отклик без входа. До 13 ноября 2026 здесь было «Войдите или
+// зарегистрируйтесь», и за всё время биржи никто не предложил цену. Первый
+// отклик с номера — без аккаунта, следующие — из аккаунта (сервер ответит
+// GUEST_USED). Что отклик ушёл, помним на этом устройстве: спросить сервер
+// гостю нечем.
+function GuestOffer({ task, count }) {
+  const [sent, setSent] = useState(() => sentAsGuest(task.id));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const back = { from: { pathname: `/tasks/${task.id}` } };
+  const account = (
+    <>
+      <Link to="/register" state={back}>
+        зарегистрируйтесь
+      </Link>{' '}
+      или{' '}
+      <Link to="/login" state={back}>
+        войдите
+      </Link>
+    </>
+  );
+
+  async function send(form) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.saveOffer(task.id, form);
+      rememberGuestOffer(task.id);
+      setSent(true);
+    } catch (err) {
+      setError({ message: err.message, needsAccount: err.code === 'GUEST_USED' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (sent) {
+    return (
+      <div className="apply-box">
+        <h3>Отклик отправлен</h3>
+        <p>Заказчик увидит вашу цену и, если выберет вас, напишет в WhatsApp.</p>
+        <p className="format-hint">
+          Чтобы откликаться и дальше, {account} — это минута. Там отклики можно изменить, отозвать и видеть,
+          кого выбрали.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="apply-box">
+      <h3>Предложить свою цену</h3>
+      {count}
+      <OfferForm guest submitLabel="Отправить отклик" busy={busy} onSubmit={send} />
+      {error && (
+        <p className="status-msg error">
+          {error.message}
+          {error.needsAccount && (
+            <>
+              <br />
+              <Link to="/register" state={back}>
+                Зарегистрироваться
+              </Link>{' '}
+              ·{' '}
+              <Link to="/login" state={back}>
+                Войти
+              </Link>
+            </>
+          )}
+        </p>
+      )}
+      <p className="apply-login-hint">
+        Уже есть аккаунт?{' '}
+        <Link to="/login" state={back}>
+          Войдите
+        </Link>
+      </p>
+    </div>
+  );
+}
+
 function WorkerPanel({ task, myOffer, chatId, user, busy, run }) {
   const [editing, setEditing] = useState(false);
   const open = task.status === 'open';
@@ -127,19 +226,7 @@ function WorkerPanel({ task, myOffer, chatId, user, busy, run }) {
 
   if (!user) {
     if (!open) return <p className="status-msg">{CLOSED_NOTES[task.status]}</p>;
-    return (
-      <div className="apply-box">
-        <h3>Предложить свою цену</h3>
-        {count}
-        <p className="apply-login-hint">
-          <Link to="/login" state={{ from: { pathname: `/tasks/${task.id}` } }}>
-            Войдите
-          </Link>{' '}
-          или <Link to="/register">зарегистрируйтесь</Link>, чтобы откликнуться: указать цену, срок и
-          что сделаете.
-        </p>
-      </div>
-    );
+    return <GuestOffer key={task.id} task={task} count={count} />;
   }
 
   const state = myOffer?.state;
@@ -251,6 +338,11 @@ function OwnerPanel({ task, offers, chatId, busy, run }) {
                 Написать исполнителю
               </Link>
             )}
+            {chosen.guest && (
+              <a className="whatsapp-btn" href={offerWaLink(chosen.phone, task.title)} target="_blank" rel="noopener noreferrer">
+                Написать в WhatsApp
+              </a>
+            )}
             <button className="admin-btn-ghost" disabled={busy} onClick={() => step('done')}>
               Задача выполнена
             </button>
@@ -290,6 +382,11 @@ function OwnerPanel({ task, offers, chatId, busy, run }) {
       <div className="offer-list">
         {offers.map((offer) => (
           <OfferCard key={offer.id} offer={offer}>
+            {offer.guest && (
+              <a className="whatsapp-btn" href={offerWaLink(offer.phone, task.title)} target="_blank" rel="noopener noreferrer">
+                Написать в WhatsApp
+              </a>
+            )}
             <button className="cta" disabled={busy} onClick={() => accept(offer)}>
               Выбрать исполнителем
             </button>

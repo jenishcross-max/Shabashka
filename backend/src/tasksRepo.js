@@ -137,6 +137,26 @@ async function saveOffer(taskId, userId, { price, term, comment }) {
   return rows[0] || null;
 }
 
+// Отклик без аккаунта (см. guestOffer в routes/tasks.js). Задача так же должна
+// быть открыта в момент записи. null — задача закрылась или с этого номера
+// гостевой отклик уже есть (idx_task_offers_guest_phone, если двое прислали
+// одновременно).
+async function saveGuestOffer(taskId, { name, phone }, { price, term, comment }) {
+  const { rows } = await db.query(
+    `INSERT INTO task_offers (task_id, guest_name, guest_phone, price, term, comment)
+     SELECT id, $2, $3, $4, $5, $6 FROM tasks WHERE id = $1 AND status = 'open' FOR SHARE
+     ON CONFLICT DO NOTHING
+     RETURNING *`,
+    [taskId, name, phone, price, term, comment]
+  );
+  return rows[0] || null;
+}
+
+async function guestOfferExists(phone) {
+  const { rows } = await db.query('SELECT 1 FROM task_offers WHERE user_id IS NULL AND guest_phone = $1', [phone]);
+  return rows.length > 0;
+}
+
 async function withdrawOffer(taskId, userId) {
   const { rows } = await db.query(
     `UPDATE task_offers SET status = 'withdrawn', updated_at = NOW()
@@ -149,7 +169,8 @@ async function withdrawOffer(taskId, userId) {
 }
 
 // Отклики для заказчика — с тем, что помогает выбрать: сколько задач человек уже
-// выполнил на бирже и как давно он на сайте. Отозванные, отменённые и снятые не
+// выполнил на бирже и как давно он на сайте. У гостя (откликнулся без аккаунта)
+// вместо этого его WhatsApp: другой связи с ним нет. Отозванные, отменённые и снятые не
 // показываем: выбрать их всё равно нельзя. Открытие списка помечает отклики
 // увиденными; is_new считается по снимку до пометки (UPDATE в WITH выполняется
 // всегда, а SELECT того же запроса видит строки до него) — один запрос вместо двух.
@@ -160,10 +181,11 @@ async function offersForOwner(taskId) {
      )
      SELECT o.id, o.task_id, o.user_id, o.price, o.term, o.comment, o.status,
             o.created_at, o.updated_at, (o.seen_at IS NULL) AS is_new,
-            u.name AS user_name, u.created_at AS user_since,
+            COALESCE(u.name, o.guest_name) AS user_name, u.created_at AS user_since,
+            (o.user_id IS NULL) AS guest, CASE WHEN o.user_id IS NULL THEN o.guest_phone END AS phone,
             (SELECT COUNT(*) FROM task_offers d JOIN tasks t ON t.id = d.task_id
               WHERE d.user_id = o.user_id AND d.status = 'accepted' AND t.status = 'done')::int AS done_count
-     FROM task_offers o JOIN users u ON u.id = o.user_id
+     FROM task_offers o LEFT JOIN users u ON u.id = o.user_id
      WHERE o.task_id = $1 AND o.status IN ('active', 'accepted')
      ORDER BY o.status = 'accepted' DESC, o.created_at ASC`,
     [taskId]
@@ -205,7 +227,9 @@ async function myOffers(userId) {
 // второе одновременное «Выбрать» в очередь, и после первого оно уже не найдёт
 // открытой задачи; отклик, отозванный в ту же секунду, не пройдёт проверку
 // status = 'active' — и тогда ничего не меняется. На крайний случай есть
-// idx_task_offers_accepted. Ветка одна на пару (задача, исполнитель).
+// idx_task_offers_accepted. Ветка одна на пару (задача, исполнитель). У гостя
+// переписки нет — войти, чтобы её прочитать, ему некуда; заказчик пишет ему в
+// WhatsApp, и conversation_id тогда null.
 async function accept(taskId, ownerId, offerId, hello) {
   const { rows } = await db.query(
     `WITH task AS (
@@ -220,7 +244,7 @@ async function accept(taskId, ownerId, offerId, hello) {
        RETURNING id
      ), chat AS (
        INSERT INTO conversations (listing_type, listing_id, seeker_id, employer_id)
-       SELECT 'task', task_id, user_id, $2 FROM offer
+       SELECT 'task', task_id, user_id, $2 FROM offer WHERE user_id IS NOT NULL
        ON CONFLICT (listing_type, listing_id, seeker_id) DO UPDATE SET last_message_at = NOW()
        RETURNING id
      ), hello AS (
@@ -305,6 +329,8 @@ module.exports = {
   offerOf,
   offerById,
   saveOffer,
+  saveGuestOffer,
+  guestOfferExists,
   withdrawOffer,
   offersForOwner,
   unseenCount,

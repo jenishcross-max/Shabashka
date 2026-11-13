@@ -1,5 +1,6 @@
 const { abroadWork } = require('./abroad');
 const { money } = require('./money');
+const { normalizePhone } = require('./phone');
 
 // Биржа услуг: правила задач и откликов без базы (запросы — в tasksRepo.js).
 // Всё «можно или нельзя» решается здесь: сайт и будущее Android-приложение
@@ -7,7 +8,7 @@ const { money } = require('./money');
 
 const WORK_FORMATS = ['online', 'offline'];
 const MAX_PRICE = 10000000;
-const LIMITS = { title: 100, description: 3000, city: 60, address: 200, when: 60, term: 60, comment: 1000 };
+const LIMITS = { title: 100, description: 3000, city: 60, address: 200, when: 60, term: 60, comment: 1000, name: 60 };
 
 const text = (value) => String(value ?? '').trim();
 
@@ -94,6 +95,18 @@ function validateOffer(body = {}) {
   return { errors, result: { price, term, comment } };
 }
 
+// Кто откликается без аккаунта: имя видит заказчик, по WhatsApp он и напишет —
+// переписки на сайте у гостя нет.
+function validateGuest(body = {}) {
+  const errors = [];
+  const name = text(body.name);
+  if (!name) errors.push('Напишите ваше имя — его увидит заказчик');
+  else if (name.length > LIMITS.name) errors.push(`Имя слишком длинное (макс. ${LIMITS.name} символов)`);
+  const phone = normalizePhone(body.phone);
+  if (!phone) errors.push('Укажите номер WhatsApp, например 0700 123 456: по нему заказчик вам напишет');
+  return { errors, result: { name, phone } };
+}
+
 // Почему с задачей уже ничего не сделать — по её статусу.
 const CLOSED = {
   assigned: 'Исполнитель уже выбран',
@@ -163,6 +176,7 @@ function chosenMessage(task, offer) {
 module.exports = {
   validateTask,
   validateOffer,
+  validateGuest,
   offerBlocker,
   ownerBlocker,
   withdrawBlocker,
