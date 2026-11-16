@@ -271,11 +271,13 @@ function adRaisesStub(extra = {}) {
   const planned = [];
   const cancelled = [];
   const raisedNow = [];
+  const renewed = [];
   const plan = { days: 3, times: ['09:00', '13:00'], to: { site: true, threads: true, instagram: true, groups: true } };
   return {
     planned,
     cancelled,
     raisedNow,
+    renewed,
     start: () => {},
     nowMode: async (listing) => ({ mode: !listing || listing.status !== 'published' ? 'gone' : 'raise' }),
     raiseNow: async (importId, chatId) => {
@@ -294,6 +296,18 @@ function adRaisesStub(extra = {}) {
     },
     rows: async () => [],
     summarize: () => ({ total: 0, done: 0, failed: 0, pending: 0, next: null, stopped: false }),
+    period: (p) => ({ days: p.days || 3, times: p.times }),
+    renewal: async () => ({
+      days: 3,
+      times: plan.times,
+      to: plan.to,
+      dates: [new Date('2026-11-17T03:00:00Z'), new Date('2026-11-19T07:00:00Z')],
+      after: false,
+    }),
+    renew: async (importId, chatId) => {
+      renewed.push({ importId, chatId });
+      return 6;
+    },
     DAY_OPTIONS: [0, 1, 2, 3, 5, 7],
     TIME_PRESETS: [['09:00'], ['09:00', '13:00']],
     ...extra,

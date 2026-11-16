@@ -268,3 +268,58 @@ test('остановить, продлить на день, заново по н
   assert.ok(data.includes('ai:10:2'));
   assert.match(view.text, /Отменено: 10/);
 });
+
+// Рекламодатель заплатил ещё за срок: «➕ Продлить на 3 дня» в карточке. Новые
+// поднятия — после уже запланированных, а не вместо них, и сначала вопрос.
+test('продлить на срок: столько же дней после запланированных, сначала вопрос', async () => {
+  listings.set(11, { id: 11, status: 'published', raw_text: 'Реклама', parsed: { title: 'Кафе «Арзу»' } });
+  fakeNow = Date.parse('2026-10-08T09:00:00Z');
+  await raises.plan(11, 42, fakeNow); // 9–11 октября
+
+  const renewal = await raises.renewal(11, fakeNow);
+  assert.equal(renewal.days, 3);
+  assert.deepEqual(
+    [renewal.dates[0].toISOString(), renewal.dates.at(-1).toISOString(), renewal.dates.length],
+    [bishkek('2026-10-12T09:00:00').toISOString(), bishkek('2026-10-14T13:00:00').toISOString(), 6]
+  );
+  assert.equal(renewal.after, true, 'идут ещё прежние поднятия');
+
+  const ask = menu.renewConfirmView({ ad: listings.get(11), renewal, page: 1 });
+  assert.match(ask.text, /Продлить «Кафе «Арзу»» ещё на 3 дня\?/);
+  assert.match(ask.text, /6 поднятий: 12–14 октября в 09:00 и 13:00 — 🌐 сайт, 🧵 Threads, 📸 Instagram, 👥 группы Telegram/);
+  assert.match(ask.text, /после уже запланированных/);
+  assert.deepEqual(
+    ask.extra.reply_markup.inline_keyboard.flat().map((b) => b.callback_data),
+    ['rz:n:11:1', 'ai:11:1']
+  );
+
+  assert.equal(await raises.renew(11, 42, fakeNow), 6);
+  const summary = raises.summarize(await raises.rows(11));
+  assert.deepEqual([summary.pending, summary.total], [12, 12], 'прежние остались, новые добавились');
+
+  // Поднятия кончились — срок с завтрашнего; выключены в настройках — всё равно
+  // стандартные три дня: рекламодатель заплатил.
+  await raises.cancel(11);
+  await raises.setDays(0);
+  const later = await raises.renewal(11, fakeNow);
+  assert.equal(later.days, 3);
+  assert.equal(later.dates[0].toISOString(), bishkek('2026-10-09T09:00:00').toISOString());
+  assert.equal(later.after, false);
+  assert.doesNotMatch(menu.renewConfirmView({ ad: listings.get(11), renewal: later }).text, /после уже/);
+  settingsStore['adraise:plan'] = '';
+
+  // Через месяц: «31 октября – 2 ноября».
+  const turn = { ...later, times: ['09:00'], dates: raises.slots({ days: 3, times: ['09:00'] }, bishkek('2026-10-30T12:00:00').getTime()) };
+  assert.match(menu.renewConfirmView({ ad: listings.get(11), renewal: turn }).text, /3 поднятия: 31 октября – 2 ноября в 09:00/);
+});
+
+test('карточка рекламы: «Обновить числа» и «Продлить» — разные кнопки', () => {
+  const ad = { id: 12, status: 'published', parsed: { title: 'Кафе' }, published_at: new Date() };
+  const view = menu.adInfoView({ ad, page: 3, renewDays: 3 });
+  const buttons = view.extra.reply_markup.inline_keyboard.flat();
+  assert.ok(buttons.some((b) => b.text === '🔄 Обновить числа' && b.callback_data === 'ai:12:3:f'));
+  assert.ok(buttons.some((b) => b.text === '➕ Продлить на 3 дня' && b.callback_data === 'rz:a:12:3'));
+
+  const gone = menu.adInfoView({ ad: { ...ad, status: 'rejected' }, page: 3, renewDays: 3 });
+  assert.ok(!gone.extra.reply_markup.inline_keyboard.flat().some((b) => b.callback_data === 'rz:a:12:3'), 'снятую не продлить');
+});

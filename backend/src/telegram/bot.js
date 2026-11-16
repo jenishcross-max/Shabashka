@@ -2097,13 +2097,31 @@ async function onCallback(query) {
   }
 
   // Поднятия одной рекламы: rawId — v (показать), s (остановить), e (ещё день),
-  // r (заново по настройкам); arg2 — реклама, arg3 — страница списка.
+  // r (заново по настройкам), a (спросить, продлить ли на срок), n (продлить);
+  // arg2 — реклама, arg3 — страница списка.
   if (action === 'rz') {
     const importId = Number(arg2);
+    if (rawId === 'a' || rawId === 'n') {
+      const ad = await imports.get(importId);
+      if (!ad || ad.status !== 'published') {
+        await tg.answerCallbackQuery(query.id, 'Реклама снята — продлевать нечего');
+        return;
+      }
+      if (rawId === 'a') {
+        await tg.answerCallbackQuery(query.id);
+        const view = menu.renewConfirmView({ ad, renewal: await adRaises.renewal(importId), page: Number(arg3) || 0 });
+        await show(chatId, view, messageId);
+        return;
+      }
+    }
     const done = {
       v: async () => '',
       s: async () => `Остановил: ${await adRaises.cancel(importId)}`,
       e: async () => `Добавил: ${await adRaises.extend(importId, chatId)}`,
+      n: async () => {
+        const count = await adRaises.renew(importId, chatId);
+        return `Продлил: ещё ${count} ${plural(count, ['поднятие', 'поднятия', 'поднятий'])}`;
+      },
       r: async () => {
         const result = await adRaises.restart(importId, chatId);
         return result.count ? `Запланировал: ${result.count}` : 'Поднятия выключены в настройках';
@@ -3141,6 +3159,7 @@ async function adInfoView(importId, page = 0, { force = false, noBoost = false }
   ]);
   const siteLink = adSiteUrl(ad);
   const raises = adRaises.summarize(await adRaises.rows(ad.id).catch(() => []));
+  const plan = await adRaises.settings().catch(() => null);
   return menu.adInfoView({
     ad,
     campaign,
@@ -3156,6 +3175,7 @@ async function adInfoView(importId, page = 0, { force = false, noBoost = false }
     goal: social.adTracker.GOAL,
     reportAfterMs: social.adTracker.REPORT_AFTER_MS,
     raises,
+    renewDays: plan ? adRaises.period(plan).days : undefined,
   });
 }
 

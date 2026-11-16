@@ -192,6 +192,7 @@ function adInfoView({
   goal = 1000,
   reportAfterMs = 24 * HOUR_MS,
   raises = null,
+  renewDays = 3, // на сколько продлит «➕ Продлить» — см. adRaises.period
   now = Date.now(),
 }) {
   const p = ad.parsed || {};
@@ -245,16 +246,20 @@ function adInfoView({
   lines.push('', `🔁 <b>Поднятия</b>: ${raiseSummaryText(raises)}`);
   if (raise && raise.mode === 'soon') lines.push(`Поднять вручную можно через ${raise.waitMin} мин.`);
 
-  const top = [{ text: '🔄 Обновить', callback_data: `ai:${ad.id}:${page}:f` }];
+  // «Обновить» без уточнения принимали за продление рекламы — а оно только
+  // освежает числа. Продление — своей кнопкой, отдельной строкой.
+  const top = [{ text: '🔄 Обновить числа', callback_data: `ai:${ad.id}:${page}:f` }];
   if (raise && (raise.mode === 'raise' || raise.mode === 'resend')) {
     top.push({ text: '🔁 Поднять сейчас', callback_data: `rn:${ad.id}:${page}` });
   }
+  const renew =
+    ad.status === 'published' ? [[{ text: `➕ Продлить на ${daysText(renewDays)}`, callback_data: `rz:a:${ad.id}:${page}` }]] : [];
   const mid = [{ text: '🔁 Поднятия', callback_data: `rz:v:${ad.id}:${page}` }];
   if (campaign) mid.push({ text: '📄 Отчёт для рекламодателя', callback_data: `ar:${campaign.id}` });
   if (ad.status === 'published') mid.push({ text: '🗑 Снять', callback_data: `ax:${ad.id}:${page}` });
   return {
     text: lines.join('\n'),
-    extra: keyboard([top, ...(mid.length ? [mid] : []), [{ text: '⬅️ К списку', callback_data: `al:${page}` }, BACK]]),
+    extra: keyboard([top, ...renew, mid, [{ text: '⬅️ К списку', callback_data: `al:${page}` }, BACK]]),
   };
 }
 
@@ -363,6 +368,44 @@ function raisesView({ ad, list, summary, page = 0 }) {
   }
   rows.push([{ text: '⬅️ К рекламе', callback_data: `ai:${ad.id}:${page}` }, BACK]);
   return { text: lines.join('\n'), extra: keyboard(rows) };
+}
+
+// «17 ноября» по Бишкеку.
+const dayText = (at) =>
+  new Date(at).toLocaleDateString('ru-RU', { timeZone: 'Asia/Bishkek', day: 'numeric', month: 'long' });
+
+// «12–14 октября», «31 октября – 2 ноября».
+function daysRange(first, last) {
+  const [a, b] = [dayText(first), dayText(last)];
+  if (a === b) return a;
+  const [day, month] = a.split(' ');
+  return month === b.split(' ')[1] ? `${day}–${b}` : `${a} – ${b}`;
+}
+
+// «➕ Продлить»: рекламодатель заплатил ещё за срок. Сначала вопрос — кнопка
+// рядом с «Обновить числа», а лишние посты в группах админы считают спамом.
+function renewConfirmView({ ad, renewal, page = 0 }) {
+  const title = (ad.parsed && ad.parsed.title) || 'реклама';
+  const { days, times, to, dates, after } = renewal;
+  const count = dates.length;
+  const where = RAISE_PLATFORMS.filter((k) => to[k]).map((k) => PLATFORM_NAMES[k]);
+  const lines = [
+    `➕ Продлить «${tg.esc(clamp(title, 80))}» ещё на ${daysText(days)}?`,
+    '',
+    `${count} ${plural(count, ['поднятие', 'поднятия', 'поднятий'])}: ${daysRange(dates[0], dates[count - 1])} в ${timesText(times)} — ${
+      where.length ? where.join(', ') : 'никуда: все площадки выключены в «⋯ Ещё → 🔁 Поднятия рекламы»'
+    }.`,
+  ];
+  if (after) lines.push('Начнутся после уже запланированных — те остаются.');
+  return {
+    text: lines.join('\n'),
+    extra: keyboard([
+      [
+        { text: '✅ Да, продлить', callback_data: `rz:n:${ad.id}:${page}` },
+        { text: '↩️ Нет', callback_data: `ai:${ad.id}:${page}` },
+      ],
+    ]),
+  };
 }
 
 // После поднятий у одной группы несколько постов одной рекламы: показываем
@@ -550,6 +593,7 @@ module.exports = {
   confirmRemoveView,
   raiseSettingsView,
   raisesView,
+  renewConfirmView,
   raisePlanText,
   raiseSummaryText,
   groupsView,

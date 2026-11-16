@@ -9,9 +9,11 @@
 //  • в группах Telegram — та же реклама ещё раз, через ту же очередь с паузами.
 //
 // Сколько дней, во сколько и куда — настраивается в «☰ Меню → 🔁 Поднятия
-// рекламы» и применяется к новой рекламе; у каждой рекламы план можно
-// остановить, продлить на день или построить заново («📣 Реклама» → «ℹ️»), а
-// саму рекламу — поднять сразу, кнопкой «🔁 Поднять сейчас».
+// рекламы» и применяется к новой рекламе. Рекламодатель заплатил ещё за срок —
+// «➕ Продлить на 3 дня» в карточке рекламы («📣 Реклама» → «ℹ️»): столько же
+// поднятий после уже запланированных. Там же план можно остановить, продлить
+// на день или построить заново («🔁 Поднятия»), а рекламу — поднять сразу,
+// кнопкой «🔁 Поднять сейчас».
 //
 // План лежит в базе (ad_raises): три дня на бесплатном Render без перезапуска
 // не проживает ничто.
@@ -133,16 +135,43 @@ async function cancel(importId) {
   return result.rowCount || 0;
 }
 
-// Ещё день поднятий — после последнего запланированного или с завтра, если
-// план уже кончился.
-async function extend(importId, chatId, now = Date.now()) {
-  const current = await settings();
+// Срок продления — как у новой рекламы. Поднятия в настройках выключены — всё
+// равно стандартный: продлевают, когда рекламодатель уже заплатил.
+const period = (plan) => ({
+  days: plan.days || DEFAULT_PLAN.days,
+  times: plan.times.length ? plan.times : DEFAULT_PLAN.times,
+});
+
+// Последнее запланированное поднятие (или сделанное, если план кончился), мс.
+async function lastDue(importId) {
   const { rows: last } = await db.query(
     "SELECT MAX(due_at) AS at FROM ad_raises WHERE import_id = $1 AND status <> 'cancelled'",
     [importId]
   );
-  const from = Math.max(now, last[0] && last[0].at ? new Date(last[0].at).getTime() : 0);
-  const dates = slots({ days: 1, times: current.times.length ? current.times : DEFAULT_PLAN.times }, from);
+  return last[0] && last[0].at ? new Date(last[0].at).getTime() : 0;
+}
+
+// Ещё день поднятий — после последнего запланированного или с завтра, если
+// план уже кончился.
+async function extend(importId, chatId, now = Date.now()) {
+  const { times } = period(await settings());
+  const dates = slots({ days: 1, times }, Math.max(now, await lastDue(importId)));
+  await insert(importId, chatId, dates);
+  return dates.length;
+}
+
+// Что сделает «➕ Продлить»: срок из настроек — после последнего
+// запланированного, а не вместо него, как «Заново по настройкам». after —
+// прежние поднятия ещё идут.
+async function renewal(importId, now = Date.now()) {
+  const current = await settings();
+  const { days, times } = period(current);
+  const last = await lastDue(importId);
+  return { days, times, to: current.to, dates: slots({ days, times }, Math.max(now, last)), after: last > now };
+}
+
+async function renew(importId, chatId, now = Date.now()) {
+  const { dates } = await renewal(importId, now);
   await insert(importId, chatId, dates);
   return dates.length;
 }
@@ -517,6 +546,9 @@ module.exports = {
   summarize,
   cancel,
   extend,
+  period,
+  renewal,
+  renew,
   restart,
   tick,
   start,

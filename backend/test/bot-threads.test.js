@@ -311,7 +311,7 @@ test('список листается, «ℹ️» открывает рекла�
   assert.match(info.text, /⏳ Вакансии · ≈/);
   assert.match(info.text, /Просмотры в группах Telegram не считает/);
   const buttons = buttonsOf(info);
-  for (const data of ['ai:5:0:f', 'rn:5:0', 'ar:8', 'ax:5:0', 'al:0', 'm:home']) {
+  for (const data of ['ai:5:0:f', 'rz:a:5:0', 'rn:5:0', 'ar:8', 'ax:5:0', 'al:0', 'm:home']) {
     assert.ok(buttons.includes(data), `кнопка ${data}: ${buttons.join(', ')}`);
   }
 });
@@ -344,6 +344,19 @@ test('«Поднять в Threads» из карточек, выданных ра
   // И «Обновить», пока повтор ждёт очереди Threads, «Поднять сейчас» не возвращает.
   await press('ai:5:0:f');
   assert.ok(!buttonsOf(edits.at(-1)).includes('rn:5:0'));
+});
+
+test('«➕ Продлить» сначала спрашивает, «Да» добавляет поднятия и показывает план', async () => {
+  edits.length = 0;
+  raises.renewed.length = 0;
+  await press('rz:a:5:0');
+  assert.match(edits.at(-1).text, /Продлить «Требуются бариста» ещё на 3 дня\?/);
+  assert.deepEqual(buttonsOf(edits.at(-1)), ['rz:n:5:0', 'ai:5:0']);
+  assert.equal(raises.renewed.length, 0, 'пока только спросили');
+
+  await press('rz:n:5:0');
+  assert.deepEqual(raises.renewed, [{ importId: 5, chatId: 1 }]);
+  assert.match(edits.at(-1).text, /Поднятия «Требуются бариста»/);
 });
 
 test('«Снять» сначала спрашивает', async () => {
