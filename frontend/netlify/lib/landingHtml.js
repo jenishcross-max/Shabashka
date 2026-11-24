@@ -31,14 +31,17 @@ function links(current) {
 //
 // landing — и раздел из SECTIONS (главная, /vacancies): у него нет slug, и в
 // ссылках внизу — все посадочные.
-export function landingHtml(html, { landing, url, items = [] }) {
+//
+// noindex — страница работодателя, где сейчас пусто (landing.hideEmpty).
+export function landingHtml(html, { landing, url, items = [], noindex = false }) {
   const title = `${landing.title} — Шабашка`;
   let out = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`);
   out = setContent(out, 'name="description"', landing.description);
   out = setContent(out, 'property="og:title"', title);
   out = setContent(out, 'property="og:description"', landing.description);
   out = setContent(out, 'property="og:url"', url);
-  out = out.replace('</head>', `<link rel="canonical" href="${esc(url)}" />\n  </head>`);
+  const robots = noindex ? '<meta name="robots" content="noindex" />\n  ' : '';
+  out = out.replace('</head>', `${robots}<link rel="canonical" href="${esc(url)}" />\n  </head>`);
   if (landing.lang) out = out.replace(/<html lang="[^"]*">/, `<html lang="${landing.lang}">`);
 
   const list = items.length

@@ -22,7 +22,15 @@ export default async (request, context) => {
 
   const isBot = BOT_UA_RE.test(request.headers.get('user-agent') || '');
   const items = isBot ? await listItems(landing) : [];
-  const html = landingHtml(await response.text(), { landing, url: `${url.origin}${url.pathname}`, items });
+  // Страница работодателя, где сейчас пусто, — роботу noindex: пустая «Вакансии
+  // в Глобусе» обещала бы то, чего нет. Бэкенд не ответил (null) — не прячем.
+  const noindex = isBot && landing.hideEmpty && items?.length === 0;
+  const html = landingHtml(await response.text(), {
+    landing,
+    url: `${url.origin}${url.pathname}`,
+    items: items || [],
+    noindex,
+  });
 
   const headers = new Headers(response.headers);
   headers.delete('content-length');

@@ -106,6 +106,20 @@ router.get(
       const p = addParam(`%${q}%`);
       clauses.push(`(vacancies.title ILIKE ${p} OR vacancies.description ILIKE ${p})`);
     }
+    // Любое из слов через запятую — страница работодателя (/rabota/globus):
+    // «Глобус» пишут и кириллицей, и латиницей. Обычный поиск q так не умеет.
+    const words = String(req.query.words || '')
+      .split(',')
+      .map((w) => w.trim())
+      .filter(Boolean)
+      .slice(0, 5);
+    if (words.length) {
+      const any = words.map((w) => {
+        const p = addParam(`%${w}%`);
+        return `vacancies.title ILIKE ${p} OR vacancies.description ILIKE ${p}`;
+      });
+      clauses.push(`(${any.join(' OR ')})`);
+    }
 
     const where = `WHERE ${clauses.join(' AND ')}`;
     const orderBy = SORTS[sort] || SORTS.new;

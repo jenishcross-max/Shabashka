@@ -22,7 +22,7 @@ export default async (request, context) => {
   const response = await context.next();
   if (!(response.headers.get('content-type') || '').includes('text/html')) return response;
 
-  const items = await listItems(section);
+  const items = (await listItems(section)) || [];
   const html = landingHtml(await response.text(), { landing: section, url: `${url.origin}${url.pathname}`, items });
 
   const headers = new Headers(response.headers);

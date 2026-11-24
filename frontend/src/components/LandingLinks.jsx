@@ -9,6 +9,7 @@ export default function LandingLinks({ current = null }) {
     ['Работа по городам', LANDINGS.filter((l) => l.group === 'city')],
     ['Работа по профессиям', LANDINGS.filter((l) => l.group === 'profession')],
     ['Подборки', LANDINGS.filter((l) => l.group === 'collection')],
+    ['Работа в компаниях', LANDINGS.filter((l) => l.group === 'employer')],
   ];
   return (
     <section className="section landing-links">

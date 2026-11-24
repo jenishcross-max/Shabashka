@@ -36,4 +36,5 @@ module.exports = [
   { slug: 'bez-opyta', category: null },
   { slug: 'onlayn', category: null },
   { slug: 'podrabotka', category: null },
+  { slug: 'globus', category: null },
 ];

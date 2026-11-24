@@ -70,3 +70,22 @@ test('город и опыт вместе', async () => {
   const { titles: list } = await titles({ city: 'Бишкек', experience: '1-3' });
   assert.deepEqual(list, ['Повар']);
 });
+
+// Страница работодателя /rabota/globus (поиск 24 ноября 2026: «глобус вакансии»
+// — около 390 показов за 3 месяца). Название пишут и кириллицей, и латиницей:
+// words — любое из слов через запятую, в названии или тексте.
+test('words — любое из слов, в названии или в тексте', async () => {
+  const add = (title, description) =>
+    db.query(
+      `INSERT INTO vacancies (user_id, title, description, category, employment_type, city, work_format, experience)
+       VALUES (1, $1, $2, 'Общепит', 'full_time', 'Бишкек', 'offline', '1-3')`,
+      [title, description]
+    );
+  await add('Кассир в Глобус Маркет', 'Описание');
+  await add('Грузчики', 'В новый магазин GLOBUS на Ахунбаева');
+  const { titles: list } = await titles({ words: 'глобус,globus' });
+  assert.deepEqual(list, ['Грузчики', 'Кассир в Глобус Маркет']);
+
+  const { total } = await titles({ words: ' , ' });
+  assert.equal(total, 6, 'пустые слова — без фильтра');
+});

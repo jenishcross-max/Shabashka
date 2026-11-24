@@ -207,3 +207,56 @@ test('edge-функция: человек, робот и чужой адрес',
     globalThis.fetch = realFetch;
   }
 });
+
+// Поиск 24 ноября 2026: «глобус вакансии», «работа в глобусе бишкек» — около 390
+// показов за 3 месяца, а своей страницы не было. На ней — вакансии, где «Глобус»
+// назван прямо; с компанией мы не связаны — так и пишем.
+test('страница «Глобуса»: оба написания, листает сама, оговорка в тексте', () => {
+  const l = landingBySlug('globus');
+  assert.equal(l.group, 'employer');
+  assert.deepEqual(l.params, { words: ['глобус', 'globus'] });
+  assert.equal(l.hideEmpty, true);
+  assert.equal(listPath(l), null, 'список вакансий не знает words — «Показать ещё» здесь же');
+  assert.match(l.intro, /Шабашка не связана с «Глобусом»/);
+});
+
+test('noindex — только когда попросили', () => {
+  const landing = landingBySlug('globus');
+  const url = 'https://xn--80aaac0cyed.com/rabota/globus';
+  assert.match(landingHtml(INDEX, { landing, url, noindex: true }), /<meta name="robots" content="noindex" \/>\s*<link rel="canonical"/);
+  assert.doesNotMatch(landingHtml(INDEX, { landing, url }), /name="robots"/);
+});
+
+test('edge-функция: «Глобус» без вакансий — роботу noindex, а сбой API и пустой город — нет', async () => {
+  const { default: handle } = await import('../netlify/edge-functions/landing-meta.js');
+  const context = { next: async () => new Response(INDEX, { headers: { 'content-type': 'text/html; charset=utf-8' } }) };
+  const realFetch = globalThis.fetch;
+  const asked = [];
+  let reply = { vacancies: [], total: 0 };
+  globalThis.fetch = async (url) => {
+    asked.push(String(url));
+    if (!reply) throw new Error('timeout');
+    return new Response(JSON.stringify(reply));
+  };
+  const open = async (path, ua = 'Googlebot/2.1') =>
+    (await handle(new Request(`https://xn--80aaac0cyed.com${path}`, { headers: { 'user-agent': ua } }), context)).text();
+  try {
+    assert.match(await open('/rabota/globus'), /<meta name="robots" content="noindex" \/>/);
+    assert.match(asked[0], /\/api\/vacancies\?words=%D0%B3%D0%BB%D0%BE%D0%B1%D1%83%D1%81%2Cglobus&limit=24$/);
+    assert.doesNotMatch(await open('/rabota/globus', 'Mozilla/5.0'), /name="robots"/, 'человеку — как обычно');
+
+    reply = { vacancies: [{ id: 8380, title: 'Продавец в Глобус Маркет' }], total: 1 };
+    const full = await open('/rabota/globus');
+    assert.doesNotMatch(full, /name="robots"/);
+    assert.match(full, /<a href="\/vacancies\/8380">Продавец в Глобус Маркет<\/a>/);
+
+    reply = null;
+    assert.doesNotMatch(await open('/rabota/globus'), /name="robots"/, 'бэкенд не ответил — не прячем');
+
+    // В маленьком городе пусто бывает день-два — такую страницу не прячем.
+    reply = { vacancies: [], orders: [], total: 0 };
+    assert.doesNotMatch(await open('/rabota/batken'), /name="robots"/);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
