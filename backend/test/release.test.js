@@ -34,6 +34,8 @@ const requireSrc = install({
   [at('social/instagram.js')]: {
     isConfigured: () => true,
     publishReel: async () => 'media-1',
+    // Пробные ролики (см. social/trial.js): Meta пометку приняла.
+    trialRejected: () => false,
     publishImage: async () => 'media-2',
     publishingLimit: async () => ({ used: 0, total: 100 }),
     permalink: async () => '',

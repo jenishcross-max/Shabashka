@@ -61,6 +61,8 @@ const requireSrc = install({
       reels.push(caption);
       return 'reel';
     },
+    // Пробные ролики (см. social/trial.js): Meta пометку приняла.
+    trialRejected: () => false,
     publishImage: async (url, caption) => {
       posted.push({ kind: 'ig-image', url, text: caption });
       return 'ig-image';

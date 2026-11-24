@@ -1,17 +1,17 @@
 // Какой ролик-вакансия выходит в Instagram пробным (см. src/social/trial.js и
-// publishReel в src/social/instagram.js). По умолчанию — ни один: включает
-// владелец переменной IG_TRIAL_EVERY, когда решит проверить, дают ли пробные
-// ролики больше подписчиков (docs/plans/2026-11-22-whatsapp-instagram-growth.md).
+// publishReel в src/social/instagram.js). По умолчанию — каждый второй: так
+// решил владелец 24 ноября 2026, чтобы сравнить пробные с обычными
+// (docs/plans/2026-11-22-whatsapp-instagram-growth.md). IG_TRIAL_EVERY=off — ни один.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
 delete process.env.IG_TRIAL_EVERY;
 const trial = require('../src/social/trial');
 
-test('по умолчанию пробных роликов нет', () => {
-  const off = trial.create(undefined);
-  assert.deepEqual([off(), off(), off()], [false, false, false]);
-  assert.equal(trial.next(), false);
+test('по умолчанию пробный — каждый второй', () => {
+  const half = trial.create(undefined);
+  assert.deepEqual([half(), half(), half(), half()], [false, true, false, true]);
+  assert.deepEqual([trial.next(), trial.next()], [false, true]);
 });
 
 test('IG_TRIAL_EVERY=2 — каждый второй, 1 — все, off — ни один', () => {
