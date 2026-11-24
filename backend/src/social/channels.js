@@ -15,9 +15,11 @@ function create({ waChannel, telegram, every }) {
   const wa = code ? `https://whatsapp.com/channel/${code}` : '';
   const tg = /^(off|no|нет|-)?$/i.test(String(telegram ?? '').trim()) ? '' : String(telegram).trim();
   const each = parseEvery(every, 6);
+  // Ссылка на WhatsApp-канал — через шабашка.com/w, если адрес сайта есть в ссылке
+  // поста: переход посчитается в сводке (см. routes/go.js), как переходы в группу.
   const threadsLines = [
-    wa && `💬 Свежая работа каждый день — в нашем WhatsApp-канале: ${wa}`,
-    tg && `✈️ Вакансии каждый день — в нашей Telegram-группе: ${tg}`,
+    wa && ((host) => `💬 Свежая работа каждый день — в нашем WhatsApp-канале: ${host ? `${host}/w` : wa}`),
+    tg && (() => `✈️ Вакансии каждый день — в нашей Telegram-группе: ${tg}`),
   ].filter(Boolean);
   const where = [wa && 'в WhatsApp-канале', tg && 'в Telegram-группе'].filter(Boolean);
   const instagramLine = where.length
@@ -28,14 +30,17 @@ function create({ waChannel, telegram, every }) {
   let turn = 0;
   let reels = 0;
 
-  // Для потока постов Threads.
-  function next() {
+  // Для потока постов Threads. siteLink — ссылка поста («шабашка.com/vacancies/12»).
+  function next(siteLink = '') {
     if (!each || !threadsLines.length) return '';
     posts += 1;
     if (posts % each !== 0) return '';
     const line = threadsLines[turn % threadsLines.length];
     turn += 1;
-    return line;
+    const host = String(siteLink || '')
+      .replace(/^https?:\/\//, '')
+      .split('/')[0];
+    return line(host);
   }
 
   // Для подписи ролика Instagram.

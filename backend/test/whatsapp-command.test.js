@@ -14,6 +14,7 @@ const fake = {
   code: 'ABCD1234',
   posted: [],
   options: null,
+  followers: async () => 58,
 };
 const published = [];
 const requireSrc = install({
@@ -26,6 +27,7 @@ const requireSrc = install({
         link: async () => fake.code,
         post: async (text) => fake.posted.push(text),
         info: () => fake.info,
+        followers: () => fake.followers(),
       };
     },
   },
@@ -79,4 +81,29 @@ test('/whatsapp now — подборка уходит в канал сразу; 
 test('ошибка показана, но без HTML-разметки из неё', async () => {
   fake.info = { ...fake.info, status: 'connecting', lastError: 'Connection <Failure>' };
   assert.match(await whatsapp.command(''), /Последняя ошибка: Connection &lt;Failure>/);
+});
+
+// Подписчики канала — для сводки (см. telegram/summary.js). Сводка не должна ждать
+// WhatsApp: не подключён — сразу null, завис — null через waitMs.
+test('подписчики канала для сводки — без долгого ожидания', async () => {
+  fake.info = { ...fake.info, status: 'open' };
+  assert.equal(await whatsapp.followers(), 58);
+
+  fake.info = { ...fake.info, status: 'connecting' };
+  let asked = 0;
+  fake.followers = async () => {
+    asked += 1;
+    return 58;
+  };
+  assert.equal(await whatsapp.followers(), null, 'не подключён — не будим ради сводки');
+  assert.equal(asked, 0);
+
+  fake.info = { ...fake.info, status: 'open' };
+  fake.followers = () => new Promise(() => {});
+  assert.equal(await whatsapp.followers({ waitMs: 20 }), null, 'завис — сводка идёт без WhatsApp');
+
+  fake.followers = async () => {
+    throw new Error('rate-overlimit');
+  };
+  assert.equal(await whatsapp.followers(), null, 'ошибка — тоже просто без числа');
 });

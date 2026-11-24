@@ -109,6 +109,35 @@ test('кнопка, потом запрос: телефон и слова; не 
   assert.equal(sent[1].text, 'Ок, отменил.');
 });
 
+// 7 ноября 2026 админ искал «нужны 10 парней», а заказ назывался «Требуется
+// грузчики срочно - 10 парней» — точная фраза не совпала, и бот ответил «ничего
+// не нашёл». Теперь, если фразы целиком нет, ищем по словам: общие слова вроде
+// «нужны», «требуется», «срочно» не в счёт, окончания отрезаем.
+test('по словам: «нужны 10 парней» находит «Требуется грузчики срочно - 10 парней»', async () => {
+  const { rows } = await db.query(
+    `INSERT INTO orders (id, user_id, title, description, category, city, whatsapp_phone)
+     VALUES (1273, $1, 'Требуется грузчики срочно - 10 парней', 'Описание', 'Грузчики', 'Бишкек', '+996997134078') RETURNING id`,
+    [userId]
+  );
+  const movers = rows[0].id;
+  sent.length = 0;
+  await find.onMessage(message('/find нужны 10 парней'), deps);
+  assert.match(sent[0].text, /Требуется грузчики срочно - 10 парней/);
+  assert.deepEqual(buttons(sent[0]), [`fd:del:order:${movers}`]);
+
+  sent.length = 0;
+  await find.onMessage(message('/find грузчик парни'), deps);
+  assert.match(sent[0].text, /Требуется грузчики срочно - 10 парней/, 'окончания не мешают');
+
+  sent.length = 0;
+  await find.onMessage(message('/find нужны срочно'), deps);
+  assert.match(sent[0].text, /ничего не нашёл/, 'одни общие слова — не запрос');
+
+  sent.length = 0;
+  await find.onMessage(message('/find повар грузчики'), deps);
+  assert.match(sent[0].text, /ничего не нашёл/, 'слова из разных объявлений не складываются');
+});
+
 test('поданное на сайте снимается с сайта, со снимком в журнал', async () => {
   sent.length = 0;
   answers.length = 0;

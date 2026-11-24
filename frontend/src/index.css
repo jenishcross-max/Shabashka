@@ -2572,6 +2572,9 @@ a:hover {
   color: var(--muted);
 }
 .list-subscribe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   margin: -6px 0 16px;
 }
 /* На телефоне название профессии переносит кнопку на вторую строку, и
@@ -4085,6 +4088,10 @@ label.admin-table-spam {
   border-radius: 6px;
   background: #000;
 }
+.social-icon-whatsapp {
+  border-radius: 50%;
+  background: #25d366;
+}
 /* Чёрный квадрат Threads на тёмном футере сливался бы — тонкая светлая рамка. */
 .site-footer .social-icon-threads {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
@@ -4133,6 +4140,14 @@ label.admin-table-spam {
 }
 .landing-subscribe:hover {
   background: #d6ecfb;
+}
+/* WhatsApp-канал рядом с подпиской в Telegram (см. ChannelButton) — в цветах WhatsApp. */
+.landing-subscribe-wa {
+  background: #e7f8ee;
+  color: #11804a;
+}
+.landing-subscribe-wa:hover {
+  background: #d2f2df;
 }
 .landing-more {
   text-align: center;

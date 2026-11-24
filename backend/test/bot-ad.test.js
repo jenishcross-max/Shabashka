@@ -17,6 +17,13 @@ const { install, dmStub, statsStub, at, chat, adGroupsStub, adRaisesStub, produc
 // Час ожидания превращается в доли секунды: проверяем поведение, а не сроки.
 const realSetTimeout = global.setTimeout;
 const realWait = (ms) => new Promise((r) => realSetTimeout(r, ms));
+// Ждём не фиксированную паузу, а само событие (с потолком). Цепочка из шести
+// отложенных разборов идёт ~1,1 с сжатых таймеров, а под нагрузкой полного
+// прогона — 1,3 с и больше; жёсткие 1,5 с давали ложные падения.
+const until = async (done, limit = 10000) => {
+  const t0 = Date.now();
+  while (!done() && Date.now() - t0 < limit) await realWait(10);
+};
 global.setTimeout = (fn, ms, ...rest) => realSetTimeout(fn, ms >= 1000 ? Math.round(ms / 20000) : ms, ...rest);
 
 process.env.TELEGRAM_CHANNEL_ID = '@shabashka';
@@ -175,7 +182,9 @@ test('если лимиты так и не отпустили, реклама в
   reset();
   parse = limited;
   await say(AD);
-  await realWait(1500);
+  await until(() => tg.has(/Лимиты разбора так и не отпустили/) && published.length > 0 && rows.length === 0);
+  // Ещё чуть-чуть — чтобы заметить, если реклама выйдет второй раз.
+  await realWait(100);
 
   assert.ok(tg.has(/Лимиты разбора так и не отпустили/), tg.dump());
   assert.equal(published.length, 1, 'вышла ровно один раз');

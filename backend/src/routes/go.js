@@ -5,6 +5,7 @@
 const express = require('express');
 const feedStats = require('../telegram/feedStats');
 const { BOT_UA_RE } = require('../bots');
+const { inviteCode } = require('../whatsapp/channel');
 
 const router = express.Router();
 const SOURCES = ['threads'];
@@ -22,6 +23,25 @@ router.get('/group/:from?', (req, res) => {
     feedStats.bump(`join.click.${SOURCES.includes(req.params.from) ? req.params.from : 'other'}`);
   }
   res.redirect(302, groupUrl());
+});
+
+// WhatsApp-канал: шабашка.com/w/<откуда> (см. netlify.toml). 21 ноября 2026 его
+// 58 подписчиков дали 13 откликов за день — больше, чем группа в 461 человек, а
+// звали в канал почти ниоткуда (docs/plans/2026-11-22-whatsapp-instagram-growth.md).
+// Источник — кнопка на сайте, ссылка в шапке Instagram и Threads, кнопка в группе.
+const WA_SOURCES = ['site', 'threads', 'instagram', 'telegram'];
+
+// WA_CHANNEL — та же ссылка, по которой бот выкладывает подборки (whatsapp/channel.js).
+function channelUrl() {
+  const code = inviteCode(process.env.WA_CHANNEL);
+  return code ? `https://whatsapp.com/channel/${code}` : '/';
+}
+
+router.get('/whatsapp/:from?', (req, res) => {
+  if (!BOT_UA_RE.test(req.get('user-agent') || '')) {
+    feedStats.bump(`wa.click.${WA_SOURCES.includes(req.params.from) ? req.params.from : 'other'}`);
+  }
+  res.redirect(302, channelUrl());
 });
 
 module.exports = router;

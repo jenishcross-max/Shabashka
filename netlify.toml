@@ -45,6 +45,19 @@
   to = "https://shabashka-zvkc.onrender.com/api/go/group/threads"
   status = 302
 
+# WhatsApp-канал (см. backend/src/routes/go.js): шабашка.com/w — из постов Threads,
+# шабашка.com/w/<откуда> — с сайта, из шапки Instagram и Threads, из группы.
+# Бэкенд считает переход и ведёт в канал.
+[[redirects]]
+  from = "/w"
+  to = "https://shabashka-zvkc.onrender.com/api/go/whatsapp/threads"
+  status = 302
+
+[[redirects]]
+  from = "/w/:from"
+  to = "https://shabashka-zvkc.onrender.com/api/go/whatsapp/:from"
+  status = 302
+
 # SPA-роутинг: любой путь отдаём index.html, React Router разбирается сам.
 [[redirects]]
   from = "/*"

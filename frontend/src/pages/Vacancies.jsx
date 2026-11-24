@@ -13,6 +13,7 @@ import CrossResults from '../components/CrossResults';
 import { CategoryFilter, FiltersButton, FiltersPanel } from '../components/ListFilters';
 import WorkSwitcher from '../components/WorkSwitcher';
 import SubscribeButton from '../components/SubscribeButton';
+import ChannelButton from '../components/ChannelButton';
 import { PHONE, useMediaQuery } from '../useMediaQuery';
 
 const SORTS = [
@@ -262,6 +263,7 @@ export default function Vacancies() {
               новые приходят сами. Выбрана одна профессия — подписка на неё. */}
           <div className="list-subscribe">
             <SubscribeButton category={selectedCategories.length === 1 ? selectedCategories[0] : null} />
+            <ChannelButton />
           </div>
 
           {error && <p className="status-msg error">{error}</p>}

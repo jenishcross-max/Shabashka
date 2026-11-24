@@ -12,6 +12,7 @@ const follow = require('./follow');
 const more = require('./more');
 const subLine = require('./subLine');
 const channels = require('./channels');
+const trial = require('./trial');
 const { tag } = require('../sourceTag');
 
 // Публичный адрес самого бэкенда — по нему площадки придут за роликом. Отдельной
@@ -291,8 +292,12 @@ function quotaFailure(ceiling = quota.hardLimit()) {
   const when = free
     ? `, место освободится к ${free.toLocaleString('ru-RU', { timeZone: 'Asia/Bishkek' })}`
     : '';
+  // quota — отказ не по ошибке, а потому что места в норме нет: сводка считает
+  // его отдельно от «не вышло» (см. summary.js), иначе владелец видел «не вышло
+  // 25» и искал поломку там, где ролики просто ждали своей очереди.
   return {
     posted: false,
+    quota: true,
     reason:
       used >= ceiling
         ? `суточная норма Instagram выбрана целиком: ${used} из ${ceiling}${when}`
@@ -372,8 +377,15 @@ async function deliverInstagram(job) {
   // выветриться из hosting.
   const url = `${base}/api/social/video/${hosting.put(video.fileName(), job.buffer)}`;
   console.log(`[видео] отдаю ссылку ${url}`);
-  const result = await post('insta', () => instagram.publishReel(url, job.caption, job.coverMs || video.COVER_MS));
-  return result.posted ? result : withImageFallback(job, result);
+  // Пробный ли ролик (см. trial.js) — решаем один раз на задание: автоповтор
+  // того же ролика не должен менять его вид и сдвигать счёт.
+  if (job.trial === undefined) job.trial = trial.next();
+  const result = await post('insta', () =>
+    instagram.publishReel(url, job.caption, job.coverMs || video.COVER_MS, { trial: job.trial })
+  );
+  if (!result.posted) return withImageFallback(job, result);
+  // Meta могла пометку не принять — тогда ролик вышел обычным (см. instagram.js).
+  return job.trial ? { ...result, trial: !instagram.trialRejected() } : result;
 }
 
 // Ролик не доехал — пробуем то же объявление обычным постом с картинкой.
@@ -390,13 +402,12 @@ async function withImageFallback(job, failure) {
   if (failure.hardLimit || failure.code === 190) return failure;
 
   // Кадр показывает одно объявление. В дайджесте с сайта их пять, в обычном
-  // выпуске — до трёх, и подменять такой ролик одной карточкой — врать и
-  // подписью, и содержимым. Пачка из нескольких объявлений поэтому запасного
-  // хода не имеет: если ролик не доехал, её вытянут автоповторы
-  // (см. AUTO_RETRY_DELAYS в telegram/bot.js), а объявления к этому моменту
-  // уже на сайте, в канале и в Threads. Сделать тут по-честному можно было бы
-  // каруселью из нескольких картинок — это отдельная работа с Graph API.
-  if (job.items.length !== 1) return failure;
+  // выпуске — до трёх, и подменять такой ролик одной карточкой было бы враньём и
+  // подписью, и содержимым. Поэтому пачка уходит каруселью: по картинке на
+  // объявление, одной публикацией. Раньше у пачки запасного хода не было, и
+  // 6–7 ноября 2026 в сводке стояло «не вышло 25–27»: ролики упирались в норму
+  // (40 из 40), а пачки ждали автоповтора часами, пока не выветривались.
+  if (!job.items.length) return failure;
 
   const base = backendUrl();
   if (!base) return failure;
@@ -408,9 +419,11 @@ async function withImageFallback(job, failure) {
   // площадочный, свой суточный её не держит (см. adLimit в quota.js).
   if (!quota.take(job.priority ? quota.adLimit() : quota.hardLimit())) return failure;
 
-  let image;
+  // Карточки рисуем по одной: на бесплатном Render памяти мало, а три кадра
+  // подряд — это секунды, не минуты ffmpeg.
+  const images = [];
   try {
-    image = await card.renderStill(job.items[0], job);
+    for (const item of job.items) images.push(await card.renderStill(item, job));
   } catch (err) {
     console.log(`[картинка] не нарисовалась: ${err.message}`);
     return failure;
@@ -422,18 +435,23 @@ async function withImageFallback(job, failure) {
   // в посте не звучит, незачем — отсюда credit = null.
   const caption = video.caption(job.items, null, job);
 
-  const url = `${base}/api/social/image/${hosting.put(card.stillName(), image)}`;
-  console.log(`[картинка] ролик не вышел (${failure.reason}) — отдаю ссылку ${url}`);
-  const result = await post('insta', () => instagram.publishImage(url, caption));
+  const urls = images.map((image) => `${base}/api/social/image/${hosting.put(card.stillName(), image)}`);
+  console.log(
+    `[картинка] ролик не вышел (${failure.reason}) — ${urls.length > 1 ? `карусель из ${urls.length}` : 'картинка'}: ${urls.join(' ')}`
+  );
+  const result = await post('insta', () =>
+    urls.length > 1 ? instagram.publishCarousel(urls, caption) : instagram.publishImage(urls[0], caption)
+  );
 
   // Не вышло и картинкой — наверх уходит исходная причина отказа ролика: повтор
   // должен заниматься тем же, чем занимался бы без запасного хода. Про картинку
   // дописываем отдельно, иначе в отчёте стояла бы одна ошибка ролика, а в логах
   // — две попытки, и понять, что происходило, стало бы не по чему.
+  // Картинка упала уже не из-за нормы — это настоящая ошибка, пометку quota снимаем.
   if (!result.posted) {
-    return { ...failure, reason: `${failure.reason}; картинкой тоже не вышло: ${result.reason}` };
+    return { ...failure, quota: false, reason: `${failure.reason}; картинкой тоже не вышло: ${result.reason}` };
   }
-  return { ...result, asImage: true, videoReason: failure.reason };
+  return { ...result, asImage: true, asCarousel: urls.length > 1, videoReason: failure.reason };
 }
 
 function scheduleInstagram(job, priority = false) {
@@ -949,7 +967,7 @@ async function shareListing(parsed, listingType, siteLink, ctx, { priority = fal
     const subscribe = priority || followLine ? '' : subLine.line(listingType, parsed, siteLink);
     // Где нет ни «подпишись», ни подписки в бота, — иногда зов в WhatsApp-канал и
     // Telegram-группу (см. channels.js) вместо «Все N за сутки».
-    const channelLine = priority || followLine || subscribe ? '' : channels.next();
+    const channelLine = priority || followLine || subscribe ? '' : channels.next(siteLink);
     const text = video.threadsText(parsed, listingType, tag(siteLink, 'threads'), {
       ad: priority,
       follow: followLine,

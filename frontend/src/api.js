@@ -105,6 +105,8 @@ export const api = {
   // Не запрос, а адрес для кнопки: бэкенд посчитает переход и перенаправит в
   // Telegram-бота (см. routes/subscribe.js). Без профессии — в меню бота.
   subscribeUrl: (slug, from = 'site') => `${API_BASE}/subscribe/${slug || 'menu'}/${from}`,
+  // WhatsApp-канал: бэкенд считает переход и ведёт в канал (backend/src/routes/go.js).
+  channelUrl: (from = 'site') => `${API_BASE}/go/whatsapp/${from}`,
   vacanciesBatch: (ids) => request(`/vacancies/batch?ids=${ids.join(',')}`),
   myVacancies: (token) => request('/vacancies/mine', { token }),
   createVacancy: (payload, token) => request('/vacancies', { method: 'POST', body: payload, token }),

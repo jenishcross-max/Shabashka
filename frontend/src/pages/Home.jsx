@@ -4,6 +4,7 @@ import { api } from '../api';
 import OrderCard from '../components/OrderCard';
 import VacancyCard from '../components/VacancyCard';
 import SubscribeButton from '../components/SubscribeButton';
+import ChannelButton from '../components/ChannelButton';
 import LandingLinks from '../components/LandingLinks';
 import TaskCard from '../components/TaskCard';
 import AdCard from '../components/AdCard';
@@ -202,6 +203,7 @@ export default function Home() {
               вакансии, уже ушёл (как над списком на странице вакансий). */}
           <div className="list-subscribe">
             <SubscribeButton />
+            <ChannelButton />
           </div>
           <div className="order-grid">
             {vacancies.map((v) => (
@@ -216,12 +218,15 @@ export default function Home() {
       <section className="cta-banner">
         <h2>Не пропустите новую работу</h2>
         <p>
-          Бот в Telegram пришлёт свежие вакансии по вашей профессии: раз в час днём и только когда есть новые. Без
-          регистрации.
+          Бот в Telegram пришлёт свежие вакансии по вашей профессии: раз в час днём и только когда есть новые. В
+          WhatsApp-канале — подборки пять раз в день. Без регистрации.
         </p>
         <div className="cta-banner-actions">
           <a href={api.subscribeUrl()} target="_blank" rel="noopener noreferrer">
             🔔 Подписаться в Telegram
+          </a>
+          <a href={api.channelUrl('site')} target="_blank" rel="noopener noreferrer">
+            💬 Канал в WhatsApp
           </a>
           <Link to="/vacancies" className="cta-banner-ghost">
             Смотреть все вакансии

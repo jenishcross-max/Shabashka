@@ -39,3 +39,11 @@ test('без WhatsApp-канала — только Telegram; без обоих 
   const off = channels.create({ waChannel: process.env.WA_CHANNEL, telegram: '', every: 'off' });
   assert.equal(off.next(), '');
 });
+
+// Ссылка на канал в посте — через шабашка.com/w (адрес сайта — из ссылки поста):
+// переход посчитается в сводке, как переходы в группу по /g.
+test('Threads: ссылка на WhatsApp-канал — через сайт, со счётчиком', () => {
+  const both = channels.create({ waChannel: process.env.WA_CHANNEL, telegram: 't.me/Shabashkacom', every: 1 });
+  assert.match(both.next('шабашка.com/vacancies/12'), /WhatsApp-канале: шабашка\.com\/w$/);
+  assert.match(both.next('шабашка.com/vacancies/12'), /Telegram.*t\.me\/Shabashkacom$/);
+});

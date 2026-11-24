@@ -61,7 +61,10 @@ const requireSrc = install({
   },
   // Подписка в боте ходит в базу — сводке хватает её чисел.
   [at('telegram/subscriptions.js')]: { stats: async () => botStats() },
+  // WhatsApp-канал: по умолчанию не подключён — в строке подписчиков его нет.
+  [at('whatsapp/index.js')]: { followers: async () => waFollowers },
 });
+let waFollowers = null;
 
 let botStats = () => ({
   chats: 45,
@@ -181,8 +184,13 @@ test('бот: профессии подписчиков и переходы за
     // Кнопка под вакансией в Telegram-группе (см. groupButton в subscriptions.js).
     stats.counters['sub.click.telegram'] = 4;
     assert.match((await summary.build()).text, /из Threads 7 · с сайта 3 · из группы 4 · без метки 1\n/);
+
+    // Ответы ищущим работу в группе (см. telegram/groupSeekers.js).
+    assert.doesNotMatch((await summary.build()).text, /Ответил в группе/);
+    stats.counters['group.seeker'] = 3;
+    assert.match((await summary.build()).text, /\n🙋 Ответил в группе тем, кто ищет работу: 3\n/);
   } finally {
-    for (const key of ['sub.click.threads', 'sub.click.site', 'sub.click.telegram', 'sub.click.other']) {
+    for (const key of ['sub.click.threads', 'sub.click.site', 'sub.click.telegram', 'sub.click.other', 'group.seeker']) {
       delete stats.counters[key];
     }
   }
@@ -309,4 +317,63 @@ test('сколько копий закрыто и сколько снял фил
     delete stats.counters['tidy.spam'];
   }
   assert.doesNotMatch((await summary.build()).text, /Убрано сегодня/);
+});
+
+// «не вышло» в Instagram — только поломки; ролики, ждущие места в суточной
+// норме, — отдельно (см. social-ig-quota.test.js).
+test('Instagram: отложенное из-за нормы — отдельно от «не вышло»', async () => {
+  Object.assign(stats.counters, { 'ig.wait': 22, 'ig.fail': 3 });
+  try {
+    assert.match((await summary.build()).text, /📸 Instagram: роликов 6, картинкой 2 · отложено из-за нормы 22 · не вышло 3\n/);
+    delete stats.counters['ig.fail'];
+    assert.match((await summary.build()).text, /📸 Instagram: роликов 6, картинкой 2 · отложено из-за нормы 22\n/);
+  } finally {
+    delete stats.counters['ig.wait'];
+    delete stats.counters['ig.fail'];
+  }
+});
+
+// Пробные ролики Instagram (см. social/trial.js) — сколько из роликов вышло
+// пробными: их сравнивают с обычными по просмотрам и приросту подписчиков.
+test('Instagram: сколько роликов вышло пробными', async () => {
+  stats.counters['ig.trial'] = 3;
+  try {
+    assert.match((await summary.build()).text, /📸 Instagram: роликов 6 \(пробных 3\), картинкой 2\n/);
+  } finally {
+    delete stats.counters['ig.trial'];
+  }
+  assert.doesNotMatch((await summary.build()).text, /пробных/);
+});
+
+// Переходы в WhatsApp-канал по шабашка.com/w/<откуда> (см. routes/go.js): видно,
+// какая площадка зовёт в канал, — рядом с переходами в бота и в группу.
+test('переходы в WhatsApp-канал — по источникам', async () => {
+  const keys = { 'wa.click.site': 7, 'wa.click.instagram': 3, 'wa.click.other': 1 };
+  Object.assign(stats.counters, keys);
+  try {
+    assert.match(
+      (await summary.build()).text,
+      /\n↪️ Перешли в WhatsApp-канал сегодня: с сайта 7 · из Instagram 3 · без метки 1\n/
+    );
+  } finally {
+    for (const key of Object.keys(keys)) delete stats.counters[key];
+  }
+  assert.doesNotMatch((await summary.build()).text, /Перешли в WhatsApp-канал/);
+});
+
+// Подписчики WhatsApp-канала — рядом с остальными площадками (22 ноября 2026 их
+// было 58, и без этой строки не видно, помогает ли что-то каналу расти).
+test('подписчики WhatsApp-канала — в общей строке, с приростом', async () => {
+  const day = '2026-10-03';
+  settings.delete(`followers:${day}`);
+  settings.set('followers:2026-10-02', JSON.stringify({ threads: 1228, instagram: 831, channel: 405, whatsapp: 54, bot: 42 }));
+  waFollowers = 58;
+  try {
+    const { text } = await summary.build({ now: at1310 });
+    assert.match(text, /👥 Подписчики: Threads 1\s240 \(\+12\) · Instagram 830 \(−1\) · Telegram \d+ \(\+\d+\) · WhatsApp 58 \(\+4\) · Бот 45 \(\+3\)\n/);
+    assert.equal(JSON.parse(settings.get(`followers:${day}`)).whatsapp, 58, 'снимок дня — и для WhatsApp');
+  } finally {
+    waFollowers = null;
+    settings.delete(`followers:${day}`);
+  }
 });

@@ -125,13 +125,41 @@ async function publishWhenReady(creationId) {
 // серверов, локальный адрес или закрытый бэкенд он не откроет.
 // thumbOffsetMs — с какой миллисекунды взять картинку для сетки профиля. Без
 // него Instagram берёт первый кадр, а объявление к тому моменту ещё не выехало.
-async function publishReel(videoUrl, caption, thumbOffsetMs) {
-  const { id } = await safeCall('создание ролика', 'POST', `${USER_ID}/media`, {
-    media_type: 'REELS',
-    video_url: videoUrl,
-    caption,
-    ...(thumbOffsetMs ? { thumb_offset: String(thumbOffsetMs) } : {}),
-  });
+//
+// trial — пробный ролик (Trial Reels, trial_params): его сначала видят только те,
+// кто на аккаунт не подписан, а удачный сам выходит к подписчикам
+// (SS_PERFORMANCE). Не приняла Meta пометку (#100: аккаунту или версии API она
+// недоступна) — тот же ролик уходит обычным, и до перезапуска пометку больше не
+// шлём: каждый отказ — лишний вызов в часовой лимит приложения.
+const TRIAL_PARAMS = JSON.stringify({ graduation_strategy: 'SS_PERFORMANCE' });
+const INVALID_PARAMETER = 100;
+let trialRejected = false;
+
+async function publishReel(videoUrl, caption, thumbOffsetMs, { trial = false } = {}) {
+  const create = (extra = {}) =>
+    safeCall('создание ролика', 'POST', `${USER_ID}/media`, {
+      media_type: 'REELS',
+      video_url: videoUrl,
+      caption,
+      ...(thumbOffsetMs ? { thumb_offset: String(thumbOffsetMs) } : {}),
+      ...extra,
+    });
+  let container;
+  if (trial && !trialRejected) {
+    try {
+      container = await create({ trial_params: TRIAL_PARAMS });
+    } catch (err) {
+      if (err.code !== INVALID_PARAMETER && !/trial/i.test(err.message)) throw err;
+      // Тот же ролик без пометки. Не прошёл и он — дело не в пометке (например,
+      // Meta не скачала видео): ошибка уходит наверх, пробные не выключаем.
+      container = await create();
+      trialRejected = true;
+      console.log(`[insta] пробный ролик не принят (${err.message}) — выложен обычным, дальше без пометки`);
+    }
+  } else {
+    container = await create();
+  }
+  const { id } = container;
   if ((await waitReady(id)) === 'PUBLISHED') return id;
   return publishContainer(id);
 }
@@ -215,6 +243,7 @@ async function permalink(mediaId) {
 module.exports = {
   isConfigured,
   publishReel,
+  trialRejected: () => trialRejected,
   publishImage,
   publishCarousel,
   publishingLimit,

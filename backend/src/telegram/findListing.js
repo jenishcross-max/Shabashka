@@ -55,22 +55,49 @@ function parseQuery(raw) {
 
 const likeEscape = (s) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 
+// Поиск по словам — когда фразы целиком в заголовке нет. 7 ноября 2026 админ
+// искал «нужны 10 парней», а заказ назывался «Требуется грузчики срочно - 10
+// парней», и бот ответил «ничего не нашёл». Общие слова, которыми пишут любое
+// объявление, не в счёт; у остальных отрезаем окончание («парней», «парни» →
+// «парн»), и в заголовке должны найтись все.
+const COMMON = new Set([
+  'нужен', 'нужна', 'нужны', 'нужно', 'требуется', 'требуются', 'срочно', 'ищем', 'ищу',
+  'в', 'во', 'на', 'и', 'с', 'со', 'для', 'по', 'от', 'до', 'за', 'керек', 'тез', 'арада',
+]);
+const ENDING = /(?:ами|ями|ого|его|ому|ему|ов|ев|ей|ой|ий|ый|ая|яя|ое|ее|ые|ие|ам|ям|ах|ях|ом|ем|у|ю|а|я|ы|и|е|о|ь)$/u;
+function stems(text) {
+  const words = String(text)
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .split(/[^\p{L}\d]+/u)
+    .filter((w) => w && !COMMON.has(w) && (w.length >= 2 || /\d/.test(w)))
+    .map((w) => {
+      const cut = w.replace(ENDING, '');
+      return cut.length >= 4 ? cut : w;
+    });
+  return [...new Set(words)];
+}
+
 // До LIMIT совпадений, сначала новые. У каждого — пост из бота, если он был:
 // по нему видно, где ещё висит объявление и откуда его снимет «🗑».
 async function search(query) {
-  const types = query.type ? [query.type] : Object.keys(TYPES);
-  let cond;
-  let value;
-  if (query.id) {
-    cond = 'id = $1';
-    value = query.id;
-  } else if (query.phone) {
-    cond = "regexp_replace(COALESCE(whatsapp_phone, ''), '\\D', '', 'g') LIKE $1";
-    value = `%${query.phone}`;
-  } else {
-    cond = 'title ILIKE $1';
-    value = `%${likeEscape(query.text)}%`;
+  if (query.id) return searchWhere(query, 'id = $1', [query.id]);
+  if (query.phone) {
+    return searchWhere(query, "regexp_replace(COALESCE(whatsapp_phone, ''), '\\D', '', 'g') LIKE $1", [
+      `%${query.phone}`,
+    ]);
   }
+  const exact = await searchWhere(query, 'title ILIKE $1', [`%${likeEscape(query.text)}%`]);
+  if (exact.length) return exact;
+  const words = stems(query.text);
+  if (!words.length) return exact;
+  // ё в заголовке ищем как е: «грузчёк» и «грузчек» — не забота админа.
+  const cond = words.map((_, i) => `translate(title, 'ёЁ', 'еЕ') ILIKE $${i + 1}`).join(' AND ');
+  return searchWhere(query, cond, words.map((w) => `%${likeEscape(w)}%`));
+}
+
+async function searchWhere(query, cond, values) {
+  const types = query.type ? [query.type] : Object.keys(TYPES);
   const parts = types.map(
     (type) =>
       `SELECT '${type}' AS type, id, title, city, whatsapp_phone AS phone, status, created_at
@@ -88,7 +115,7 @@ async function search(query) {
        ) i ON true
       ORDER BY f.created_at DESC, f.id DESC
       LIMIT ${LIMIT}`,
-    [value]
+    values
   );
   return rows;
 }

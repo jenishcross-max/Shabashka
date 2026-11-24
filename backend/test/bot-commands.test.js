@@ -64,6 +64,27 @@ test('описание бота ставим, только если его не�
   assert.ok(!filled.calls.some((c) => c.method.startsWith('set')), 'своё описание админа не перезаписываем');
 });
 
+// В русском Telegram кнопка в пустом чате с ботом — «Запустить», а не «Старт»:
+// пожилому человеку слово с экрана должно совпадать со словом в подсказке.
+// Наше прежнее описание («Нажмите «Старт»…») бот меняет сам, чужое — не трогает.
+test('описание бота: «Запустить», а наше старое со «Старт» обновляется само', async () => {
+  const empty = fakeTg();
+  await commands.describeBot(empty);
+  const text = empty.calls.find((c) => c.method === 'setMyDescription').payload.description;
+  assert.match(text, /Нажмите «Запустить»/);
+  assert.doesNotMatch(text, /«Старт»/);
+
+  const old = fakeTg({
+    description:
+      'Шабашка — вакансии и подработка в Бишкеке. Нажмите «Старт» и отметьте профессии: раз в час, с 9:00 до 21:00, пришлю свежие вакансии по ним. Без спама — только когда есть новое. Все объявления — на шабашка.com',
+    short: 'Своё',
+  });
+  await commands.describeBot(old);
+  const updated = old.calls.find((c) => c.method === 'setMyDescription');
+  assert.ok(updated, 'наше прежнее описание заменено');
+  assert.match(updated.payload.description, /Нажмите «Запустить»/);
+});
+
 test('постороннему — не больше десяти действий в минуту', () => {
   throttle.reset();
   const t0 = 1_000_000;

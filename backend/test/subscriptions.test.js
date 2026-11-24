@@ -319,17 +319,29 @@ test('подборка: у вакансии с номером — «💬 Нап�
 
 // Воронка подписки в сводке (см. summary.js): сколько пришли по ссылке,
 // подписались, отписались, заблокировали бота и сколько подборок ушло.
-test('счётчики воронки подписки', async () => {
+// «Подписались» и «отписались» — люди, а не нажатия на профессии: 21 ноября 2026
+// сводка писала «подписались 27 · отписались 13», будто ушла половина, хотя
+// подписчиков бота за день стало на 14 больше — 13 «отписок» были снятые галочки
+// у людей, которые остались в боте.
+test('счётчики воронки подписки — по людям, а не по профессиям', async () => {
   const feedStats = requireSrc('telegram/feedStats.js');
   const before = await feedStats.day();
   const delta = async (key) => ((await feedStats.day())[key] || 0) - (before[key] || 0);
 
   await subs.onMessage(message('/start sub_uborka', 801), deps);
   await subs.onMessage(message('/start sub_uborka', 801), deps); // повтор — не новая подписка
-  await subs.onCallback(callback('sub:krasota', 801), deps);
-  await subs.onCallback(callback('sub:krasota', 801), deps); // выключил
-  await subs.onMessage(message('/stop', 801), deps);
+  await subs.onCallback(callback('sub:krasota', 801), deps); // вторая профессия — не новый человек
+  await subs.onCallback(callback('sub:krasota', 801), deps); // снял галочку, но остался
   assert.equal(await delta('sub.start'), 2);
+  assert.equal(await delta('sub.new'), 1);
+  assert.equal(await delta('sub.off'), 0);
+
+  await subs.onMessage(message('/stop', 801), deps);
+  assert.equal(await delta('sub.off'), 1, '/stop — ушёл совсем');
+
+  // Снял последнюю галочку — тоже ушёл.
+  await subs.onCallback(callback('sub:krasota', 804), deps);
+  await subs.onCallback(callback('sub:krasota', 804), deps);
   assert.equal(await delta('sub.new'), 2);
   assert.equal(await delta('sub.off'), 2);
 

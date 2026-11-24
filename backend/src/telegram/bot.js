@@ -33,8 +33,9 @@ const outreach = require('./outreach');
 const groupPost = require('./groupPost');
 const findListing = require('./findListing');
 const whatsapp = require('../whatsapp');
-const { inviteCode } = require('../whatsapp/channel');
+const { channelLink } = require('../whatsapp/channel');
 const groupPromo = require('./groupPromo');
+const groupSeekers = require('./groupSeekers');
 const taskEvents = require('../taskEvents');
 const vacancyEvents = require('../vacancyEvents');
 const siteShare = require('./siteShare');
@@ -105,6 +106,15 @@ const subscriptionDeps = {
     tg.call('editMessageReplyMarkup', { chat_id: chatId, message_id: messageId, ...extra }),
   siteUrl: SITE_URL,
   pretty: prettyLink,
+};
+
+// Ответ ищущему работу в нашей группе (см. groupSeekers.js): три свежих заказа
+// за сутки и кнопки «вся подработка» и «получать вакансии».
+const seekerDeps = {
+  groupId: CHANNEL_ID,
+  siteUrl: SITE_URL,
+  pretty: prettyLink,
+  send: (chatId, text, extra) => tg.sendMessage(chatId, text, extra),
 };
 
 // Биржа (см. taskShare.js): карточка новой задачи админам и раздача по кнопке —
@@ -485,7 +495,7 @@ async function reportReel(chatId, result) {
     // Reels, и по отчёту «опубликовано» админ ждал бы ролика и пошёл бы его искать.
     const head = result.instagram.asImage
       ? [
-          `📸 Instagram — опубликовано картинкой, «${collection}»`,
+          `📸 Instagram — опубликовано ${result.instagram.asCarousel ? 'каруселью картинок' : 'картинкой'}, «${collection}»`,
           `Ролик не вышел: ${tg.esc(result.instagram.videoReason)}`,
         ]
       : [`📸 Instagram — опубликовано, «${collection}»`];
@@ -522,6 +532,14 @@ async function reportReel(chatId, result) {
   if (result.retryId) scheduleAutoRetry(chatId, result.retryId, 0, stuck ? 1 : 0);
 }
 
+// Счётчик сводки для ответа Instagram. Отказ из-за суточной нормы — своя или
+// потолок Meta (подкод 2207042) — не поломка: ролик ждёт места и уйдёт
+// автоповтором, поэтому он идёт в «ig.wait», а «ig.fail» остаётся для ошибок.
+function igCounter(result, kind) {
+  if (result.posted) return `ig.${kind}`;
+  return result.quota || result.hardLimit ? 'ig.wait' : 'ig.fail';
+}
+
 // Куда слать отчёт, решаем по самим объявлениям, а не по настройкам: пачка
 // собирается из того, что присылали в чат, и отчёт должен вернуться туда же.
 social.onReel(async (result) => {
@@ -537,9 +555,9 @@ social.onReel(async (result) => {
     }
   }
 
-  if (result.instagram) {
-    feedStats.bump(!result.instagram.posted ? 'ig.fail' : result.instagram.asImage ? 'ig.image' : 'ig.reel');
-  }
+  if (result.instagram) feedStats.bump(igCounter(result.instagram, result.instagram.asImage ? 'image' : 'reel'));
+  // Пробный ролик (см. social/trial.js) — ещё и отдельным счётчиком.
+  if (result.instagram && result.instagram.posted && result.instagram.trial) feedStats.bump('ig.trial');
 
   // Отчёт — только туда, где ролик ждут: посты из групп в нём идут молча.
   const contexts = (result.contexts || []).filter(Boolean);
@@ -1076,7 +1094,7 @@ async function publishRawAd(chatId, message, text, media, priority, { classify =
         result.done
           .then((posted) => {
             if (!posted) return null;
-            feedStats.bump(!posted.posted ? 'ig.fail' : media.kind === 'video' ? 'ig.reel' : 'ig.image');
+            feedStats.bump(igCounter(posted, media.kind === 'video' ? 'reel' : 'image'));
             if (posted.posted) {
               // Для снятия и чтобы после перезапуска не выложить её туда второй
               // раз (см. adRaises.resend).
@@ -1764,7 +1782,8 @@ async function sendHelp(chatId) {
       '',
       'В группе под каждой вакансией — кнопка «🔔 Получать вакансии»: одно нажатие, и',
       'человек подписан в боте. На /subs в группе бот отвечает, куда нажать, а раз в день',
-      '(в 19:00) сам пишет туда, как подписаться и где наш WhatsApp-канал.',
+      '(в 19:00) сам пишет туда, как подписаться и где наш WhatsApp-канал. На вопрос',
+      '«шабашка барбы?» или «есть работа?» в группе отвечает свежей подработкой.',
     ],
   ];
   for (const [i, part] of help.entries()) {
@@ -1785,13 +1804,15 @@ async function onMessage(message) {
   if (await subscriptions.onMessage(message, subscriptionDeps, { admin })) return;
 
   if (!admin) {
-    // В группе молчим полностью: если кто-то случайно кинет скриншот, бот не
-    // должен отвечать всей группе. В личке — куда нажать соискателю и куда идти
-    // работодателю: раньше здесь было «только для администраторов», и тот, кто
-    // пришёл разместить вакансию, уходил ни с чем (аудит 12 ноября 2026, см.
-    // docs/research). Свою вакансию он размещает на сайте — ИИ-разбор от
-    // посторонних в боте открыл бы дорогу спаму. ID — по /id, он нужен только
-    // новому админу.
+    // В своей группе отвечаем тому, кто ищет работу: свежая подработка и кнопка
+    // в бота (см. groupSeekers.js). На всё остальное в группе молчим: если
+    // кто-то случайно кинет скриншот, бот не должен отвечать всей группе.
+    if (await groupSeekers.onMessage(message, seekerDeps)) return;
+    // В личке — куда нажать соискателю и куда идти работодателю: раньше здесь
+    // было «только для администраторов», и тот, кто пришёл разместить вакансию,
+    // уходил ни с чем (аудит 12 ноября 2026, см. docs/research). Свою вакансию
+    // он размещает на сайте — ИИ-разбор от посторонних в боте открыл бы дорогу
+    // спаму. ID — по /id, он нужен только новому админу.
     if (message.chat.type === 'private') {
       if (String(message.text || '').trim() === '/id') {
         await tg.sendMessage(chatId, `Ваш ID: ${userId}`);
@@ -2965,11 +2986,11 @@ function startWatchers() {
     pretty: prettyLink,
   });
   // Раз в день — пост в группу: как получать вакансии в боте и где WhatsApp-канал.
-  const waCode = inviteCode(process.env.WA_CHANNEL);
+  // Кнопка канала — через шабашка.com/w/telegram: переход виден в сводке.
   groupPromo.start({
     chatId: CHANNEL_ID,
     siteUrl: SITE_URL,
-    waChannel: waCode ? `https://whatsapp.com/channel/${waCode}` : '',
+    waChannel: channelLink(process.env.WA_CHANNEL, SITE_URL, 'telegram'),
     send: (chatId, html, extra) => tg.sendMessage(chatId, html, extra),
   });
 }
@@ -3259,9 +3280,10 @@ async function handleUpdate(update) {
     else if (update.callback_query) await onCallback(update.callback_query);
   } catch (err) {
     console.error('Telegram bot:', err);
-    const chatId =
-      (update.message && update.message.chat.id) ||
-      (update.callback_query && update.callback_query.message.chat.id);
+    const chat =
+      (update.message && update.message.chat) || (update.callback_query && update.callback_query.message.chat);
+    // В группе ошибку увидели бы все — там она остаётся только в логах.
+    const chatId = chat && !['group', 'supergroup', 'channel'].includes(chat.type) && chat.id;
     if (chatId) {
       await tg
         .sendMessage(chatId, `⚠️ Ошибка: ${tg.esc(err.message)}`)

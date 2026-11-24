@@ -37,6 +37,16 @@ function inviteCode(value) {
   return match ? match[1] : '';
 }
 
+// Ссылка на канал для кнопки или поста. Есть адрес сайта — через
+// шабашка.com/w/<откуда>: переход посчитается в сводке (см. routes/go.js и
+// netlify.toml). Нет — прямая. Нет канала — пусто.
+function channelLink(invite, siteUrl, from) {
+  const code = inviteCode(invite);
+  if (!code) return '';
+  const site = String(siteUrl || '').trim().replace(/\/+$/, '');
+  return site ? `${site}/w/${from}` : `https://whatsapp.com/channel/${code}`;
+}
+
 // Зависимости — параметрами, чтобы тест подставил поддельный WhatsApp. Вход
 // в базе (auth.js) берём лениво: без WA_CHANNEL модуль базы не трогает.
 function createChannel({
@@ -262,6 +272,18 @@ function createChannel({
     }
   }
 
+  // Подписчики канала — для сводки (см. telegram/summary.js). WhatsApp отдаёт их
+  // строкой в thread_metadata.subscribers_count; нет числа или канал выключен —
+  // null, и сводка просто не называет WhatsApp.
+  async function followers() {
+    if (!code) return null;
+    const s = await ready();
+    const meta = await s.newsletterMetadata('invite', code);
+    const raw = meta && meta.thread_metadata ? meta.thread_metadata.subscribers_count : null;
+    const count = raw == null ? NaN : Number(raw);
+    return Number.isFinite(count) ? count : null;
+  }
+
   // Новая привязка: код для второго телефона. null — уже привязан.
   async function link() {
     if (!code) throw new Error('не задан WA_CHANNEL');
@@ -299,7 +321,7 @@ function createChannel({
 
   const info = () => ({ status, name, lastError, phone: number });
 
-  return { enabled: Boolean(code), start, link, post, info };
+  return { enabled: Boolean(code), start, link, post, info, followers };
 }
 
-module.exports = { createChannel, inviteCode };
+module.exports = { createChannel, inviteCode, channelLink };

@@ -31,16 +31,21 @@ async function setCommands(tg, adminIds) {
   }
 }
 
-// Описание видно в пустом чате, до кнопки «Старт», — по нему человек решает,
+// Описание видно в пустом чате, до кнопки «Запустить», — по нему человек решает,
 // нажимать ли. Ставим, только если его ещё нет: заданное в BotFather руками не
-// трогаем.
+// трогаем. «Запустить», а не «Старт»: так эта кнопка называется в русском
+// Telegram, и пожилому человеку слово в подсказке должно совпадать с экраном.
 const DESCRIPTION =
-  'Шабашка — вакансии и подработка в Бишкеке. Нажмите «Старт» и отметьте профессии: раз в час, с 9:00 до 21:00, пришлю свежие вакансии по ним. Без спама — только когда есть новое. Все объявления — на шабашка.com';
+  'Шабашка — вакансии и подработка в Бишкеке. Нажмите «Запустить» и отметьте профессии: раз в час, с 9:00 до 21:00, пришлю свежие вакансии по ним. Без спама — только когда есть новое. Все объявления — на шабашка.com';
+// Наше прежнее описание: его бот заменяет сам, это не правка админа.
+const OLD_DESCRIPTIONS = [DESCRIPTION.replace('«Запустить»', '«Старт»')];
 const SHORT_DESCRIPTION = 'Новые вакансии Бишкека по вашей профессии — раз в час, без спама. шабашка.com';
 
 async function describeBot(tg) {
   const { description } = await tg.call('getMyDescription', {});
-  if (!description) await tg.call('setMyDescription', { description: DESCRIPTION });
+  if (!description || OLD_DESCRIPTIONS.includes(description)) {
+    await tg.call('setMyDescription', { description: DESCRIPTION });
+  }
   const { short_description: short } = await tg.call('getMyShortDescription', {});
   if (!short) await tg.call('setMyShortDescription', { short_description: SHORT_DESCRIPTION });
 }

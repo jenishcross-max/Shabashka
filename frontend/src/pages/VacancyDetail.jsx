@@ -10,6 +10,7 @@ import FavoriteButton from '../components/FavoriteButton';
 import FormatIcon from '../components/FormatIcon';
 import SafetyNote from '../components/SafetyNote';
 import SubscribeButton from '../components/SubscribeButton';
+import ChannelButton from '../components/ChannelButton';
 import { SkeletonOrderDetail } from '../components/Skeleton';
 import { useMeta, useJsonLd } from '../useMeta';
 import { viewWord } from '../plural';
@@ -277,7 +278,8 @@ export default function VacancyDetail() {
         {!vacancy.is_example && (
           <div className="detail-subscribe">
             <SubscribeButton category={vacancy.category} />
-            <span>Раз в час днём и только когда есть новые. Без регистрации.</span>
+            <ChannelButton />
+            <span>Без регистрации. В Telegram — по вашей профессии, в WhatsApp — подборки пять раз в день.</span>
           </div>
         )}
 

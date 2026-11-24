@@ -88,4 +88,23 @@ async function command(arg = '') {
   return statusText();
 }
 
-module.exports = { start, command };
+// Подписчики канала для сводки. Сводку WhatsApp не задерживает: не подключён —
+// сразу null (будить его ради числа незачем), не ответил за waitMs или ошибся —
+// тоже null, и в строке «👥 Подписчики» просто нет WhatsApp.
+async function followers({ waitMs = 10 * 1000 } = {}) {
+  if (!channel.enabled || channel.info().status !== 'open') return null;
+  let timer;
+  const late = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(null), waitMs);
+  });
+  try {
+    return await Promise.race([channel.followers(), late]);
+  } catch (err) {
+    console.error('[whatsapp] подписчики канала:', err.message);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+module.exports = { start, command, followers };

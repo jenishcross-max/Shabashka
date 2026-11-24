@@ -363,3 +363,41 @@ test('пост-вакансия в группе — с кнопкой «Полу
   );
   assert.deepEqual(subscriptions.calls.at(-1), { groupButton: 'vacancy', siteUrl: 'https://xn--80aaac0cyed.com' });
 });
+
+// Ролик, которому не хватило места в суточной норме (см. social-ig-quota.test.js),
+// — не ошибка: сводка считает его отдельно, «не вышло» остаётся для поломок.
+test('Instagram: отложенный из-за нормы ролик — в «ig.wait», поломка — в «ig.fail»', async () => {
+  const wait = stats.counters['ig.wait'] || 0;
+  const fail = stats.counters['ig.fail'] || 0;
+  const reel = (instagram) =>
+    reelHandler({
+      instagram,
+      items: [{ parsed: { title: 'Бариста' } }, { parsed: { title: 'Официант' } }],
+      collection: 'Вакансии дня',
+      contexts: [{ chatId: 1, importId: 1, quiet: true }],
+    });
+  await reel({ posted: false, quota: true, reason: 'норма на ролики выбрана: 40 из 40' });
+  // Потолок самой Meta (подкод 2207042) — тоже норма, а не поломка.
+  await reel({ posted: false, hardLimit: true, reason: 'Application request limit reached' });
+  await reel({ posted: false, reason: 'Error validating access token' });
+  assert.equal(stats.counters['ig.wait'], wait + 2);
+  assert.equal(stats.counters['ig.fail'], fail + 1);
+});
+
+// Пробный ролик (см. social/trial.js) считается и роликом, и пробным — сводка
+// пишет «роликов N (пробных M)».
+test('Instagram: пробный ролик — в «ig.reel» и в «ig.trial»', async () => {
+  const reels = stats.counters['ig.reel'] || 0;
+  const trials = stats.counters['ig.trial'] || 0;
+  const reel = (instagram) =>
+    reelHandler({
+      instagram,
+      items: [{ parsed: { title: 'Грузчик' } }],
+      collection: 'Вакансии дня',
+      contexts: [{ chatId: 1, importId: 1, quiet: true }],
+    });
+  await reel({ posted: true, id: 'r1', trial: true });
+  await reel({ posted: true, id: 'r2' });
+  assert.equal(stats.counters['ig.reel'], reels + 2);
+  assert.equal(stats.counters['ig.trial'], trials + 1);
+});

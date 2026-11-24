@@ -6,7 +6,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 // Адрес сайта — для зова работодателю (см. «постороннему…» ниже); в боевой
-// среде он в punycode (см. README).
+// среде он в punycode (см. README). Группа — для ответа ищущим работу в группе.
+process.env.TELEGRAM_CHANNEL_ID = '@shabashkacom';
 process.env.PUBLIC_URL = 'https://xn--80aaac0cyed.com';
 
 const { install, dmStub, statsStub, at, chat, adGroupsStub, adRaisesStub, productStoreStub, subscriptionsStub, exchangeStubs } = require('./helpers/stub');
@@ -82,7 +83,11 @@ const requireSrc = install({
   },
   [at('digestRepo.js')]: { SIZE: 5, DAYS: 2 },
   // Рубрики по расписанию бот только запускает — выборки им здесь не нужны.
-  [at('rubricsRepo.js')]: {},
+  [at('rubricsRepo.js')]: {
+    freshOrders: async () => [
+      { id: 1301, listingType: 'order', parsed: { title: 'Разнорабочие на стройку', city: 'Бишкек', budget: 2000 } },
+    ],
+  },
 });
 
 const bot = requireSrc('telegram/bot.js');
@@ -250,4 +255,54 @@ test('/start чужого — подписке, админа — справка'
   });
   assert.deepEqual(subscriptions.calls.at(-1), { data: 'sub:obshchepit' }, 'кнопку подписки жмёт кто угодно');
   assert.equal(tg.sent.length, 0);
+});
+
+// Ответ ищущему работу в своей группе (см. src/telegram/groupSeekers.js):
+// постороннему в группе бот по-прежнему молчит, кроме вопроса о работе.
+test('в группе: на «есть работа?» — свежая подработка, на прочее — молчание', async () => {
+  const group = { id: -1003963768548, type: 'supergroup', username: 'Shabashkacom' };
+  tg.clear();
+  await bot.handleUpdate({ message: { chat: group, from: { id: 4401 }, message_id: 70, text: 'Всем привет, кто тут?' } });
+  assert.equal(tg.sent.length, 0, 'болтовню не трогаем');
+
+  await bot.handleUpdate({ message: { chat: group, from: { id: 4402 }, message_id: 71, text: 'Эртенкиге шабашка барбы?' } });
+  assert.equal(tg.sent.length, 1);
+  assert.match(tg.sent[0], /Бүгүнкү шабашкалар/);
+  assert.match(tg.sent[0], /Разнорабочие на стройку — 2 000 сом, Бишкек/);
+});
+
+// handleUpdate сообщает об ошибке в тот же чат — админу в личке это подсказка.
+// Но в группе это увидели бы все: «⚠️ Ошибка: Too Many Requests…» под вопросом
+// человека. В группе ошибка остаётся только в логах.
+test('ошибка при ответе в группе не уходит в группу, в личке — сообщается', async () => {
+  const group = { id: -1003963768548, type: 'supergroup', username: 'Shabashkacom' };
+  const realSend = tg.api.sendMessage;
+  let tried = false;
+  const failed = () => tried;
+  const failOnce = () => {
+    tried = false;
+    tg.api.sendMessage = async (...args) => {
+      if (!tried) {
+        tried = true;
+        throw new Error('Too Many Requests: retry after 30');
+      }
+      return realSend(...args);
+    };
+  };
+  try {
+    // Прошлый тест уже ответил в группе — без сброса бот промолчал бы из-за паузы.
+    requireSrc('telegram/groupSeekers.js').reset();
+    tg.clear();
+    failOnce();
+    await bot.handleUpdate({ message: { chat: group, from: { id: 4403 }, message_id: 72, text: 'Иш барбы?' } });
+    assert.equal(tg.sent.length, 0, tg.dump());
+    assert.ok(failed(), 'бот и правда пытался ответить');
+
+    tg.clear();
+    failOnce();
+    await say('/help');
+    assert.ok(tg.has(/⚠️ Ошибка: Too Many Requests/), 'админу в личке — как раньше');
+  } finally {
+    tg.api.sendMessage = realSend;
+  }
 });

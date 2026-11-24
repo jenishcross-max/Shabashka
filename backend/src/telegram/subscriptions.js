@@ -49,19 +49,29 @@ const PAUSE_MS = 50;
 // пришли по ссылке (sub.start), подписались (sub.new), отписались (sub.off),
 // заблокировали бота (sub.blocked) и сколько подборок ушло (sub.digest). RETURNING,
 // а не rowCount: так число строк одинаково и у pg, и у PGlite в тестах.
+//
+// «Подписались» и «отписались» — люди, а не нажатия на профессии: человек,
+// отметивший три профессии, — один подписчик, а снятая галочка у того, кто
+// остался в боте, — не уход. 21 ноября 2026 сводка по нажатиям писала
+// «подписались 27 · отписались 13», будто ушла половина, хотя подписчиков бота
+// за день стало на 14 больше.
+async function countOf(chatId) {
+  const { rows } = await db.query('SELECT count(*)::int AS n FROM subscriptions WHERE chat_id = $1', [chatId]);
+  return rows[0].n;
+}
 async function subscribe(chatId, category) {
   const { rows } = await db.query(
     'INSERT INTO subscriptions (chat_id, category) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING chat_id',
     [chatId, category]
   );
-  if (rows.length) await feedStats.bump('sub.new');
+  if (rows.length && (await countOf(chatId)) === 1) await feedStats.bump('sub.new');
 }
 async function unsubscribe(chatId, category) {
   const { rows } = await db.query('DELETE FROM subscriptions WHERE chat_id = $1 AND category = $2 RETURNING chat_id', [
     chatId,
     category,
   ]);
-  if (rows.length) await feedStats.bump('sub.off');
+  if (rows.length && (await countOf(chatId)) === 0) await feedStats.bump('sub.off');
 }
 // blocked — убираем заблокировавшего бота: это не «отписался», а «ушёл молча».
 async function unsubscribeAll(chatId, { blocked = false } = {}) {

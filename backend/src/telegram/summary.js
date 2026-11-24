@@ -5,6 +5,7 @@ const feedStats = require('./feedStats');
 const social = require('../social');
 const products = require('./products');
 const subscriptions = require('./subscriptions');
+const whatsapp = require('../whatsapp');
 const { num, plural, viewsWord, clamp, clock } = require('./format');
 
 // Сводка в Telegram вместо потока «кто что опубликовал».
@@ -119,6 +120,9 @@ const PLACES = [
   // В TELEGRAM_CHANNEL_ID может стоять и группа (у Шабашки так и есть) — пишем
   // площадку, а не «канал».
   ['channel', 'Telegram'],
+  // WhatsApp-канал (см. whatsapp/channel.js): число — от самого WhatsApp, через
+  // второй номер. Не подключён или не ответил — его просто нет в строке.
+  ['whatsapp', 'WhatsApp'],
   // Подписчики бота (см. subscriptions.js) — люди, подписанные хоть на одну
   // профессию. Прирост — так же, от вчерашнего снимка: он учитывает и
   // отписавшихся, а «новые за сутки» — нет.
@@ -136,11 +140,12 @@ async function readJson(key) {
 // bot — числа подписки (subscriptions.stats), null — база не ответила.
 async function followerCounts(bot) {
   const channelId = process.env.TELEGRAM_CHANNEL_ID;
-  const [platforms, channel] = await Promise.all([
+  const [platforms, channel, wa] = await Promise.all([
     (async () => social.followers())().catch(() => ({})),
     channelId ? tg.call('getChatMemberCount', { chat_id: channelId }).catch(() => null) : null,
+    (async () => whatsapp.followers())().catch(() => null),
   ]);
-  return { threads: platforms.threads, instagram: platforms.instagram, channel, bot: bot ? bot.chats : null };
+  return { threads: platforms.threads, instagram: platforms.instagram, channel, whatsapp: wa, bot: bot ? bot.chats : null };
 }
 
 async function followerLines(now, bot) {
@@ -184,6 +189,14 @@ const CLICKS = [
   ['other', 'без метки'],
 ];
 
+const WA_CLICKS = [
+  ['site', 'с сайта'],
+  ['instagram', 'из Instagram'],
+  ['threads', 'из Threads'],
+  ['telegram', 'из группы'],
+  ['other', 'без метки'],
+];
+
 function botLines(bot, n) {
   const lines = [];
   if (bot && bot.byCategory.length) {
@@ -197,6 +210,13 @@ function botLines(bot, n) {
   }
   // Тест «группа против бота» в постах Threads (см. subLine.js и routes/go.js).
   if (n('join.click.threads')) lines.push(`↪️ Перешли в группу сегодня: из Threads ${num(n('join.click.threads'))}`);
+  // WhatsApp-канал: шабашка.com/w/<откуда> (см. routes/go.js).
+  const wa = WA_CLICKS.filter(([key]) => n(`wa.click.${key}`));
+  if (wa.length) {
+    lines.push(`↪️ Перешли в WhatsApp-канал сегодня: ${wa.map(([key, label]) => `${label} ${num(n(`wa.click.${key}`))}`).join(' · ')}`);
+  }
+  // Ответы в группе на «шабашка барбы?» и «есть работа?» (см. groupSeekers.js).
+  if (n('group.seeker')) lines.push(`🙋 Ответил в группе тем, кто ищет работу: ${num(n('group.seeker'))}`);
   return [...lines, ...funnelLines(n)];
 }
 
@@ -336,9 +356,14 @@ async function build({ now = Date.now(), previous = null, tech = false, title = 
     '',
     '📲 Площадки',
     `🧵 Threads: ${num(n('th.ok'))}${n('th.fail') ? ` · не вышло ${num(n('th.fail'))}` : ''}`,
-    `📸 Instagram: роликов ${num(n('ig.reel'))}, картинкой ${num(n('ig.image'))}${
-      n('ig.fail') ? ` · не вышло ${num(n('ig.fail'))}` : ''
-    }`,
+    // «отложено из-за нормы» — попытки ролика, которому не хватило места в суточной норме (см.
+    // igCounter в bot.js): это очередь, а не поломка, поэтому отдельно.
+    // «пробных» — ролики Trial Reels (см. social/trial.js), из числа роликов.
+    `📸 Instagram: роликов ${num(n('ig.reel'))}${n('ig.trial') ? ` (пробных ${num(n('ig.trial'))})` : ''}, картинкой ${num(
+      n('ig.image')
+    )}${
+      n('ig.wait') ? ` · отложено из-за нормы ${num(n('ig.wait'))}` : ''
+    }${n('ig.fail') ? ` · не вышло ${num(n('ig.fail'))}` : ''}`,
     // Рубрики по расписанию (см. rubrics.js).
     ...(n('rub.ok') || n('rub.skip') || n('rub.fail')
       ? [

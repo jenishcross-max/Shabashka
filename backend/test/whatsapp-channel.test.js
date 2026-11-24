@@ -8,7 +8,7 @@ const { EventEmitter } = require('node:events');
 const { install } = require('./helpers/stub');
 
 const requireSrc = install({});
-const { createChannel, inviteCode } = requireSrc('whatsapp/channel.js');
+const { createChannel, inviteCode, channelLink } = requireSrc('whatsapp/channel.js');
 
 const INVITE = 'https://whatsapp.com/channel/0029VbDkFgd90x2sGL6f6m0p';
 
@@ -26,6 +26,7 @@ function fakeLib() {
         codes: [],
         meta: [],
         role: 'ADMIN',
+        followers: '58',
         ended: false,
         requestPairingCode: async (phone) => {
           s.codes.push(phone);
@@ -35,7 +36,8 @@ function fakeLib() {
           s.meta.push([type, key]);
           return {
             id: '120363@newsletter',
-            thread_metadata: { name: { text: 'Жумуш | Работа | Шабашка' } },
+            // WhatsApp отдаёт число подписчиков строкой.
+            thread_metadata: { name: { text: 'Жумуш | Работа | Шабашка' }, subscribers_count: s.followers },
             viewer_metadata: { role: s.role },
           };
         },
@@ -210,6 +212,23 @@ test('код не ввели — без повтора: каждый повто�
   assert.equal(channel.info().status, 'unlinked');
 });
 
+// Подписчики канала — в «👥 Подписчики» сводки, как у остальных площадок: без
+// этой цифры не видно, помогает ли что-то каналу расти (22 ноября 2026 — 58).
+test('число подписчиков канала — для сводки', async () => {
+  const { lib, channel } = setup({ registered: true });
+  channel.start();
+  await flush();
+  const asked = channel.followers();
+  await flush();
+  const [s] = lib.sockets;
+  s.emit({ connection: 'open' });
+  assert.equal(await asked, 58);
+
+  s.followers = undefined;
+  assert.equal(await channel.followers(), null, 'WhatsApp не сказал — не выдумываем');
+  assert.equal(await setup({ invite: '' }).channel.followers(), null, 'канал выключен');
+});
+
 test('без WA_CHANNEL канал выключен', async () => {
   const { lib, channel } = setup({ invite: '' });
   assert.equal(channel.enabled, false);
@@ -225,4 +244,12 @@ test('код канала — из ссылки или как есть', () => {
   assert.equal(inviteCode(' 0029VbDkFgd90x2sGL6f6m0p '), '0029VbDkFgd90x2sGL6f6m0p');
   assert.equal(inviteCode('шабашка'), '');
   assert.equal(inviteCode(undefined), '');
+});
+
+// Ссылка на канал для кнопки или поста — через шабашка.com/w/<откуда>, чтобы
+// переход посчитался в сводке (routes/go.js). Без адреса сайта — прямая.
+test('ссылка на канал — через сайт со счётчиком, иначе прямая', () => {
+  assert.equal(channelLink(INVITE, 'https://xn--80aaac0cyed.com/', 'telegram'), 'https://xn--80aaac0cyed.com/w/telegram');
+  assert.equal(channelLink(INVITE, '', 'telegram'), 'https://whatsapp.com/channel/0029VbDkFgd90x2sGL6f6m0p');
+  assert.equal(channelLink('', 'https://xn--80aaac0cyed.com', 'telegram'), '', 'канала нет — и ссылки нет');
 });

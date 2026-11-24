@@ -242,3 +242,70 @@ test('карусель в Threads и в Instagram: дети с пометкой,
   assert.equal(media.at(-1).params.children.split(',').length, 10);
   assert.equal(media.at(-1).params.caption, 'Подпись');
 });
+
+// Пробные ролики Instagram (Trial Reels, trial_params в API с конца 2025): их
+// сначала видят только те, кто на аккаунт ещё не подписан, и удачный сам
+// выходит к подписчикам (SS_PERFORMANCE). 21–22 ноября 2026 ролики-вакансии
+// набирали 44–177 просмотров при 3 083 подписчиках (см.
+// docs/plans/2026-11-22-whatsapp-instagram-growth.md) — проверяем, даст ли охват
+// новых людей больше подписок. Включается IG_TRIAL_EVERY.
+const reelFlow = (seen) => (p, params) => {
+  if (p.endsWith('/222/media')) {
+    seen.push(params);
+    if (params.trial_params && seen.rejectTrial) {
+      return { status: 400, body: { error: { message: '(#100) Invalid parameter', code: 100 } } };
+    }
+    return { body: { id: 'reel1' } };
+  }
+  if (p.endsWith('/reel1')) return { body: { status_code: 'FINISHED' } };
+  if (p.endsWith('/media_publish')) return { body: { id: 'ig-reel' } };
+  return {};
+};
+
+test('Instagram: пробный ролик — trial_params с выходом к подписчикам по успеху', async () => {
+  const seen = [];
+  respond = reelFlow(seen);
+  assert.equal(await instagram.publishReel('https://x.test/v.mp4', 'подпись', 3600, { trial: true }), 'ig-reel');
+  assert.equal(seen[0].media_type, 'REELS');
+  assert.deepEqual(JSON.parse(seen[0].trial_params), { graduation_strategy: 'SS_PERFORMANCE' });
+
+  seen.length = 0;
+  await instagram.publishReel('https://x.test/v.mp4', 'подпись', 3600);
+  assert.equal(seen[0].trial_params, undefined, 'обычный ролик — без пометки');
+});
+
+// #100 бывает и не из-за пометки — например, Meta не скачала видео. Тогда и без
+// пометки ролик не пройдёт, и выключать пробные ролики из-за этого нельзя.
+// Этот тест — до «не приняла»: тот выключает пробные до конца процесса.
+test('Instagram: отказ не из-за пометки — ошибка наверх, пробные не выключаются', async () => {
+  const seen = [];
+  respond = (p, params) => {
+    if (p.endsWith('/222/media')) {
+      seen.push(params);
+      return { status: 400, body: { error: { message: '(#100) The video_url is not valid', code: 100 } } };
+    }
+    return {};
+  };
+  await assert.rejects(instagram.publishReel('https://x.test/broken.mp4', 'подпись', 3600, { trial: true }), /video_url/);
+  assert.equal(instagram.trialRejected(), false);
+
+  seen.length = 0;
+  respond = reelFlow(seen);
+  await instagram.publishReel('https://x.test/v.mp4', 'подпись', 3600, { trial: true });
+  assert.ok(seen[0].trial_params, 'следующий ролик — снова пробный');
+});
+
+test('Instagram: Meta не приняла пробный ролик — выходит обычным, и больше не пробуем', async () => {
+  const seen = [];
+  seen.rejectTrial = true;
+  respond = reelFlow(seen);
+  assert.equal(await instagram.publishReel('https://x.test/v.mp4', 'подпись', 3600, { trial: true }), 'ig-reel');
+  assert.equal(seen.length, 2, 'вторая попытка — тем же роликом, без пометки');
+  assert.ok(seen[0].trial_params);
+  assert.equal(seen[1].trial_params, undefined);
+
+  seen.length = 0;
+  await instagram.publishReel('https://x.test/v.mp4', 'подпись', 3600, { trial: true });
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].trial_params, undefined, 'до перезапуска — сразу обычным, без лишнего отказа');
+});
