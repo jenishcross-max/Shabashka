@@ -25,6 +25,7 @@ const social = require('./social');
 const metaRoutes = require('./meta');
 const keepalive = require('./keepalive');
 const staleListings = require('./staleListings');
+const indexNow = require('./indexNow');
 const professions = require('./professions');
 const { notifyAdmins } = require('./telegram/notify');
 const { apiLimiter } = require('./rateLimit');
@@ -111,6 +112,8 @@ async function bootstrap() {
   keepalive.start();
   // Старые объявления из чатов закрываются сами (см. staleListings.js).
   staleListings.start();
+  // Новые вакансии и заказы — сразу Яндексу (см. indexNow.js).
+  indexNow.start();
   // Старые вакансии и заказы из «Другого» — по профессиям (см. professions.js).
   professions.backfill().catch((err) => console.error('[профессии]', err.message));
 }
