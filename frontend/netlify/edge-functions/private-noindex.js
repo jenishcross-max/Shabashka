@@ -20,5 +20,11 @@ export const config = {
     '/admin',
     '/admin/*',
     '/verify-email',
+    // Вход, регистрация и избранное — тоже не для поиска: Google держал их в
+    // выдаче (Search Console, 24 ноября 2026), а по запросу «шабашка» должен
+    // выходить сам сайт.
+    '/login',
+    '/register',
+    '/favorites',
   ],
 };

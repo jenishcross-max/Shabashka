@@ -21,16 +21,25 @@ export default function Landing() {
   const landing = landingBySlug(slug);
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(null);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [more, setMore] = useState(false);
   const [error, setError] = useState('');
+  // Разовые заказы под вакансиями — у городов и «онлайн» (landing.orders).
+  const [orders, setOrders] = useState([]);
+  const [ordersTotal, setOrdersTotal] = useState(0);
 
   useMeta(landing && `${landing.title} — Шабашка`, landing && landing.description);
+
+  const load = landing && landing.kind === 'orders' ? api.orders : api.vacancies;
 
   useEffect(() => {
     if (!landing) return;
     setLoading(true);
     setError('');
-    const load = landing.kind === 'orders' ? api.orders : api.vacancies;
+    setPage(1);
+    setOrders([]);
+    setOrdersTotal(0);
     load({ ...landing.params, limit: PAGE })
       .then((data) => {
         setItems(data[landing.kind]);
@@ -38,14 +47,37 @@ export default function Landing() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
+    if (landing.orders) {
+      api
+        .orders({ ...landing.params, limit: 12 })
+        .then((data) => {
+          setOrders(data.orders);
+          setOrdersTotal(data.total);
+        })
+        .catch(() => {});
+    }
   }, [slug]);
 
   if (!landing) return <NotFound />;
+
+  // Фильтра нет на странице списка («без опыта», «онлайн») — листаем здесь же.
+  const allPath = listPath(landing);
+  const showMore = () => {
+    setMore(true);
+    load({ ...landing.params, limit: PAGE, page: page + 1 })
+      .then((data) => {
+        setItems((prev) => [...prev, ...data[landing.kind]]);
+        setPage(page + 1);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setMore(false));
+  };
 
   const ky = landing.lang === 'ky';
   const word = landing.kind === 'orders' ? orderWord : vacancyWord;
   const card = (item) =>
     landing.kind === 'orders' ? <OrderCard key={item.id} order={item} /> : <VacancyCard key={item.id} vacancy={item} />;
+  const ordersPath = landing.orders ? listPath(landing, 'orders') : null;
 
   return (
     <div className="landing" lang={landing.lang}>
@@ -85,10 +117,36 @@ export default function Landing() {
 
       {total > items.length && (
         <div className="landing-more">
-          <Link to={listPath(landing)} className="cta">
-            {ky ? `Баарын көрүү (${total})` : `Смотреть все ${total} ${word(total)}`}
-          </Link>
+          {allPath ? (
+            <Link to={allPath} className="cta">
+              {ky ? `Баарын көрүү (${total})` : `Смотреть все ${total} ${word(total)}`}
+            </Link>
+          ) : (
+            <button type="button" className="cta" onClick={showMore} disabled={more}>
+              {more ? 'Загружаем…' : `Показать ещё (осталось ${total - items.length})`}
+            </button>
+          )}
         </div>
+      )}
+
+      {orders.length > 0 && (
+        <section className="section">
+          <h2>
+            Разовые заказы — {ordersTotal} {orderWord(ordersTotal)}
+          </h2>
+          <div className="order-grid">
+            {orders.map((order) => (
+              <OrderCard key={order.id} order={order} />
+            ))}
+          </div>
+          {ordersTotal > orders.length && ordersPath && (
+            <div className="landing-more">
+              <Link to={ordersPath} className="cta">
+                Смотреть все {ordersTotal} {orderWord(ordersTotal)}
+              </Link>
+            </div>
+          )}
+        </section>
       )}
 
       <LandingLinks current={landing.slug} />

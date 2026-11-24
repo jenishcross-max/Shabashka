@@ -1,11 +1,12 @@
 import { Link } from 'react-router-dom';
 import { LANDINGS, landingPath } from '../landings';
 
-// Ссылки на посадочные страницы (см. landings.js): «Работа по профессиям» и
+// Ссылки на посадочные страницы (см. landings.js): города, «Работа по профессиям» и
 // подборки. Нужны людям — найти свою профессию в один клик — и поисковику: без
 // ссылок с главной и соседних страниц посадочные он бы не нашёл.
 export default function LandingLinks({ current = null }) {
   const groups = [
+    ['Работа по городам', LANDINGS.filter((l) => l.group === 'city')],
     ['Работа по профессиям', LANDINGS.filter((l) => l.group === 'profession')],
     ['Подборки', LANDINGS.filter((l) => l.group === 'collection')],
   ];

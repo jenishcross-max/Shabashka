@@ -25,8 +25,12 @@ function links(current) {
     .join(' · ');
 }
 
-// items — объявления для робота: { id, title }. Человеку их не подставляем: за
-// ними надо сходить в API, а он и так увидит список через секунду.
+// items — объявления для робота: { id, title, kind? } (kind — у заказов на
+// странице вакансий, см. landing.orders). Человеку их не подставляем: за ними
+// надо сходить в API, а он и так увидит список через секунду.
+//
+// landing — и раздел из SECTIONS (главная, /vacancies): у него нет slug, и в
+// ссылках внизу — все посадочные.
 export function landingHtml(html, { landing, url, items = [] }) {
   const title = `${landing.title} — Шабашка`;
   let out = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`);
@@ -39,7 +43,7 @@ export function landingHtml(html, { landing, url, items = [] }) {
 
   const list = items.length
     ? `<ul class="landing-list">${items
-        .map((item) => `<li><a href="/${landing.kind}/${item.id}">${esc(item.title)}</a></li>`)
+        .map((item) => `<li><a href="/${item.kind || landing.kind}/${item.id}">${esc(item.title)}</a></li>`)
         .join('')}</ul>`
     : '';
   const body = `<main class="landing"><h1>${esc(landing.h1)}</h1><p>${esc(landing.intro)}</p>${list}<nav>${links(

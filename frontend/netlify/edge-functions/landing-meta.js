@@ -9,22 +9,8 @@
 // страницу без списка, а не ошибку.
 import { landingBySlug } from '../../src/landings.js';
 import { landingHtml } from '../lib/landingHtml.js';
-import { BOT_UA_RE, BACKEND_ORIGIN } from '../lib/bots.js';
-
-const LIST_TIMEOUT_MS = 4000;
-
-async function itemsFor(landing) {
-  const query = new URLSearchParams({ ...landing.params, limit: '24' });
-  try {
-    const res = await fetch(`${BACKEND_ORIGIN}/api/${landing.kind}?${query}`, {
-      signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
-    });
-    if (!res.ok) return [];
-    return (await res.json())[landing.kind] || [];
-  } catch {
-    return [];
-  }
-}
+import { listItems } from '../lib/listItems.js';
+import { BOT_UA_RE } from '../lib/bots.js';
 
 export default async (request, context) => {
   const url = new URL(request.url);
@@ -35,7 +21,7 @@ export default async (request, context) => {
   if (!(response.headers.get('content-type') || '').includes('text/html')) return response;
 
   const isBot = BOT_UA_RE.test(request.headers.get('user-agent') || '');
-  const items = isBot ? await itemsFor(landing) : [];
+  const items = isBot ? await listItems(landing) : [];
   const html = landingHtml(await response.text(), { landing, url: `${url.origin}${url.pathname}`, items });
 
   const headers = new Headers(response.headers);

@@ -65,7 +65,7 @@ router.get(
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const { city, q, sort, employmentType } = req.query;
+    const { city, q, sort, employmentType, experience, workFormat } = req.query;
     const students = req.query.students === '1' || req.query.students === 'true';
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(48, Math.max(1, parseInt(req.query.limit, 10) || 12));
@@ -91,6 +91,13 @@ router.get(
     if (students) clauses.push('vacancies.for_students');
     if (employmentType && EMPLOYMENT_VALUES.includes(employmentType)) {
       clauses.push(`vacancies.employment_type = ${addParam(employmentType)}`);
+    }
+    // Страницы /rabota/bez-opyta и /rabota/onlayn (см. frontend/src/landings.js).
+    if (experience && EXPERIENCE_VALUES.includes(experience)) {
+      clauses.push(`vacancies.experience = ${addParam(experience)}`);
+    }
+    if (WORK_FORMATS.includes(workFormat)) {
+      clauses.push(`vacancies.work_format = ${addParam(workFormat)}`);
     }
     if (city) {
       clauses.push(`vacancies.city ILIKE ${addParam(`%${city}%`)}`);
